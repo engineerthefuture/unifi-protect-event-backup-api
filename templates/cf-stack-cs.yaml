@@ -1,0 +1,476 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Creates a Cloudformation stack for the Unifi webhook alarm receiver
+
+# Parameters
+Parameters:
+  AppName:
+    Default: UnifiWebhookEventReceiver
+    Type: String
+    Description: Tag to create.
+    AllowedPattern: "[a-zA-Z][a-zA-Z0-9_-]*"
+  OwnerEmail:
+    Default: brent.m.foster@me.com
+    Type: String
+    Description: Tag to create.
+  EnvPrefix:
+    Default: prod
+    Type: String
+    Description: Tag to create.
+    AllowedPattern: "[a-zA-Z][a-zA-Z0-9_-]*"
+  BucketName:
+    Default: bf-prod-s3-unifialarmevents
+    Type: String
+    Description: Bucket name to create.
+    AllowedPattern: "[a-zA-Z][a-zA-Z0-9_-]*"
+  BucketNameDeployment:
+    Default: bf-prod-s3-deployments
+    Type: String
+    Description: Bucket name for deployments.
+    AllowedPattern: "[a-zA-Z][a-zA-Z0-9_-]*"
+  BucketNameSource:
+    Default: bf-prod-s3-source
+    Type: String
+    Description: Bucket name for source code.
+    AllowedPattern: "[a-zA-Z][a-zA-Z0-9_-]*"
+  FunctionName:
+    Default: bf-prod-lambda-unifiwebhookeventreceiver
+    Type: String
+    Description: Lambda function to create.
+    AllowedPattern: "[a-zA-Z][a-zA-Z0-9_-]*"
+  RoleName:
+    Default: bf-prod-lambda-unifiwebhookeventreceiver-role
+    Type: String
+    Description: Lambda function role to create.
+    AllowedPattern: "[a-zA-Z][a-zA-Z0-9_-]*"
+  OwnerName:
+    Default: "Brent Foster"
+    Type: String
+    Description: Tag to create.
+  RequestorName:
+    Default: "Brent Foster"
+    Type: String
+    Description: Tag to create.
+  AppDescription:
+    Default: "Unifi webhook alarm event processing app"
+    Type: String
+    Description: Tag to create.
+  ParamReminder:
+    Default: "Stored in Secrets Manager"
+    Type: String
+    Description: Reminder to reference from Secrets Manager.
+
+# Resources
+Resources: 
+  # Role for API gateway logging
+  CloudWatchRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - apigateway.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Path: /
+      ManagedPolicyArns:
+        - >-
+          arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs
+      Tags:
+        - Key: "Owner"
+          Value: !Sub "${OwnerName}"
+        - Key: "Requestor"
+          Value: !Sub "${RequestorName}"
+        - Key: "AppName"
+          Value: !Sub "${AppName}"
+        - Key: "Description"
+          Value: !Sub "${AppDescription}"
+        - Key: "Environment"
+          Value: !Sub "${EnvPrefix}"
+        - Key: "OwnerTeamEmail"
+          Value: !Sub "${OwnerEmail}"
+        - Key: "Name"
+          Value: !Sub "${FunctionName}-API-role"
+  
+  # Role associated with API gateway
+  ApiGatewayAccountConfig:
+    Type: 'AWS::ApiGateway::Account'
+    Properties:
+      CloudWatchRoleArn: !GetAtt 
+        - CloudWatchRole
+        - Arn
+
+  # Role for proxy lambda function
+  LambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${FunctionName}-role"
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action:
+            - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+              - lambda.amazonaws.com
+              - apigateway.amazonaws.com
+        Version: 2012-10-17
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/SecretsManagerReadWrite
+        - arn:aws:iam::aws:policy/AmazonAPIGatewayInvokeFullAccess
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Path: /
+      Tags: 
+        - Key: "Owner"
+          Value: !Sub "${OwnerName}"
+        - Key: "Requestor"
+          Value: !Sub "${RequestorName}"
+        - Key: "AppName"
+          Value: !Sub "${AppName}"
+        - Key: "Description"
+          Value: !Sub "${AppDescription}"
+        - Key: "Environment"
+          Value: !Sub "${EnvPrefix}"
+        - Key: "OwnerTeamEmail"
+          Value: !Sub "${OwnerEmail}"
+        - Key: "Name"
+          Value: !Sub "${FunctionName}-role"
+      
+  # S3 Bucket for storing uploaded files
+  S3Bucket:
+    Description: S3 bucket for alarm events.
+    Type: AWS::S3::Bucket
+    Properties:
+            BucketName: !Sub "${BucketName}"
+            BucketEncryption:
+              ServerSideEncryptionConfiguration:
+                - ServerSideEncryptionByDefault:
+                    SSEAlgorithm: AES256
+            PublicAccessBlockConfiguration:
+              BlockPublicAcls: true
+              BlockPublicPolicy: true
+              IgnorePublicAcls: true
+              RestrictPublicBuckets: true
+            Tags: 
+              - Key: "Owner"
+                Value: !Sub "${OwnerName}"
+              - Key: "Requestor"
+                Value: !Sub "${RequestorName}"
+              - Key: "AppName"
+                Value: !Sub "${AppName}"
+              - Key: "Description"
+                Value: !Sub "${AppDescription}"
+              - Key: "Environment"
+                Value: !Sub "${EnvPrefix}"
+              - Key: "OwnerTeamEmail"
+                Value: !Sub "${OwnerEmail}"
+              - Key: "Name"
+                Value: !Sub "${BucketName}"
+
+  # API gateway instance
+  ApiGateway:
+    Type: "AWS::ApiGateway::RestApi"
+    Properties:
+      Name: !Sub "${FunctionName}-API"
+      Description: !Sub "${EnvPrefix} - ${AppName} Proxy API"
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+      Tags: 
+        - Key: "Owner"
+          Value: !Sub "${OwnerName}"
+        - Key: "Requestor"
+          Value: !Sub "${RequestorName}"
+        - Key: "AppName"
+          Value: !Sub "${AppName}"
+        - Key: "Description"
+          Value: !Sub "${AppDescription}"
+        - Key: "Environment"
+          Value: !Sub "${EnvPrefix}"
+        - Key: "OwnerTeamEmail"
+          Value: !Sub "${OwnerEmail}"
+        - Key: "Name"
+          Value: !Sub "${FunctionName}-API"
+  ApiGatewayResource:
+    Type: 'AWS::ApiGateway::Resource'
+    Properties:
+      ParentId: !GetAtt ApiGateway.RootResourceId
+      RestApiId: !Ref ApiGateway
+      PathPart: '{proxy+}'
+  
+  # Root method
+  ApiGatewayRootMethod:
+    Type: 'AWS::ApiGateway::Method'
+    Properties:
+      HttpMethod: ANY
+      ResourceId: !GetAtt ApiGateway.RootResourceId
+      RestApiId: !Ref ApiGateway
+      AuthorizationType: NONE
+      ApiKeyRequired: true
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Join
+                  - ''
+                  - - !Sub arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:${AWS::AccountId}:function
+                    - !Sub :${FunctionName}/invocations
+        PassthroughBehavior: WHEN_NO_MATCH
+        ContentHandling: "CONVERT_TO_TEXT"
+
+  # Proxy method for Post
+  ApiGatewayProxyMethodPost:
+    Type: 'AWS::ApiGateway::Method'
+    Properties:
+      HttpMethod: POST
+      ResourceId: !Ref ApiGatewayResource
+      RestApiId: !Ref ApiGateway
+      ApiKeyRequired: true
+      AuthorizationType: NONE
+      RequestParameters:
+        method.request.path.proxy: true
+      Integration:
+        IntegrationResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: "'*'"
+        CacheKeyParameters:
+          - 'method.request.path.proxy'
+        ContentHandling: "CONVERT_TO_TEXT"
+        RequestParameters:
+          integration.request.path.proxy: 'method.request.path.proxy'
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Join
+                  - ''
+                  - - !Sub arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:${AWS::AccountId}:function
+                    - !Sub :${FunctionName}/invocations
+        PassthroughBehavior: WHEN_NO_MATCH
+      MethodResponses:
+      - StatusCode: 200
+        ResponseParameters:
+          method.response.header.Access-Control-Allow-Origin: true
+  
+  # Proxy method for Get
+  ApiGatewayProxyMethodGet:
+    Type: 'AWS::ApiGateway::Method'
+    Properties:
+      HttpMethod: GET
+      ResourceId: !Ref ApiGatewayResource
+      RestApiId: !Ref ApiGateway
+      ApiKeyRequired: true
+      AuthorizationType: NONE
+      RequestParameters:
+        method.request.path.proxy: true
+      Integration:
+        IntegrationResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: "'*'"
+        CacheKeyParameters:
+          - 'method.request.path.proxy'
+        ContentHandling: "CONVERT_TO_TEXT"
+        RequestParameters:
+          integration.request.path.proxy: 'method.request.path.proxy'
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Join
+                  - ''
+                  - - !Sub arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:${AWS::AccountId}:function
+                    - !Sub :${FunctionName}/invocations
+        PassthroughBehavior: WHEN_NO_MATCH
+      MethodResponses:
+      - StatusCode: 200
+        ResponseParameters:
+          method.response.header.Access-Control-Allow-Origin: true
+
+  # Proxy method for Options
+  ApiGatewayProxyMethodOptions:
+    Type: 'AWS::ApiGateway::Method'
+    Properties:
+      HttpMethod: OPTIONS
+      ResourceId: !Ref ApiGatewayResource
+      RestApiId: !Ref ApiGateway
+      ApiKeyRequired: true
+      AuthorizationType: NONE
+      RequestParameters:
+        method.request.path.proxy: true
+      Integration:
+        IntegrationResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,Origin,Access-Control-Allow-Origin,Access-Control-Allow-Methods'"
+            method.response.header.Access-Control-Allow-Methods: "'GET,POST,OPTIONS'"
+            method.response.header.Access-Control-Allow-Origin: "'*'"
+        CacheKeyParameters:
+          - 'method.request.path.proxy'
+        ContentHandling: "CONVERT_TO_TEXT"
+        RequestParameters:
+          integration.request.path.proxy: 'method.request.path.proxy'
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Join
+                  - ''
+                  - - !Sub arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:${AWS::AccountId}:function
+                    - !Sub :${FunctionName}/invocations
+        PassthroughBehavior: WHEN_NO_MATCH
+      MethodResponses:
+      - StatusCode: 200
+        ResponseParameters:
+          method.response.header.Access-Control-Allow-Headers: true
+          method.response.header.Access-Control-Allow-Methods: true
+          method.response.header.Access-Control-Allow-Origin: true
+
+
+  # API gateway deployment
+  ApiGatewayDeployment:
+    DependsOn:
+      - ApiGatewayRootMethod
+      - ApiGatewayProxyMethodGet
+      - ApiGatewayProxyMethodPost
+      - ApiGatewayProxyMethodOptions
+    Type: 'AWS::ApiGateway::Deployment'
+    Properties:
+      RestApiId: !Ref ApiGateway
+
+  # Enable logging of all HTTP requests
+  ApiGatewayStage:
+    Type: AWS::ApiGateway::Stage
+    DependsOn: CloudWatchRole
+    Properties:
+      DeploymentId: !Ref ApiGatewayDeployment
+      MethodSettings:
+        - HttpMethod: '*'
+          LoggingLevel: INFO
+          MetricsEnabled: true
+          ResourcePath: /*
+          DataTraceEnabled: true
+          ThrottlingBurstLimit: 5
+          ThrottlingRateLimit: 2
+      RestApiId: !Ref ApiGateway
+      StageName: !Sub "${EnvPrefix}"
+
+  # Proxy lambda function
+  LambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties: 
+      FunctionName: !Sub "${FunctionName}"
+      Code: 
+        S3Bucket: !Sub "${BucketNameDeployment}"
+        S3Key: !Sub "${AppName}/${FunctionName}/publish.zip"
+      Description: !Sub "${EnvPrefix} - ${AppName}"
+              #AssemblyName::NameSpace.ClassName::FunctionHandlerName
+      Handler: UnifiWebhookEventReceiver::UnifiWebhookEventReceiver.UnifiWebhookEventReceiver::FunctionHandler
+      MemorySize: 128
+      Timeout: 30
+      Runtime: dotnet8
+      Role: !GetAtt LambdaRole.Arn
+      Environment:
+        Variables:
+          FunctionName: !Sub "${FunctionName}"
+          DeployedEnv: !Sub "${EnvPrefix}"
+          StorageBucket: !Sub "${BucketName}"
+          ApiKey: !Sub "${ApiGatewayKey}"
+          DevicePrefix: "DeviceMac"
+          DeviceMac28704E113F64: "Backyard East"
+          DeviceMacF4E2C67A2FE8: "Front"
+          DeviceMac28704E113C44: "Side"
+          DeviceMac28704E113F33: "Backyard West"
+          DeviceMacF4E2C677E20F: "Door"
+      Tags: 
+        - Key: "AppName"
+          Value: !Sub "${AppName}"
+        - Key: "Description"
+          Value: !Sub "${AppDescription}"
+        - Key: "FunctionName"
+          Value: !Sub "${FunctionName}"
+        - Key: "Environment"
+          Value: !Sub "${EnvPrefix}"
+        - Key: "Owner"
+          Value: !Sub "${OwnerName}"
+        - Key: "OwnerEmail"
+          Value: !Sub "${OwnerEmail}"
+
+  # Root invoker from API gateway to lambda
+  LambdaApiGatewayInvoke:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt LambdaFunction.Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Join
+        - ''
+        - - 'arn:aws:execute-api:'
+          - !Ref 'AWS::Region'
+          - ':'
+          - !Ref 'AWS::AccountId'
+          - ':'
+          - !Ref ApiGateway
+          - '/*/*/'
+  
+  # Proxy invoker from API gateway to lambda
+  LambdaApiGatewayInvokeProxy:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt LambdaFunction.Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Join
+        - ''
+        - - 'arn:aws:execute-api:'
+          - !Ref 'AWS::Region'
+          - ':'
+          - !Ref 'AWS::AccountId'
+          - ':'
+          - !Ref ApiGateway
+          - '/*/*/*'
+
+  # API key
+  ApiGatewayKey:
+    Type: 'AWS::ApiGateway::ApiKey'
+    DependsOn:
+      - ApiGateway
+    Properties:
+      Name: !Sub "${FunctionName}-ApiKey"
+      Description: "API Key"
+      Enabled: 'true'
+      StageKeys:
+        - RestApiId: !Ref ApiGateway
+          StageName: !Ref ApiGatewayStage
+
+  # Usage plan key association
+  UsagePlanKey:
+    Type: 'AWS::ApiGateway::UsagePlanKey'
+    DependsOn:
+      - ApiGateway
+    Properties:
+      KeyId: !Ref ApiGatewayKey
+      KeyType: API_KEY
+      UsagePlanId: !Ref UsagePlan
+
+  # Usage plan
+  UsagePlan:
+    Type: 'AWS::ApiGateway::UsagePlan'
+    Properties:
+      ApiStages:
+        - ApiId: !Ref ApiGateway
+          Stage: !Ref ApiGatewayStage
+      Description: !Sub "Usage Plan for ${FunctionName} API"
+      Quota:
+        Limit: 1000
+        Period: DAY
+      Throttle:
+        BurstLimit: 5
+        RateLimit: 2
+      UsagePlanName: !Sub "${FunctionName}-plan"
+
+# Output useful details
+Outputs:
+  Repository:
+    Value: Manually published
+  POSTUnfiWebhookAlarmEventEndpoint:
+    Value: !Sub
+      - https://${ApiId}.execute-api.${AWS::Region}.amazonaws.com/${EnvPrefix}/alarmevent
+      - ApiId: !Ref ApiGateway
+        StageName: !Ref ApiGatewayStage
