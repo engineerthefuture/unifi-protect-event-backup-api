@@ -8,7 +8,7 @@ This project provides an AWS Lambda function that processes alarm event webhooks
 
 The following diagram illustrates the high-level architecture of the Unifi Webhook Event Receiver:
 
-![Architecture Diagram](docs/UnifiWebhookEventReceiver_Architecture_Diagram.png)
+![Architecture Diagram](docs/UnifiWebhookEventReceiver_Arch.png)
 
 ## Key Techniques Used  
 
