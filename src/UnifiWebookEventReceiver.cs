@@ -337,6 +337,8 @@ namespace UnifiWebhookEventReceiver
                         long timestamp = alarm.timestamp;
                         String triggerType = trigger.key;
                         String eventId = trigger.eventId;
+                        String eventPath = alarm.eventPath;
+                        String eventLocalLink = alarm.eventLocalLink;
                         String deviceName = "";
 
                         // Set date from timestamp

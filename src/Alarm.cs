@@ -14,6 +14,8 @@ namespace UnifiWebhookEventReceiver
         public List<Condition>? conditions { get; set; }
         public required List<Trigger> triggers { get; set; }
         public required long timestamp { get; set; }
+        public string? eventPath { get; set; }
+        public string? eventLocalLink { get; set; }
     }
 
     public class Source
