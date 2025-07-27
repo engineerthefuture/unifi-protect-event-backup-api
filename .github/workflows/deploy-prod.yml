@@ -63,6 +63,7 @@ jobs:
               OwnerName="${{ vars.OWNER_NAME }}" \
               AppName="${{ vars.APP_NAME }}" \
               AppDescription="${{ vars.APP_DESCRIPTION }}" 
+              BucketNameDeployment="bf-prod-s3-deployments" \
             --tags \
               Owner="${{ vars.OWNER_NAME }}" \
               AppName="${{ vars.APP_NAME }}" \
@@ -82,6 +83,8 @@ jobs:
 
       - name: Update Lambda function code
         run: |
+          aws s3 cp lambda.zip s3://bf-prod-s3-deployments/unifi-protect-event-backup-api/publish.zip
           aws lambda update-function-code \
             --function-name UnifiWebhookEventReceiver \
-            --zip-file fileb://lambda.zip
+            --s3-bucket bf-prod-s3-deployments \
+            --s3-key unifi-protect-event-backup-api/publish.zip
