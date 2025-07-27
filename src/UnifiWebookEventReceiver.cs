@@ -371,7 +371,7 @@ namespace UnifiWebhookEventReceiver
                         alarm.triggers[0] = trigger;
 
                     // Create a file key that saves into a subfolder based on the date formated like "2024-12-23"
-                    String fileKey = $"{deviceName}/{dt.Year}-{dt.Month.ToString("D2")}-{dt.Day.ToString("D2")}/{eventKey}";
+                    String fileKey = $"{dt.Year}-{dt.Month.ToString("D2")}-{dt.Day.ToString("D2")}/{eventKey}";
 
                     await UploadFileAsync(ALARM_BUCKET_NAME, fileKey, JsonConvert.SerializeObject(alarm));
 
