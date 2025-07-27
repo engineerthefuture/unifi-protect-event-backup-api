@@ -10,11 +10,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Ensure placeholder Lambda zip exists in S3
-        run: |
-          echo "empty" > empty.txt
-          zip placeholder.zip empty.txt
-          aws s3 cp placeholder.zip s3://bf-prod-s3-deployments/unifi-protect-event-backup-api/publish.zip
       - name: Checkout code
         uses: actions/checkout@v4
 
@@ -57,6 +52,12 @@ jobs:
         with:
           role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.OIDC_ROLE_NAME }}
           aws-region: us-east-1
+
+      - name: Ensure placeholder Lambda zip exists in S3
+        run: |
+          echo "empty" > empty.txt
+          zip placeholder.zip empty.txt
+          aws s3 cp placeholder.zip s3://bf-prod-s3-deployments/unifi-protect-event-backup-api/publish.zip
 
       - name: Deploy CloudFormation stack
         run: |
