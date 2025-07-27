@@ -1,3 +1,4 @@
+
 name: Build and Deploy CloudFormation Stack for Unifi Webhook Event Receiver
 
 on:
@@ -7,7 +8,32 @@ on:
   workflow_dispatch:
 
 jobs:
+  prepare-artifacts:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+      OIDC_ROLE_NAME: ${{ vars.OIDC_ROLE_NAME }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.OIDC_ROLE_NAME }}
+          aws-region: us-east-1
+
+      - name: Ensure placeholder Lambda zip exists in S3
+        run: |
+          echo "empty" > empty.txt
+          zip placeholder.zip empty.txt
+          aws s3 cp placeholder.zip s3://bf-prod-s3-deployments/unifi-protect-event-backup-api/publish.zip
+
   build:
+    needs: prepare-artifacts
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -53,12 +79,6 @@ jobs:
           role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.OIDC_ROLE_NAME }}
           aws-region: us-east-1
 
-      - name: Ensure placeholder Lambda zip exists in S3
-        run: |
-          echo "empty" > empty.txt
-          zip placeholder.zip empty.txt
-          aws s3 cp placeholder.zip s3://bf-prod-s3-deployments/unifi-protect-event-backup-api/publish.zip
-
       - name: Deploy CloudFormation stack
         run: |
           aws cloudformation deploy \
@@ -68,7 +88,7 @@ jobs:
             --parameter-overrides \
               OwnerName="${{ vars.OWNER_NAME }}" \
               AppName="${{ vars.APP_NAME }}" \
-              AppDescription="${{ vars.APP_DESCRIPTION }}" 
+              AppDescription="${{ vars.APP_DESCRIPTION }}" \
               BucketNameDeployment="bf-prod-s3-deployments" \
             --tags \
               Owner="${{ vars.OWNER_NAME }}" \
