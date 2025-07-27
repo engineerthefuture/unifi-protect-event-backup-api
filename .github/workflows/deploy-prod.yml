@@ -1,0 +1,87 @@
+name: Build and Deploy CloudFormation Stack for Unifi Webhook Event Receiver
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore UnifiWebhookEventReceiver.csproj
+
+      - name: Build
+        run: dotnet build UnifiWebhookEventReceiver.csproj --configuration Release --no-restore
+
+      - name: Publish
+        run: dotnet publish UnifiWebhookEventReceiver.csproj --configuration Release --output ./publish
+
+      - name: Upload published files
+        uses: actions/upload-artifact@v4
+        with:
+          name: published-app
+          path: ./publish
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+      OIDC_ROLE_NAME: ${{ vars.OIDC_ROLE_NAME }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.OIDC_ROLE_NAME }}
+          aws-region: us-east-1
+
+      - name: Deploy CloudFormation stack
+        run: |
+          aws cloudformation deploy \
+            --template-file templates/cf-stack-cs.yaml \
+            --stack-name bf-prod-unifi-protect-event-backup-api \
+            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
+            --parameter-overrides \
+              OwnerName="${{ vars.OWNER_NAME }}" \
+              AppName="${{ vars.APP_NAME }}" \
+              AppDescription="${{ vars.APP_DESCRIPTION }}" 
+            --tags \
+              Owner="${{ vars.OWNER_NAME }}" \
+              AppName="${{ vars.APP_NAME }}" \
+              Description="${{ vars.APP_DESCRIPTION }}"
+
+      - name: Download published files
+        uses: actions/download-artifact@v4
+        with:
+          name: published-app
+          path: ./publish
+
+      - name: Zip Lambda package
+        run: |
+          cd publish
+          zip -r ../lambda.zip .
+          cd ..
+
+      - name: Update Lambda function code
+        run: |
+          aws lambda update-function-code \
+            --function-name UnifiWebhookEventReceiver \
+            --zip-file fileb://lambda.zip

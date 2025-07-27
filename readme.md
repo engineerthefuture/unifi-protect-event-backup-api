@@ -1,6 +1,4 @@
-# Unifi Webhook Event Receiver (ARCHIVED)
-**[MOVED HERE: https://github.com/engineerthefuture/unifi-protect-event-backup-api](https://github.com/engineerthefuture/unifi-protect-event-backup-api)**
-
+# Unifi Protect Webhook Event Backup API
 ## Description  
 
 This project provides an AWS Lambda function that processes alarm event webhooks from a Unifi Dream Machine. It receives HTTP requests, extracts alarm details, and stores the data in an Amazon S3 bucket for further processing. The function is built using C# and leverages AWS services to handle incoming webhooks efficiently. Ideally Ubiquiti will implement the ability to generate and fetch the corresponding video for a webhook event so the video can be retrieved and stored for backup online. 

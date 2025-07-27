@@ -1,63 +1,54 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: Creates a Cloudformation stack for the Unifi webhook alarm receiver
+Description: Creates a Cloudformation stack for the Unfi Protect Event Backup API.
+
+# Stack-level tags
+Metadata:
+  AWS::CloudFormation::Interface:
+    Tags:
+      - Key: Owner
+        Value: !Ref OwnerName
+      - Key: Description
+        Value: !Ref AppDescription
+      - Key: Environment
+        Value: !Ref EnvPrefix
+      - Key: AppName
+        Value: !Ref AppName
 
 # Parameters
 Parameters:
   AppName:
-    Default: UnifiWebhookEventReceiver
+    Default: unifi-protect-event-backup-api
     Type: String
-    Description: Tag to create.
+    Description: Name of the application
     AllowedPattern: "[a-zA-Z][a-zA-Z0-9_-]*"
-  OwnerEmail:
-    Default: brent.m.foster@me.com
-    Type: String
-    Description: Tag to create.
   EnvPrefix:
     Default: prod
     Type: String
-    Description: Tag to create.
+    Description: Prefix for the environment
     AllowedPattern: "[a-zA-Z][a-zA-Z0-9_-]*"
   BucketName:
-    Default: bf-prod-s3-unifialarmevents
+    Default: bf-prod-s3-unifi-protect-event-backup-api
     Type: String
-    Description: Bucket name to create.
-    AllowedPattern: "[a-zA-Z][a-zA-Z0-9_-]*"
-  BucketNameDeployment:
-    Default: bf-prod-s3-deployments
-    Type: String
-    Description: Bucket name for deployments.
-    AllowedPattern: "[a-zA-Z][a-zA-Z0-9_-]*"
-  BucketNameSource:
-    Default: bf-prod-s3-source
-    Type: String
-    Description: Bucket name for source code.
+    Description: Bucket name for Unifi Protect event backup API
     AllowedPattern: "[a-zA-Z][a-zA-Z0-9_-]*"
   FunctionName:
-    Default: bf-prod-lambda-unifiwebhookeventreceiver
+    Default: bf-prod-lambda-unifi-protect-event-backup-api
     Type: String
     Description: Lambda function to create.
     AllowedPattern: "[a-zA-Z][a-zA-Z0-9_-]*"
   RoleName:
-    Default: bf-prod-lambda-unifiwebhookeventreceiver-role
+    Default: bf-prod-lambda-unifi-protect-event-backup-api-role
     Type: String
     Description: Lambda function role to create.
     AllowedPattern: "[a-zA-Z][a-zA-Z0-9_-]*"
   OwnerName:
     Default: "Brent Foster"
     Type: String
-    Description: Tag to create.
-  RequestorName:
-    Default: "Brent Foster"
-    Type: String
-    Description: Tag to create.
+    Description: Owner name
   AppDescription:
-    Default: "Unifi webhook alarm event processing app"
+    Default: "Unifi webhook alarm event processing and backup API"
     Type: String
-    Description: Tag to create.
-  ParamReminder:
-    Default: "Stored in Secrets Manager"
-    Type: String
-    Description: Reminder to reference from Secrets Manager.
+    Description: App description
 
 # Resources
 Resources: 
@@ -78,18 +69,6 @@ Resources:
         - >-
           arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs
       Tags:
-        - Key: "Owner"
-          Value: !Sub "${OwnerName}"
-        - Key: "Requestor"
-          Value: !Sub "${RequestorName}"
-        - Key: "AppName"
-          Value: !Sub "${AppName}"
-        - Key: "Description"
-          Value: !Sub "${AppDescription}"
-        - Key: "Environment"
-          Value: !Sub "${EnvPrefix}"
-        - Key: "OwnerTeamEmail"
-          Value: !Sub "${OwnerEmail}"
         - Key: "Name"
           Value: !Sub "${FunctionName}-API-role"
   
@@ -123,18 +102,6 @@ Resources:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Path: /
       Tags: 
-        - Key: "Owner"
-          Value: !Sub "${OwnerName}"
-        - Key: "Requestor"
-          Value: !Sub "${RequestorName}"
-        - Key: "AppName"
-          Value: !Sub "${AppName}"
-        - Key: "Description"
-          Value: !Sub "${AppDescription}"
-        - Key: "Environment"
-          Value: !Sub "${EnvPrefix}"
-        - Key: "OwnerTeamEmail"
-          Value: !Sub "${OwnerEmail}"
         - Key: "Name"
           Value: !Sub "${FunctionName}-role"
       
@@ -154,18 +121,6 @@ Resources:
               IgnorePublicAcls: true
               RestrictPublicBuckets: true
             Tags: 
-              - Key: "Owner"
-                Value: !Sub "${OwnerName}"
-              - Key: "Requestor"
-                Value: !Sub "${RequestorName}"
-              - Key: "AppName"
-                Value: !Sub "${AppName}"
-              - Key: "Description"
-                Value: !Sub "${AppDescription}"
-              - Key: "Environment"
-                Value: !Sub "${EnvPrefix}"
-              - Key: "OwnerTeamEmail"
-                Value: !Sub "${OwnerEmail}"
               - Key: "Name"
                 Value: !Sub "${BucketName}"
 
@@ -179,18 +134,6 @@ Resources:
         Types:
           - REGIONAL
       Tags: 
-        - Key: "Owner"
-          Value: !Sub "${OwnerName}"
-        - Key: "Requestor"
-          Value: !Sub "${RequestorName}"
-        - Key: "AppName"
-          Value: !Sub "${AppName}"
-        - Key: "Description"
-          Value: !Sub "${AppDescription}"
-        - Key: "Environment"
-          Value: !Sub "${EnvPrefix}"
-        - Key: "OwnerTeamEmail"
-          Value: !Sub "${OwnerEmail}"
         - Key: "Name"
           Value: !Sub "${FunctionName}-API"
   ApiGatewayResource:
@@ -356,9 +299,14 @@ Resources:
     Type: AWS::Lambda::Function
     Properties: 
       FunctionName: !Sub "${FunctionName}"
-      Code: 
-        S3Bucket: !Sub "${BucketNameDeployment}"
-        S3Key: !Sub "${AppName}/${FunctionName}/publish.zip"
+      Code:
+        ZipFile: |
+          # Placeholder Lambda code. Actual deployment is handled by GitHub Actions.
+          def handler(event, context):
+              return {
+                  'statusCode': 200,
+                  'body': 'Deployment handled by GitHub Actions.'
+              }
       Description: !Sub "${EnvPrefix} - ${AppName}"
               #AssemblyName::NameSpace.ClassName::FunctionHandlerName
       Handler: UnifiWebhookEventReceiver::UnifiWebhookEventReceiver.UnifiWebhookEventReceiver::FunctionHandler
@@ -379,18 +327,8 @@ Resources:
           DeviceMac28704E113F33: "Backyard West"
           DeviceMacF4E2C677E20F: "Door"
       Tags: 
-        - Key: "AppName"
-          Value: !Sub "${AppName}"
-        - Key: "Description"
-          Value: !Sub "${AppDescription}"
         - Key: "FunctionName"
           Value: !Sub "${FunctionName}"
-        - Key: "Environment"
-          Value: !Sub "${EnvPrefix}"
-        - Key: "Owner"
-          Value: !Sub "${OwnerName}"
-        - Key: "OwnerEmail"
-          Value: !Sub "${OwnerEmail}"
 
   # Root invoker from API gateway to lambda
   LambdaApiGatewayInvoke:
