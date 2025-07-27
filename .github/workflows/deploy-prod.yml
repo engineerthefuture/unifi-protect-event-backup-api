@@ -29,6 +29,12 @@ jobs:
   build:
     needs: prepare-artifacts
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+      OIDC_ROLE_NAME: ${{ vars.OIDC_ROLE_NAME }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -59,6 +65,12 @@ jobs:
           zip -r ../lambda.zip .
           cd ..
 
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.OIDC_ROLE_NAME }}
+          aws-region: us-east-1
+          
       - name: Upload Lambda package to S3
         run: |
           aws s3 cp lambda.zip s3://bf-prod-s3-deployments/unifi-protect-event-backup-api/publish.zip
