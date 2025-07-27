@@ -26,12 +26,6 @@ jobs:
           role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.OIDC_ROLE_NAME }}
           aws-region: us-east-1
 
-      - name: Ensure placeholder Lambda zip exists in S3
-        run: |
-          echo "empty" > empty.txt
-          zip placeholder.zip empty.txt
-          aws s3 cp placeholder.zip s3://bf-prod-s3-deployments/unifi-protect-event-backup-api/publish.zip
-
   build:
     needs: prepare-artifacts
     runs-on: ubuntu-latest
@@ -58,6 +52,16 @@ jobs:
         with:
           name: published-app
           path: ./publish
+      
+      - name: Zip Lambda package
+        run: |
+          cd publish
+          zip -r ../lambda.zip .
+          cd ..
+
+      - name: Upload Lambda package to S3
+        run: |
+          aws s3 cp lambda.zip s3://bf-prod-s3-deployments/unifi-protect-event-backup-api/publish.zip
 
   deploy:
     needs: build
