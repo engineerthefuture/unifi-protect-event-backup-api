@@ -94,6 +94,6 @@ jobs:
       - name: Update Lambda function code
         run: |
           aws lambda update-function-code \
-            --function-name UnifiWebhookEventReceiver \
+            --function-name bf-prod-lambda-unifi-protect-event-backup-api \
             --s3-bucket bf-prod-s3-deployments \
             --s3-key bf-prod-lambda-unifi-protect-event-backup-api/publish.zip
