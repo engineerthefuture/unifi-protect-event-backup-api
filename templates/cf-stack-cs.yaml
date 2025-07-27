@@ -306,7 +306,7 @@ Resources:
       FunctionName: !Sub "${FunctionName}"
       Code:
         S3Bucket: !Ref BucketNameDeployment
-        S3Key: placeholder/publish.zip
+        S3Key: !Sub "${FunctionName}/publish.zip"
       Description: !Sub "${EnvPrefix} - ${AppName}"
               #AssemblyName::NameSpace.ClassName::FunctionHandlerName
       Handler: UnifiWebhookEventReceiver::UnifiWebhookEventReceiver.UnifiWebhookEventReceiver::FunctionHandler
