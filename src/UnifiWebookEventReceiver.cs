@@ -369,7 +369,11 @@ namespace UnifiWebhookEventReceiver
                         String eventKey = device + "_" + timestamp.ToString() + ".json";
                         trigger.eventKey = eventKey;
                         alarm.triggers[0] = trigger;
-                        await UploadFileAsync(ALARM_BUCKET_NAME, eventKey, JsonConvert.SerializeObject(alarm));
+
+                    // Create a file key that saves into a subfolder based on the date formated like "2024-12-23"
+                    String fileKey = $"{deviceName}/{dt.Year}-{dt.Month.ToString("D2")}-{dt.Day.ToString("D2")}/{eventKey}";
+
+                    await UploadFileAsync(ALARM_BUCKET_NAME, fileKey, JsonConvert.SerializeObject(alarm));
 
                     // Return success response
                     String bodyContent = FUNCTION_NAME + "has successfully processed the Unifi alarm event webhook with key " + eventKey + 
