@@ -91,22 +91,9 @@ jobs:
               AppName="${{ vars.APP_NAME }}" \
               Description="${{ vars.APP_DESCRIPTION }}"
 
-      - name: Download published files
-        uses: actions/download-artifact@v4
-        with:
-          name: published-app
-          path: ./publish
-
-      - name: Zip Lambda package
-        run: |
-          cd publish
-          zip -r ../lambda.zip .
-          cd ..
-
       - name: Update Lambda function code
         run: |
-          aws s3 cp lambda.zip s3://bf-prod-s3-deployments/unifi-protect-event-backup-api/publish.zip
           aws lambda update-function-code \
             --function-name UnifiWebhookEventReceiver \
             --s3-bucket bf-prod-s3-deployments \
-            --s3-key unifi-protect-event-backup-api/publish.zip
+            --s3-key bf-prod-lambda-unifi-protect-event-backup-api/publish.zip
