@@ -123,7 +123,7 @@ Attach these policies to the role:
    - Restore dependencies (main + test projects)
    - Build projects in Release configuration
    - **Run unit tests** ⚠️ **DEPLOYMENT GATE**
-   - Generate test reports and artifacts
+   - Generate test reports and artifacts (with fallback for permission issues)
    - Package Lambda function
    - Upload to S3 deployment bucket
 3. **Deploy Stage** (only if build succeeds):
@@ -132,10 +132,13 @@ Attach these policies to the role:
 
 #### Test Result Integration
 
-- Test results are displayed in GitHub's Actions UI
+- Test results are displayed in GitHub's Actions UI (when permissions allow)
 - Failed tests prevent deployment automatically
 - Test artifacts are preserved for download
 - Clear status indicators show test pass/fail state
+- Fallback test summary displayed in workflow logs if reporter fails
+
+**Note**: The workflow includes enhanced permissions (`checks: write`, `pull-requests: write`) and fallback mechanisms to handle potential test reporter permission issues.
 
 ## CloudFormation Infrastructure
 
@@ -733,6 +736,22 @@ aws cloudwatch put-metric-alarm \
    ```
    - Verify IAM role trust policy includes `lambda.amazonaws.com`
    - Check role permissions include Lambda execution permissions
+
+4. **Test Reporter Permission Issues**
+   ```
+   Error: HttpError: Resource not accessible by integration
+   ```
+   **Causes and Solutions:**
+   - **Missing Permissions**: Ensure workflow has `checks: write` and `pull-requests: write` permissions
+   - **Repository Settings**: Verify Actions can create check runs in repository settings
+   - **Branch Protection**: Check that branch protection rules don't block check creation
+   - **Token Scope**: The default `GITHUB_TOKEN` may have insufficient permissions
+   
+   **Workarounds:**
+   - The workflow includes `continue-on-error: true` for the test reporter step
+   - Test results are still uploaded as artifacts
+   - Test summary is displayed in workflow logs
+   - Tests still block deployment on failure regardless of reporter issues
 
 #### Runtime Issues
 

@@ -16,6 +16,8 @@ jobs:
     permissions:
       id-token: write
       contents: read
+      checks: write
+      pull-requests: write
     env:
       AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
       OIDC_ROLE_NAME: ${{ vars.OIDC_ROLE_NAME }}
@@ -53,11 +55,18 @@ jobs:
       - name: Publish test results
         uses: dorny/test-reporter@v1
         if: always()
+        continue-on-error: true
         with:
           name: Unit Test Results
           path: ./test-results/*.trx
           reporter: dotnet-trx
           fail-on-error: true
+          path-replace-backslashes: false
+          list-suites: all
+          list-tests: all
+          max-annotations: 10
+          fail-on-empty: true
+          only-summary: false
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
@@ -65,6 +74,29 @@ jobs:
         with:
           name: test-results
           path: ./test-results
+
+      - name: Display test results summary
+        if: always()
+        run: |
+          echo "=== Test Results Summary ==="
+          if [ -d "./test-results" ] && [ "$(ls -A ./test-results)" ]; then
+            echo "Test result files found:"
+            ls -la ./test-results/
+            echo ""
+            echo "Test result details:"
+            for file in ./test-results/*.trx; do
+              if [ -f "$file" ]; then
+                echo "Processing: $file"
+                # Extract basic test information from TRX file
+                grep -o 'total="[^"]*"' "$file" | head -1 || echo "Could not parse total tests"
+                grep -o 'passed="[^"]*"' "$file" | head -1 || echo "Could not parse passed tests"
+                grep -o 'failed="[^"]*"' "$file" | head -1 || echo "Could not parse failed tests"
+                echo "---"
+              fi
+            done
+          else
+            echo "No test result files found."
+          fi
 
       - name: Test Summary
         if: always()
