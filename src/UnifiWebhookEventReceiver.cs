@@ -203,7 +203,17 @@ namespace UnifiWebhookEventReceiver
                     else
                     {
                         // Process the request object
-                        APIGatewayProxyRequest req = JsonConvert.DeserializeObject<APIGatewayProxyRequest>(requestBody);
+                        APIGatewayProxyRequest? req = JsonConvert.DeserializeObject<APIGatewayProxyRequest>(requestBody);
+                        if (req == null)
+                        {
+                            log.LogLine("Failed to deserialize API Gateway request from: " + requestBody);
+                            return new APIGatewayProxyResponse
+                            {
+                                StatusCode = (int)HttpStatusCode.BadRequest,
+                                Body = JsonConvert.SerializeObject(new { msg = (ERROR_MESSAGE_400 + "malformed or invalid request format") }),
+                                Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
+                            };
+                        }
 
                         // Determine the route
                         string route;
@@ -268,7 +278,7 @@ namespace UnifiWebhookEventReceiver
 
                                             // Deserialize body
                                             JObject jo = JObject.Parse(req.Body);
-                                            JObject alarmObject = (JObject)jo.SelectToken("alarm");
+                                            JObject? alarmObject = jo.SelectToken("alarm") as JObject;
                                             long timestamp = (long)0;
                                             String alarmObjectString = "";
                                             if(jo.SelectToken("timestamp") != null)
@@ -278,10 +288,33 @@ namespace UnifiWebhookEventReceiver
                                             if(alarmObject != null)
                                             {
                                                 alarmObjectString = alarmObject.ToString(); 
-                                            }                                         
+                                            }
+
+                                            if (string.IsNullOrEmpty(alarmObjectString))
+                                            {
+                                                log.LogLine("No alarm object found in request body");
+                                                APIGatewayProxyResponse errorResponse = new APIGatewayProxyResponse
+                                                {
+                                                    StatusCode = (int)HttpStatusCode.BadRequest,
+                                                    Body = JsonConvert.SerializeObject(new { msg = (ERROR_MESSAGE_400 + "No alarm object found in request") }),
+                                                    Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
+                                                };
+                                                return errorResponse;
+                                            }
     
                                             // Process the webhook
-                                            Alarm alarm = JsonConvert.DeserializeObject<Alarm>(alarmObjectString);
+                                            Alarm? alarm = JsonConvert.DeserializeObject<Alarm>(alarmObjectString);
+                                            if (alarm == null)
+                                            {
+                                                log.LogLine("Failed to deserialize alarm object");
+                                                APIGatewayProxyResponse errorResponse = new APIGatewayProxyResponse
+                                                {
+                                                    StatusCode = (int)HttpStatusCode.BadRequest,
+                                                    Body = JsonConvert.SerializeObject(new { msg = (ERROR_MESSAGE_400 + "Invalid alarm object format") }),
+                                                    Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
+                                                };
+                                                return errorResponse;
+                                            }
                                             alarm.timestamp = timestamp;
                                             return AlarmReceiverFunction(alarm).Result;
                                         }
@@ -457,8 +490,8 @@ namespace UnifiWebhookEventReceiver
                         long timestamp = alarm.timestamp;
                         String triggerType = trigger.key;
                         String eventId = trigger.eventId;
-                        String eventPath = alarm.eventPath;
-                        String eventLocalLink = alarm.eventLocalLink;
+                        String eventPath = alarm.eventPath ?? "";
+                        String eventLocalLink = alarm.eventLocalLink ?? "";
                         String deviceName = "";
 
                         // Set date from timestamp
@@ -471,7 +504,7 @@ namespace UnifiWebhookEventReceiver
                         IDictionary envVars = Environment.GetEnvironmentVariables();
                         if(envVars != null && envVars[DEVICE_PREFIX + device] != null)
                         {
-                            deviceName = (string)envVars[DEVICE_PREFIX + device];
+                            deviceName = (string?)envVars[DEVICE_PREFIX + device] ?? "";
                             log.LogLine("Device name found for " + device + ": " + deviceName);
                             trigger.deviceName = deviceName;
                         }
@@ -492,6 +525,18 @@ namespace UnifiWebhookEventReceiver
 
                     // Create a file key that saves into a subfolder based on the date formated like "2024-12-23"
                     String fileKey = $"{dt.Year}-{dt.Month.ToString("D2")}-{dt.Day.ToString("D2")}/{eventKey}";
+
+                    if (string.IsNullOrEmpty(ALARM_BUCKET_NAME))
+                    {
+                        log.LogLine("StorageBucket environment variable is not configured");
+                        APIGatewayProxyResponse errorResponse = new APIGatewayProxyResponse
+                        {
+                            StatusCode = (int)HttpStatusCode.InternalServerError,
+                            Body = JsonConvert.SerializeObject(new { msg = "Server configuration error: StorageBucket not configured" }),
+                            Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
+                        };
+                        return errorResponse;
+                    }
 
                     await UploadFileAsync(ALARM_BUCKET_NAME, fileKey, JsonConvert.SerializeObject(alarm));
 
@@ -646,7 +691,20 @@ namespace UnifiWebhookEventReceiver
                 {
                     // Get the object from S3
                     String keyName = eventKey;
-                    String eventObject = GetJsonFileFromS3BlobAsync(keyName);
+                    String? eventObject = await GetJsonFileFromS3BlobAsync(keyName);
+
+                    if (eventObject == null)
+                    {
+                        // Return response for not found
+                        log.LogLine("Event object for " + eventKey + " not found.");
+                        var notFoundResponse = new APIGatewayProxyResponse
+                        {
+                            StatusCode = (int)HttpStatusCode.NotFound,
+                            Body = JsonConvert.SerializeObject(new { msg = "Event not found" }),
+                            Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
+                        };
+                        return notFoundResponse;
+                    }
 
                     // Return response
                     log.LogLine("Event object for " + eventKey + " retrieved successfully.");
@@ -698,12 +756,17 @@ namespace UnifiWebhookEventReceiver
         /// </summary>
         /// <param name="keyName">S3 object key to retrieve</param>
         /// <returns>JSON string content of the S3 object, or null if object doesn't exist</returns>
-        private static String GetJsonFileFromS3BlobAsync(string keyName)
+        private static async Task<String?> GetJsonFileFromS3BlobAsync(string keyName)
         {
             byte[] fileBytes;
 
             try
             {
+                if (string.IsNullOrEmpty(ALARM_BUCKET_NAME))
+                {
+                    throw new InvalidOperationException("StorageBucket environment variable is not configured");
+                }
+
                 log.LogLine("Attempting to get object: " + keyName + " from " + ALARM_BUCKET_NAME + ".");
 
                 // Prepare request
@@ -715,7 +778,7 @@ namespace UnifiWebhookEventReceiver
 
                 // Get the object
                 MemoryStream ms = new MemoryStream();
-                using (GetObjectResponse response = s3Client.GetObjectAsync(getObjectRequest).Result)
+                using (GetObjectResponse response = await s3Client.GetObjectAsync(getObjectRequest))
                 using (Stream responseStream = response.ResponseStream)
                     responseStream.CopyTo(ms);
                 fileBytes = ms.ToArray();

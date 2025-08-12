@@ -18,11 +18,108 @@ This serverless application provides a reliable backup and retrieval system for 
 
 ## Architecture
 
+```mermaid
+graph TB
+    subgraph "Unifi Protect System"
+        UDM[Unifi Dream Machine]
+        CAM1[Camera 1]
+        CAM2[Camera 2]
+        CAM3[Camera N...]
+    end
+    
+    subgraph "AWS Cloud"
+        subgraph "API Gateway"
+            API[REST API Endpoint]
+            AUTH[API Key Auth]
+            CORS[CORS Support]
+        end
+        
+        subgraph "Lambda Function"
+            HANDLER[Function Handler]
+            PARSER[JSON Parser]
+            MAPPER[Device Mapper]
+            VALIDATOR[Input Validator]
+        end
+        
+        subgraph "Storage"
+            S3[(S3 Bucket)]
+            FOLDERS[Date-based Folders<br/>YYYY-MM-DD/]
+        end
+        
+        subgraph "Monitoring"
+            CW[CloudWatch Logs]
+            METRICS[CloudWatch Metrics]
+        end
+        
+        subgraph "Security"
+            IAM[IAM Roles]
+            ENCRYPT[S3 Encryption]
+        end
+    end
+    
+    subgraph "CI/CD Pipeline"
+        GH[GitHub Actions]
+        TEST[Unit Tests]
+        BUILD[Build & Package]
+        DEPLOY[CloudFormation Deploy]
+    end
+    
+    %% Main data flow
+    CAM1 --> UDM
+    CAM2 --> UDM
+    CAM3 --> UDM
+    UDM -->|Webhook POST| API
+    API --> AUTH
+    AUTH --> CORS
+    CORS --> HANDLER
+    HANDLER --> PARSER
+    PARSER --> VALIDATOR
+    VALIDATOR --> MAPPER
+    MAPPER --> S3
+    S3 --> FOLDERS
+    
+    %% Monitoring flows
+    HANDLER --> CW
+    API --> METRICS
+    HANDLER --> METRICS
+    
+    %% Security flows
+    HANDLER -.-> IAM
+    S3 -.-> ENCRYPT
+    
+    %% CI/CD flows
+    GH --> TEST
+    TEST --> BUILD
+    BUILD --> DEPLOY
+    DEPLOY -.-> API
+    DEPLOY -.-> HANDLER
+    
+    %% GET endpoint for retrieval
+    API -->|GET /?eventKey=xxx| HANDLER
+    HANDLER -->|Retrieve| S3
+    S3 -->|JSON Response| API
+    
+    %% Styling
+    classDef aws fill:#ff9900,stroke:#232f3e,stroke-width:2px,color:#fff
+    classDef unifi fill:#0066cc,stroke:#003d7a,stroke-width:2px,color:#fff
+    classDef cicd fill:#28a745,stroke:#1e7e34,stroke-width:2px,color:#fff
+    classDef security fill:#dc3545,stroke:#721c24,stroke-width:2px,color:#fff
+    
+    class API,HANDLER,S3,CW,METRICS aws
+    class UDM,CAM1,CAM2,CAM3 unifi
+    class GH,TEST,BUILD,DEPLOY cicd
+    class IAM,ENCRYPT,AUTH security
 ```
-Unifi Dream Machine → API Gateway → Lambda Function → S3 Bucket
-                                        ↓
-                                   CloudWatch Logs
-```
+
+### Data Flow
+
+1. **Event Detection**: Unifi cameras detect motion/intrusion events
+2. **Webhook Trigger**: Unifi Dream Machine sends webhook to API Gateway
+3. **Authentication**: API Gateway validates API key
+4. **Processing**: Lambda function parses JSON, maps device names, validates data
+5. **Storage**: Events stored in S3 with date-organized folder structure
+6. **Monitoring**: All operations logged to CloudWatch for observability
+7. **Retrieval**: GET endpoint allows querying stored events by event key
 
 ![Architecture Diagram](docs/UnifiWebhookEventReceiver_Arch.png)
 
@@ -100,6 +197,9 @@ Create an IAM role in AWS with the following trust policy for GitHub Actions:
         "StringEquals": {
           "token.actions.githubusercontent.com:sub": "repo:YOUR_USERNAME/unifi-protect-event-backup-api:ref:refs/heads/main",
           "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+        },
+        "StringLike": {
+          "token.actions.githubusercontent.com:sub": "repo:engineerthefuture/*"
         }
       }
     }
@@ -139,6 +239,8 @@ Attach these policies to the role:
 - Fallback test summary displayed in workflow logs if reporter fails
 
 **Note**: The workflow includes enhanced permissions (`checks: write`, `pull-requests: write`) and fallback mechanisms to handle potential test reporter permission issues.
+
+**Quality Assurance**: The codebase has been updated to eliminate all nullable reference type warnings while maintaining proper error handling and test compatibility.
 
 ## CloudFormation Infrastructure
 
@@ -880,5 +982,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **Brent Foster**  
 Created: December 23, 2024  
-Updated: January 11, 2025
+Updated: August 11, 2025
 
