@@ -1,12 +1,16 @@
 
-name: Build and Deploy CloudFormation Stack for Unifi Webhook Event Receiver
+name: Build, Test, and Deploy CloudFormation Stack for Unifi Webhook Event Receiver
 
+# This workflow builds the application, runs unit tests, and deploys to AWS
+# Deployment will only proceed if all unit tests pass
 on:
   push:
     branches:
       - main
 
 jobs:
+  # Build job: Compiles code, runs tests, and prepares deployment artifacts
+  # This job must complete successfully for deployment to proceed
   build:
     runs-on: ubuntu-latest
     permissions:
@@ -25,38 +29,89 @@ jobs:
           dotnet-version: '8.0.x'
 
       - name: Restore dependencies
-        run: dotnet restore UnifiWebhookEventReceiver.csproj
+        run: |
+          dotnet restore UnifiWebhookEventReceiver.csproj
+          dotnet restore test/UnifiWebhookEventReceiverTests.csproj
 
       - name: Build
-        run: dotnet build UnifiWebhookEventReceiver.csproj --configuration Release --no-restore
+        run: |
+          dotnet build UnifiWebhookEventReceiver.csproj --configuration Release --no-restore
+          dotnet build test/UnifiWebhookEventReceiverTests.csproj --configuration Release --no-restore
+
+      - name: Run unit tests
+        id: test
+        run: |
+          echo "Running unit tests..."
+          dotnet test test/ --configuration Release --no-build --verbosity normal --logger trx --results-directory ./test-results
+          TEST_EXIT_CODE=$?
+          if [ $TEST_EXIT_CODE -ne 0 ]; then
+            echo "::error::Unit tests failed with exit code $TEST_EXIT_CODE"
+            exit $TEST_EXIT_CODE
+          fi
+          echo "All unit tests passed successfully!"
+
+      - name: Publish test results
+        uses: dorny/test-reporter@v1
+        if: always()
+        with:
+          name: Unit Test Results
+          path: ./test-results/*.trx
+          reporter: dotnet-trx
+          fail-on-error: true
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: ./test-results
+
+      - name: Test Summary
+        if: always()
+        run: |
+          if [ "${{ steps.test.outcome }}" == "success" ]; then
+            echo "✅ All unit tests passed! Deployment can proceed."
+            echo "TEST_STATUS=passed" >> $GITHUB_ENV
+          else
+            echo "❌ Unit tests failed! Deployment will be skipped."
+            echo "TEST_STATUS=failed" >> $GITHUB_ENV
+          fi
 
       - name: Publish
+        if: steps.test.outcome == 'success'
         run: dotnet publish UnifiWebhookEventReceiver.csproj --configuration Release --output ./publish
 
       - name: Upload published files
+        if: steps.test.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: published-app
           path: ./publish
       
       - name: Zip Lambda package
+        if: steps.test.outcome == 'success'
         run: |
           cd publish
           zip -r ../lambda.zip .
           cd ..
 
       - name: Configure AWS credentials (OIDC)
+        if: steps.test.outcome == 'success'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.OIDC_ROLE_NAME }}
           aws-region: us-east-1
           
       - name: Upload Lambda package to S3
+        if: steps.test.outcome == 'success'
         run: |
           aws s3 cp lambda.zip s3://bf-prod-s3-deployments/bf-prod-lambda-unifi-protect-event-backup-api/publish.zip
 
+  # Deploy job: Deploys the CloudFormation stack and updates Lambda function code
+  # Only runs if the build job (including tests) completes successfully
   deploy:
     needs: build
+    if: success()
     runs-on: ubuntu-latest
     permissions:
       id-token: write

@@ -1,74 +1,180 @@
 /************************
  * Unifi Webhook Event Receiver
  * UnifiWebhookEventReceiver.cs
- * Receives alarm event webhooks from Unifi Dream Machine
- * Brent Foster
- * 12-23-2024
+ * 
+ * AWS Lambda function that receives and processes webhook events from Unifi Dream Machine.
+ * Handles alarm events by storing them in S3 with organized folder structure by date.
+ * Supports CORS for web client integration and provides GET API for event retrieval.
+ * 
+ * Author: Brent Foster
+ * Created: 12-23-2024
+ * Updated: 08-11-2025
  ***********************/
 
-// Includes
+// System includes
+using System.Collections;
+using System.Net;
+using System.Text;
+
+// Third-party includes
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
-using System.Net;
-using Amazon.Lambda.Core;
+
+// AWS includes
 using Amazon;
+using Amazon.Lambda.APIGatewayEvents;
+using Amazon.Lambda.Core;
 using Amazon.S3;
 using Amazon.S3.Model;
-using Amazon.Lambda.APIGatewayEvents;
-using System.Collections;
-using System.Text;
-//using Amazon.SecretsManager;
-//using Amazon.SecretsManager.Model;
 
 // Assembly attribute to enable the Lambda function's JSON input to be converted into a .NET class
 [assembly: LambdaSerializer(typeof(Amazon.Lambda.Serialization.SystemTextJson.DefaultLambdaJsonSerializer))]
 
 namespace UnifiWebhookEventReceiver
 {
-    // Main class
+    /// <summary>
+    /// AWS Lambda function handler for processing Unifi Protect webhook events.
+    /// 
+    /// This class provides the main entry point for handling HTTP requests from Unifi Dream Machine
+    /// alarm webhooks. It processes alarm events, stores them in S3 with date-organized folder
+    /// structure, and provides RESTful API endpoints for event retrieval.
+    /// 
+    /// Supported HTTP methods:
+    /// - POST /alarmevent: Processes alarm webhook events from Unifi Protect
+    /// - GET /?eventKey={key}: Retrieves stored alarm event data
+    /// - OPTIONS: Handles CORS preflight requests for web client support
+    /// 
+    /// Environment Variables Required:
+    /// - StorageBucket: S3 bucket name for storing alarm events
+    /// - DevicePrefix: Prefix for environment variables containing device name mappings
+    /// - DeployedEnv: Environment identifier (dev, prod, etc.)
+    /// - FunctionName: Lambda function name for logging
+    /// </summary>
     public class UnifiWebhookEventReceiver
     {
-        // Return messages
+        #region Constants and Configuration
+        
+        /// <summary>Error message template for 500 Internal Server Error responses</summary>
         const string ERROR_MESSAGE_500 = "An internal server error has occured: ";
+        
+        /// <summary>Error message template for 400 Bad Request responses</summary>
         const string ERROR_MESSAGE_400 = "Your request is malformed or invalid: ";
+        
+        /// <summary>Error message template for 404 Not Found responses</summary>
         const string ERROR_MESSAGE_404 = "Route not found: ";
+        
+        /// <summary>Success message for requests that don't require action</summary>
         const string MESSAGE_202 = "No action taken on request.";
+        
+        /// <summary>Error message for requests missing required body content</summary>
         const string ERROR_GENERAL = "you must have a valid body object in your request";
+        
+        /// <summary>Error message for alarm events missing triggers</summary>
         const string ERROR_TRIGGERS = "you must have triggers in your payload";
+        
+        /// <summary>Error message for GET requests missing eventKey parameter</summary>
         const string ERROR_EVENTKEY = "you must provide an eventKey in the path";
+        
+        /// <summary>Error message for invalid API routes</summary>
         const string ERROR_INVALID_ROUTE = "please provide a valid route";
+        
+        /// <summary>Presigned URL expiration time in seconds (24 hours)</summary>
         const int EXPIRATION_SECONDS = 86400;
 
-        // Routes
+        /// <summary>API route for alarm event webhook processing</summary>
         const string ROUTE_ALARM = "alarmevent";
-
-        // Environment variables
-        static string ALARM_BUCKET_NAME = Environment.GetEnvironmentVariable("StorageBucket");
-        static string DEVICE_PREFIX = Environment.GetEnvironmentVariable("DevicePrefix");
-
-        // AWS connectivity
-        static RegionEndpoint AWS_REGION = RegionEndpoint.USEast1;
-        static IAmazonS3 s3Client = new AmazonS3Client(AWS_REGION);
+        
+        /// <summary>Event source identifier for AWS scheduled events</summary>
         const string SOURCE_EVENT_TRIGGER = "aws.events";
 
-        // Deployed environment
-        static string DEPLOYED_ENV = Environment.GetEnvironmentVariable("DeployedEnv");
-        static string FUNCTION_NAME = Environment.GetEnvironmentVariable("FunctionName");
-        //static string SECRET_NAME = $"{DEPLOYED_ENV}/UnifiWebhookEventReceiver";
-        //static IAmazonSecretsManager secretClient = new AmazonSecretsManagerClient(AWS_REGION);
+        #endregion
 
-        // Logging
-        static ILambdaLogger log;
+        #region Environment Variables and AWS Configuration
+        
+        /// <summary>S3 bucket name for storing alarm event data</summary>
+        static string? ALARM_BUCKET_NAME = Environment.GetEnvironmentVariable("StorageBucket");
+        
+        /// <summary>Prefix for environment variables containing device MAC to name mappings</summary>
+        static string? DEVICE_PREFIX = Environment.GetEnvironmentVariable("DevicePrefix");
+        
+        /// <summary>Deployment environment identifier (dev, staging, prod)</summary>
+        static string? DEPLOYED_ENV = Environment.GetEnvironmentVariable("DeployedEnv");
+        
+        /// <summary>Lambda function name for logging and identification</summary>
+        static string? FUNCTION_NAME = Environment.GetEnvironmentVariable("FunctionName");
 
-        /*
-         *
-         * Main function handler
-         *
-         */
+        /// <summary>AWS region for S3 operations</summary>
+        static RegionEndpoint AWS_REGION = RegionEndpoint.USEast1;
+        
+        /// <summary>S3 client instance for bucket operations</summary>
+        static IAmazonS3 s3Client = new AmazonS3Client(AWS_REGION);
+
+        #endregion
+
+        #region Logging Infrastructure
+        
+        /// <summary>Lambda logger instance for function execution logging</summary>
+        static ILambdaLogger log = new NullLogger();
+        
+        /// <summary>
+        /// Null object pattern implementation for ILambdaLogger to prevent null reference exceptions
+        /// when logger is not available during testing or initialization
+        /// </summary>
+        private class NullLogger : ILambdaLogger
+        {
+            public void Log(string message) { }
+            public void LogLine(string message) { }
+        }
+
+        #endregion
+
+        #region Main Lambda Handler
+
+        /// <summary>
+        /// Main AWS Lambda function handler for processing HTTP requests.
+        /// 
+        /// This method serves as the entry point for all incoming requests to the Lambda function.
+        /// It handles various types of requests including:
+        /// - Unifi Protect alarm webhook events (POST /alarmevent)
+        /// - Event retrieval requests (GET /?eventKey={key})
+        /// - CORS preflight requests (OPTIONS)
+        /// - AWS scheduled events for keep-alive functionality
+        /// 
+        /// The function processes the input stream, deserializes the request, routes it to the
+        /// appropriate handler, and returns a properly formatted API Gateway response with
+        /// CORS headers for web client compatibility.
+        /// </summary>
+        /// <param name="input">Raw request stream containing the HTTP request data</param>
+        /// <param name="context">Lambda execution context providing logging and runtime information</param>
+        /// <returns>API Gateway proxy response with status code, headers, and JSON body</returns>
         public APIGatewayProxyResponse FunctionHandler(Stream input, ILambdaContext context)
         {
-            log = context.Logger;
-            log.LogLine("C# HTTP trigger function processed a request for " + FUNCTION_NAME + ".");
+            try
+            {
+                log = context?.Logger ?? new NullLogger();
+                if (input == null)
+                {
+                    log.LogLine("Input stream was null.");
+                    return new APIGatewayProxyResponse
+                    {
+                        StatusCode = (int)HttpStatusCode.BadRequest,
+                        Body = JsonConvert.SerializeObject(new { msg = (ERROR_MESSAGE_400 + ERROR_GENERAL) }),
+                        Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
+                    };
+                }
+                var functionName = FUNCTION_NAME ?? "UnknownFunction";
+                log.LogLine("C# HTTP trigger function processed a request for " + functionName + ".");
+            }
+            catch (Exception ex)
+            {
+                // If we can't even log, return basic error response
+                return new APIGatewayProxyResponse
+                {
+                    StatusCode = (int)HttpStatusCode.InternalServerError,
+                    Body = JsonConvert.SerializeObject(new { msg = "Handler initialization error: " + ex.Message }),
+                    Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
+                };
+            }
 
             try
             {
@@ -301,11 +407,25 @@ namespace UnifiWebhookEventReceiver
         }
 
         
-        /*
-         * 
-         * Processes Alarm Event
-         * 
-         */
+        #endregion
+
+        #region Alarm Event Processing
+
+        /// <summary>
+        /// Processes Unifi Protect alarm events and stores them in S3.
+        /// 
+        /// This method handles the core business logic for processing alarm webhook events from
+        /// Unifi Protect systems. It validates the alarm data, extracts device and trigger information,
+        /// maps device MAC addresses to human-readable names using environment variables, and stores
+        /// the complete alarm data as JSON in S3 with a date-organized folder structure.
+        /// 
+        /// The S3 key format is: YYYY-MM-DD/{deviceMac}_{timestamp}.json
+        /// 
+        /// Device name mapping is performed using environment variables with the pattern:
+        /// {DEVICE_PREFIX}{deviceMac} = "Human Readable Device Name"
+        /// </summary>
+        /// <param name="alarm">Parsed alarm object containing triggers, device info, and event details</param>
+        /// <returns>API Gateway response indicating success or failure of alarm processing</returns>
         public static async Task<APIGatewayProxyResponse> AlarmReceiverFunction(Alarm alarm)
         {
             log.LogLine("Executing alarm receiver function.");
@@ -416,12 +536,20 @@ namespace UnifiWebhookEventReceiver
             }
         }
 
+        #endregion
 
-        /*
-         * 
-         * Uploads the file into S3 as a JSON object
-         * 
-         */
+        #region S3 Storage Operations
+
+        /// <summary>
+        /// Uploads alarm event data to S3 as a JSON object.
+        /// 
+        /// This method handles the storage of processed alarm events in the configured S3 bucket.
+        /// The content is stored as a JSON string with appropriate error handling for AWS S3 operations.
+        /// </summary>
+        /// <param name="bucketName">Target S3 bucket name for storage</param>
+        /// <param name="keyName">S3 object key (file path within bucket)</param>
+        /// <param name="obj">JSON string content to store</param>
+        /// <returns>Task representing the asynchronous upload operation</returns>
         private static async Task UploadFileAsync(string bucketName, string keyName, string obj)
         {
             try
@@ -451,11 +579,21 @@ namespace UnifiWebhookEventReceiver
         }
 
 
-        /*
-         *
-         * Generates a presigned URL for an s3 upload
-         *
-         */
+        /// <summary>
+        /// Generates presigned URLs for S3 object access.
+        /// 
+        /// This method creates time-limited URLs that allow direct access to S3 objects without
+        /// requiring AWS credentials. Supports both upload (PUT) and download (GET) operations
+        /// with configurable expiration times.
+        /// 
+        /// Note: Currently used for future video upload functionality but not actively used
+        /// in the current alarm event processing workflow.
+        /// </summary>
+        /// <param name="keyName">S3 object key for the target file</param>
+        /// <param name="method">HTTP method (GET for download, PUT for upload)</param>
+        /// <param name="validDuration">URL validity duration in seconds</param>
+        /// <param name="contentType">MIME type for upload operations</param>
+        /// <returns>Presigned URL string valid for the specified duration</returns>
         private static string GeneratePreSignedURL(string keyName, HttpVerb method, double validDuration, string contentType)
         {
             // Upload
@@ -483,11 +621,21 @@ namespace UnifiWebhookEventReceiver
            return url;
         }
 
-        /*
-         *
-         * Returns an event object from S3
-         *
-         */
+        #endregion
+
+        #region Event Retrieval Operations
+
+        /// <summary>
+        /// Retrieves stored alarm event data from S3 by event key.
+        /// 
+        /// This method handles GET requests for retrieving previously stored alarm events.
+        /// It searches for the specified event key in the S3 bucket and returns the JSON
+        /// content if found, or appropriate error responses if the event doesn't exist.
+        /// 
+        /// The eventKey parameter should match the filename pattern: {deviceMac}_{timestamp}.json
+        /// </summary>
+        /// <param name="eventKey">Unique event identifier used as S3 object key</param>
+        /// <returns>API Gateway response containing the event JSON data or error message</returns>
         public static async Task<APIGatewayProxyResponse> GetEventFunction(string eventKey)
         {
             log.LogLine("Executing Get event function for eventKey: " + eventKey);
@@ -539,11 +687,17 @@ namespace UnifiWebhookEventReceiver
         }
 
 
-        /*
-         *
-         * Gets a JSON file from blob storage in S3 and return as a string
-         *
-         */
+        /// <summary>
+        /// Retrieves JSON content from S3 and returns it as a string.
+        /// 
+        /// This method handles the low-level S3 operations for fetching stored alarm event data.
+        /// It performs the S3 GetObject operation, reads the response stream, and converts
+        /// the binary content back to a UTF-8 string for JSON processing.
+        /// 
+        /// Handles common S3 exceptions including missing objects (NoSuchKey) and access errors.
+        /// </summary>
+        /// <param name="keyName">S3 object key to retrieve</param>
+        /// <returns>JSON string content of the S3 object, or null if object doesn't exist</returns>
         private static String GetJsonFileFromS3BlobAsync(string keyName)
         {
             byte[] fileBytes;
@@ -591,75 +745,6 @@ namespace UnifiWebhookEventReceiver
             }
         }
 
-        /*
-        * Gets a secret from the Secrets Manager
-        */
-        /*
-        public static async Task<Dictionary<string, string>> GetSecret()
-        {
-            // Prepare to get the secret
-            string secret = "";
-            MemoryStream memoryStream = new MemoryStream();
-            GetSecretValueRequest request = new GetSecretValueRequest();
-            request.SecretId = SECRET_NAME;
-            request.VersionStage = "AWSCURRENT";
-
-            GetSecretValueResponse response = null;
-
-            try
-            {
-                response = await secretClient.GetSecretValueAsync(request);
-            }
-            catch (DecryptionFailureException e)
-            {
-                log.LogLine("Exception encountered while getting secret: " + e.Message);
-                throw;
-            }
-            catch (InternalServiceErrorException e)
-            {
-                log.LogLine("Exception encountered while getting secret: " + e.Message);
-                throw;
-            }
-            catch (InvalidParameterException e)
-            {
-                log.LogLine("Exception encountered while getting secret: " + e.Message);
-                throw;
-            }
-            catch (InvalidRequestException e)
-            {
-                log.LogLine("Exception encountered while getting secret: " + e.Message);
-                throw;
-            }
-            catch (ResourceNotFoundException e)
-            {
-                log.LogLine("Exception encountered while getting secret: " + e.Message);
-                throw;
-            }
-            catch (System.AggregateException ae)
-            {
-                log.LogLine("Exception encountered while getting secret: " + ae.Message);
-                throw;
-            }
-
-            // Decrypts secret using the associated KMS CMK.
-            // Depending on whether the secret is a string or binary, one of these fields will be populated.
-            if (response.SecretString != null)
-            {
-                secret = response.SecretString;
-            }
-            else
-            {
-                memoryStream = response.SecretBinary;
-                StreamReader reader = new StreamReader(memoryStream);
-                string decodedBinarySecret = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(reader.ReadToEnd()));
-            }
-
-            // Parse into dictionary
-            Dictionary<string, string> secretDictionary = JsonConvert.DeserializeObject<Dictionary<string, string>>(secret);
-
-            // Return the secrets
-            return secretDictionary;
-        }
-        */
+        #endregion
     }
 }

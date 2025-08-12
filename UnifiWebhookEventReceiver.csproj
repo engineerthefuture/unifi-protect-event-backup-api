@@ -14,15 +14,15 @@
   <ItemGroup>
     <PackageReference Include="Amazon.Lambda.Core" Version="2.5.0" />
     <PackageReference Include="Amazon.Lambda.Serialization.SystemTextJson" Version="2.4.4" />
-    <PackageReference Include="Amazon.Lambda.S3Events" Version="3.1.0" />
     <PackageReference Include="AWSSDK.S3" Version="3.7.406.4" />
     <PackageReference Include="Amazon.Lambda.APIGatewayEvents" Version="2.7.1" />
-    <PackageReference Include="Amazon.Lambda.Serialization.Json" Version="2.2.4" />
-    <PackageReference Include="AWSSDK.SecretsManager" Version="3.7.400.70" />
-    <PackageReference Include="NUnit" Version="4.0.1" />
-    <PackageReference Include="Moq" Version="4.20.72" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
   </ItemGroup>
   <ItemGroup>
     <Folder Include="src\" />
+  </ItemGroup>
+  <!-- Exclude test sources from main project -->
+  <ItemGroup>
+    <Compile Remove="test/**/*.cs" />
   </ItemGroup>
 </Project>
