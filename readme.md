@@ -121,17 +121,425 @@ graph TB
 6. **Monitoring**: All operations logged to CloudWatch for observability
 7. **Retrieval**: GET endpoint allows querying stored events by event key
 
-![Architecture Diagram](docs/UnifiWebhookEventReceiver_Arch.png)
-
 ## API Endpoints
 
-### POST /alarmevent
+### OpenAPI 3.0 Specification
+
+```yaml
+openapi: 3.0.3
+info:
+  title: Unifi Protect Event Backup API
+  description: |
+    AWS Lambda function that receives and processes webhook events from Unifi Dream Machine Protect systems, 
+    storing alarm event data in S3 for backup and analysis.
+    
+    ## Features
+    - Real-time webhook processing from Unifi Protect systems
+    - Secure S3 storage with date-organized folder structure
+    - Device MAC address to human-readable name mapping
+    - RESTful event retrieval API
+    - Comprehensive CORS support for web clients
+  version: 1.0.0
+  contact:
+    name: Brent Foster
+    email: brent@engineerthefuture.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: https://your-api-id.execute-api.us-east-1.amazonaws.com/prod
+    description: Production AWS API Gateway endpoint
+
+security:
+  - ApiKeyAuth: []
+
+paths:
+  /alarmevent:
+    post:
+      summary: Process Unifi Protect alarm webhook
+      description: |
+        Receives and processes webhook events from Unifi Dream Machine Protect systems.
+        Events are validated, enriched with device names, and stored in S3 with organized folder structure.
+      operationId: processAlarmEvent
+      tags:
+        - Alarm Events
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UnifiWebhookRequest'
+            examples:
+              motionDetection:
+                summary: Motion Detection Event
+                value:
+                  alarm:
+                    name: "Backup Alarm Event"
+                    sources:
+                      - device: "28704E113F64"
+                        type: "include"
+                    conditions:
+                      - condition:
+                          type: "is"
+                          source: "motion"
+                    triggers:
+                      - key: "motion"
+                        device: "28704E113F33"
+                        eventId: "67b389ab005ec703e40075a5"
+                        zones:
+                          zone: []
+                          line: []
+                          loiter: []
+                  timestamp: 1739819436108
+      responses:
+        '200':
+          description: Event successfully processed and stored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                message: "bf-prod-lambda-unifi-protect-event-backup-api has successfully processed the Unifi alarm event webhook with key 28704E113F33_1739819436108.json for Backyard West that occurred at 2025-01-17T20:43:56."
+        '400':
+          description: Bad request - Invalid or malformed data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidJson:
+                  summary: Invalid JSON format
+                  value:
+                    msg: "ERROR 400: malformed or invalid request format"
+                missingAlarm:
+                  summary: Missing alarm object
+                  value:
+                    msg: "ERROR 400: No alarm object found in request"
+                noTriggers:
+                  summary: Missing triggers
+                  value:
+                    msg: "ERROR 400: you must have triggers in your payload"
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                message: "Unauthorized"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                msg: "Server configuration error: StorageBucket not configured"
+    
+    options:
+      summary: CORS preflight request
+      description: Handles CORS preflight requests for web client support
+      operationId: handleCorsOptions
+      tags:
+        - CORS
+      responses:
+        '200':
+          description: CORS headers provided
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+                example: "*"
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+                example: "OPTIONS,POST,GET"
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+                example: "Content-Type,X-API-Key"
+
+  /:
+    get:
+      summary: Retrieve stored alarm event
+      description: |
+        Retrieves a previously stored alarm event by its unique event key.
+        Event keys follow the format: {deviceMac}_{timestamp}.json
+      operationId: getAlarmEvent
+      tags:
+        - Event Retrieval
+      parameters:
+        - name: eventKey
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: '^[A-Fa-f0-9]{12}_\d+\.json$'
+            example: "28704E113F33_1739819436108.json"
+          description: |
+            Unique event identifier in format: {deviceMac}_{timestamp}.json
+            - deviceMac: 12-character hexadecimal MAC address (no colons)
+            - timestamp: Unix timestamp in milliseconds
+            - .json: File extension
+      responses:
+        '200':
+          description: Event successfully retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoredAlarmEvent'
+              example:
+                name: "Motion Detection Alert"
+                timestamp: 1739819436108
+                triggers:
+                  - key: "motion"
+                    device: "28704E113F33"
+                    eventId: "67b389ab005ec703e40075a5"
+                    deviceName: "Backyard West"
+                    date: "2025-01-17T20:43:56"
+                    eventKey: "28704E113F33_1739819436108.json"
+                sources:
+                  - device: "28704E113F64"
+                    type: "include"
+                conditions:
+                  - condition:
+                      type: "is"
+                      source: "motion"
+                eventPath: "/protect/events/67b389ab005ec703e40075a5"
+                eventLocalLink: "https://udm.local/protect/events/67b389ab005ec703e40075a5"
+        '400':
+          description: Bad request - Missing or invalid event key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                msg: "ERROR 400: you must provide an eventKey in the path"
+        '404':
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                msg: "Event not found"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: |
+        API key required for all requests. Obtain from AWS API Gateway console
+        or CloudFormation stack outputs after deployment.
+
+  schemas:
+    UnifiWebhookRequest:
+      type: object
+      required:
+        - alarm
+        - timestamp
+      properties:
+        alarm:
+          $ref: '#/components/schemas/AlarmObject'
+        timestamp:
+          type: integer
+          format: int64
+          description: Unix timestamp in milliseconds when the event occurred
+          example: 1739819436108
+      description: Webhook request payload from Unifi Protect system
+
+    AlarmObject:
+      type: object
+      required:
+        - name
+        - triggers
+      properties:
+        name:
+          type: string
+          description: Human-readable name of the alarm configuration
+          example: "Backup Alarm Event"
+        sources:
+          type: array
+          items:
+            $ref: '#/components/schemas/AlarmSource'
+          description: List of devices included/excluded in the alarm
+        conditions:
+          type: array
+          items:
+            $ref: '#/components/schemas/AlarmCondition'
+          description: Conditions that must be met to trigger the alarm
+        triggers:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/AlarmTrigger'
+          description: List of trigger events that activated this alarm
+        eventPath:
+          type: string
+          description: Internal path to the event in Unifi Protect
+          example: "/protect/events/67b389ab005ec703e40075a5"
+        eventLocalLink:
+          type: string
+          format: uri
+          description: Local URL to view the event in Unifi Protect interface
+          example: "https://udm.local/protect/events/67b389ab005ec703e40075a5"
+
+    AlarmSource:
+      type: object
+      required:
+        - device
+        - type
+      properties:
+        device:
+          type: string
+          pattern: '^[A-Fa-f0-9]{12}$'
+          description: Device MAC address (12 hex characters, no separators)
+          example: "28704E113F64"
+        type:
+          type: string
+          enum: ["include", "exclude"]
+          description: Whether this device is included or excluded from the alarm
+          example: "include"
+
+    AlarmCondition:
+      type: object
+      required:
+        - condition
+      properties:
+        condition:
+          type: object
+          required:
+            - type
+            - source
+          properties:
+            type:
+              type: string
+              enum: ["is", "is_not"]
+              description: Type of condition check
+              example: "is"
+            source:
+              type: string
+              enum: ["motion", "person", "vehicle", "package", "intrusion"]
+              description: Type of detection that triggers the condition
+              example: "motion"
+
+    AlarmTrigger:
+      type: object
+      required:
+        - key
+        - device
+        - eventId
+      properties:
+        key:
+          type: string
+          enum: ["motion", "person", "vehicle", "package", "intrusion"]
+          description: Type of detection that triggered the alarm
+          example: "motion"
+        device:
+          type: string
+          pattern: '^[A-Fa-f0-9]{12}$'
+          description: MAC address of the device that detected the event
+          example: "28704E113F33"
+        eventId:
+          type: string
+          description: Unique identifier for this specific detection event
+          example: "67b389ab005ec703e40075a5"
+        zones:
+          type: object
+          properties:
+            zone:
+              type: array
+              items:
+                type: string
+              description: Detection zones that were triggered
+            line:
+              type: array
+              items:
+                type: string
+              description: Line crossing zones that were triggered
+            loiter:
+              type: array
+              items:
+                type: string
+              description: Loitering zones that were triggered
+          description: Specific zones within the camera's field of view that triggered
+        deviceName:
+          type: string
+          description: Human-readable device name (added during processing)
+          example: "Backyard West"
+        date:
+          type: string
+          format: date-time
+          description: ISO 8601 formatted timestamp (added during processing)
+          example: "2025-01-17T20:43:56"
+        eventKey:
+          type: string
+          description: Unique key for retrieving this event (added during processing)
+          example: "28704E113F33_1739819436108.json"
+
+    StoredAlarmEvent:
+      allOf:
+        - $ref: '#/components/schemas/AlarmObject'
+        - type: object
+          properties:
+            timestamp:
+              type: integer
+              format: int64
+              description: Unix timestamp in milliseconds when the event occurred
+              example: 1739819436108
+      description: Alarm event as stored in S3 with additional processing metadata
+
+    SuccessResponse:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          description: Success message with event processing details
+          example: "bf-prod-lambda-unifi-protect-event-backup-api has successfully processed the Unifi alarm event webhook with key 28704E113F33_1739819436108.json for Backyard West that occurred at 2025-01-17T20:43:56."
+
+    ErrorResponse:
+      type: object
+      required:
+        - msg
+      properties:
+        msg:
+          type: string
+          description: Error message describing what went wrong
+          example: "ERROR 400: malformed or invalid request format"
+
+tags:
+  - name: Alarm Events
+    description: Processing of incoming alarm webhook events
+  - name: Event Retrieval
+    description: Retrieval of stored alarm events
+  - name: CORS
+    description: Cross-Origin Resource Sharing support
+
+externalDocs:
+  description: Full API Documentation
+  url: https://github.com/engineerthefuture/unifi-protect-event-backup-api/blob/main/README.md
+```
+
+### Quick Reference
+
+#### POST /alarmevent
 Processes incoming alarm webhook events from Unifi Protect.
 
 **Request Body**: JSON alarm event from Unifi Protect
 **Response**: Success confirmation with event details
 
-### GET /?eventKey={key}
+#### GET /?eventKey={key}
 Retrieves a stored alarm event by its unique key.
 
 **Parameters**: 
@@ -139,7 +547,7 @@ Retrieves a stored alarm event by its unique key.
 
 **Response**: JSON alarm event data
 
-### OPTIONS
+#### OPTIONS /alarmevent
 Handles CORS preflight requests for web client support.
 
 ## Setup and Deployment
