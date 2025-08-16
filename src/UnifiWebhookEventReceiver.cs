@@ -962,13 +962,59 @@ namespace UnifiWebhookEventReceiver
                         {
                             log.LogLine("Login button not found, trying Enter key...");
                             await passwordField.PressAsync("Enter");
-                            await Task.Delay(3000);
+                            
+                            // Wait for navigation after Enter key
+                            try
+                            {
+                                await page.WaitForNavigationAsync(new NavigationOptions
+                                {
+                                    WaitUntil = new[] { WaitUntilNavigation.Networkidle0 },
+                                    Timeout = 10000
+                                });
+                            }
+                            catch (Exception)
+                            {
+                                log.LogLine("Navigation timeout after Enter key, continuing...");
+                            }
                         }
                     }
 
                     // Wait for the page to fully load after authentication
-                    log.LogLine("Waiting for page to load...");
-                    await Task.Delay(8000);
+                    log.LogLine("Waiting for page to load after authentication...");
+                    
+                    // Wait for any final network activity to settle
+                    try
+                    {
+                        await Task.Delay(2000); // Brief wait for any immediate changes
+                        
+                        // Check if the page has finished loading by evaluating ready state
+                        var isReady = await page.EvaluateExpressionAsync<bool>("document.readyState === 'complete'");
+                        if (!isReady)
+                        {
+                            log.LogLine("Document not ready, waiting for complete state...");
+                            await page.WaitForFunctionAsync("() => document.readyState === 'complete'", new WaitForFunctionOptions
+                            {
+                                Timeout = 10000
+                            });
+                        }
+                        log.LogLine("Page document ready state is complete");
+                    }
+                    catch (Exception ex)
+                    {
+                        log.LogLine($"Timeout waiting for page ready state: {ex.Message}, but continuing with page interaction");
+                    }
+
+                    // Additionally wait for any dynamic content to load by checking for common UI elements
+                    try
+                    {
+                        // Wait for some common elements that might indicate the page is ready
+                        await page.WaitForSelectorAsync("body", new WaitForSelectorOptions { Timeout = 5000 });
+                        log.LogLine("Page body element found, page appears ready");
+                    }
+                    catch (Exception)
+                    {
+                        log.LogLine("Timeout waiting for page elements, but continuing...");
+                    }
 
                     log.LogLine("Page loaded, preparing to click to download...");
 
@@ -997,7 +1043,32 @@ namespace UnifiWebhookEventReceiver
 
                     // Wait for download to complete
                     log.LogLine("Waiting for video download to complete...");
-                    await Task.Delay(10000);
+                    
+                    // Instead of a fixed delay, monitor the download directory for new files
+                    var initialFileCount = Directory.GetFiles(downloadDirectory, "*.mp4").Length;
+                    var maxWaitTime = TimeSpan.FromSeconds(30);
+                    var checkInterval = TimeSpan.FromSeconds(1);
+                    var startTime = DateTime.Now;
+                    
+                    while (DateTime.Now - startTime < maxWaitTime)
+                    {
+                        var currentFileCount = Directory.GetFiles(downloadDirectory, "*.mp4").Length;
+                        if (currentFileCount > initialFileCount)
+                        {
+                            log.LogLine($"New video file detected after {(DateTime.Now - startTime).TotalSeconds:F1} seconds");
+                            
+                            // Wait a bit more to ensure the file is completely written
+                            await Task.Delay(2000);
+                            break;
+                        }
+                        
+                        await Task.Delay(checkInterval);
+                    }
+                    
+                    if (DateTime.Now - startTime >= maxWaitTime)
+                    {
+                        log.LogLine("Download timeout reached, checking for any video files...");
+                    }
 
                 // Get the video data from the downloaded video by checking for the latest mp4 file that was added to the directory
                 var videoFiles = Directory.GetFiles(downloadDirectory, "*.mp4");
