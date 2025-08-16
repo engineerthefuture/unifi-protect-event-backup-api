@@ -1075,8 +1075,20 @@ namespace UnifiWebhookEventReceiver
                 log.LogLine($"Searching for .mp4 video files in directory: {downloadDirectory}");
                 log.LogLine($"Found {videoFiles.Length} video files in the current directory.");
 
-                var latestVideoFile = videoFiles.OrderByDescending(f => f).FirstOrDefault();
-                log.LogLine($"Latest video file: {latestVideoFile}");
+                // Order by creation time (most recent first) to get the actual latest file
+                var latestVideoFile = videoFiles
+                    .OrderByDescending(f => File.GetCreationTime(f))
+                    .FirstOrDefault();
+                
+                if (!string.IsNullOrEmpty(latestVideoFile))
+                {
+                    var creationTime = File.GetCreationTime(latestVideoFile);
+                    log.LogLine($"Latest video file: {latestVideoFile} (created: {creationTime})");
+                }
+                else
+                {
+                    log.LogLine("Latest video file: null");
+                }
 
                 if (string.IsNullOrEmpty(latestVideoFile))
                 {
