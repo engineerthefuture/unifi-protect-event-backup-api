@@ -19,6 +19,10 @@ obj
 *.dmg
 *.app
 
+# Brent's Local Stuff
+SimpleTest
+test-video-download.sh
+
 # content below from: https://github.com/github/gitignore/blob/master/Global/macOS.gitignore
 # General
 .DS_Store
