@@ -844,6 +844,29 @@ namespace UnifiWebhookEventReceiver
         {
             log.LogLine($"Starting video download for event: {eventKey} from URL: {eventLocalLink}");
 
+            // Validate all required environment variables first to fail fast
+            if (string.IsNullOrEmpty(UNIFI_HOST) || string.IsNullOrEmpty(UNIFI_USERNAME) || string.IsNullOrEmpty(UNIFI_PASSWORD))
+            {
+                log.LogLine("Missing required Unifi Protect credentials in environment variables");
+                return new APIGatewayProxyResponse
+                {
+                    StatusCode = (int)HttpStatusCode.InternalServerError,
+                    Body = JsonConvert.SerializeObject(new { msg = "Server configuration error: Unifi Protect credentials not configured" }),
+                    Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
+                };
+            }
+
+            if (string.IsNullOrEmpty(ALARM_BUCKET_NAME))
+            {
+                log.LogLine("StorageBucket environment variable is not configured");
+                return new APIGatewayProxyResponse
+                {
+                    StatusCode = (int)HttpStatusCode.InternalServerError,
+                    Body = JsonConvert.SerializeObject(new { msg = "Server configuration error: StorageBucket not configured" }),
+                    Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
+                };
+            }
+
             //Create a dictionary of coordinates for clicks to download videos
             int archiveButtonX = 1205;
             int archiveButtonY = 245;
@@ -857,18 +880,6 @@ namespace UnifiWebhookEventReceiver
 
                 try
                 {
-                     // Validate required environment variables
-                if (string.IsNullOrEmpty(UNIFI_HOST) || string.IsNullOrEmpty(UNIFI_USERNAME) || string.IsNullOrEmpty(UNIFI_PASSWORD))
-                {
-                    log.LogLine("Missing required Unifi Protect credentials in environment variables");
-                    return new APIGatewayProxyResponse
-                    {
-                        StatusCode = (int)HttpStatusCode.InternalServerError,
-                        Body = JsonConvert.SerializeObject(new { msg = "Server configuration error: Unifi Protect credentials not configured" }),
-                        Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                    };
-                }
-
                 // Download Chromium if not already available
                 log.LogLine("Ensuring Chromium browser is available...");
                 var browserFetcher = new BrowserFetcher();
@@ -879,7 +890,7 @@ namespace UnifiWebhookEventReceiver
                 log.LogLine("Launching headless browser...");
                 using var browser = await Puppeteer.LaunchAsync(new LaunchOptions
                 {
-                    Headless = true, // Set to true for headless mode
+                    Headless = true, 
                     Args = new[]
                     {
                         "--no-sandbox",
@@ -1116,12 +1127,6 @@ namespace UnifiWebhookEventReceiver
 
                     // Generate presigned URL for the downloaded video
                     log.LogLine($"Generating presigned URL for video key: {videoKey}");
-                    
-                    if (string.IsNullOrEmpty(ALARM_BUCKET_NAME))
-                    {
-                        log.LogLine("StorageBucket environment variable is not configured");
-                        throw new Exception("StorageBucket environment variable is not configured");
-                    }
 
                     string presignedUrl = GeneratePreSignedURL(videoKey, HttpVerb.GET, EXPIRATION_SECONDS, "video/mp4");
                     log.LogLine($"Presigned URL generated: {presignedUrl}");
