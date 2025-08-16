@@ -1007,6 +1007,12 @@ namespace UnifiWebhookEventReceiver
                 var latestVideoFile = videoFiles.OrderByDescending(f => f).FirstOrDefault();
                 log.LogLine($"Latest video file: {latestVideoFile}");
 
+                if (string.IsNullOrEmpty(latestVideoFile))
+                {
+                    log.LogLine("No video files found in download directory");
+                    throw new FileNotFoundException("No video files were downloaded");
+                }
+
                 byte[] videoData = File.ReadAllBytes(latestVideoFile);  
                 log.LogLine($"Video data size: {videoData.Length} bytes");
 
