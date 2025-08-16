@@ -29,9 +29,9 @@ This project now supports deploying to multiple environments:
 - `OWNER_NAME`: Owner name for resource tagging
 - `APP_NAME`: Application name for resource tagging
 - `APP_DESCRIPTION`: Application description for resource tagging
-- `UNIFI_HOST`: (Optional) Unifi Protect hostname or IP address
 
 ### Secrets (Repository Settings > Secrets and variables > Actions > Secrets)
+- `UNIFI_HOST`: Unifi Protect hostname or IP address
 - `UNIFI_USERNAME`: Username for Unifi Protect authentication
 - `UNIFI_PASSWORD`: Password for Unifi Protect authentication
 

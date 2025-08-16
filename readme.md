@@ -533,7 +533,7 @@ The CloudFormation template (`templates/cf-stack-cs.yaml`) creates a complete se
 
 #### Resource Naming Convention
 
-Resources follow a consistent naming pattern: `{EnvPrefix}-{ResourceType}-{AppName}`
+Resources follow a consistent naming pattern: `{GlobalPrefix}-{EnvPrefix}-{ResourceType}-{AppName}`
 
 Example:
 - Lambda: `bf-prod-lambda-unifi-protect-event-backup-api`
