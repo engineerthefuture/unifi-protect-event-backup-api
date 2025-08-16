@@ -59,8 +59,8 @@ S3 Bucket Structure:
 │   └── YYYY-MM-DD/
 │       └── {deviceMac}_{timestamp}.json
 └── videos/
-    └── {deviceMac}/
-        └── {timestamp}.mp4
+    └── YYYY-MM-DD/
+        └── {deviceMac}_{timestamp}.mp4
 ```
 
 ## Architecture
@@ -94,7 +94,7 @@ graph TB
         subgraph "Storage"
             S3[(S3 Bucket)]
             EVENTS[Event JSON Files<br/>YYYY-MM-DD/]
-            VIDEOS[Video Files<br/>videos/{device}/]
+            VIDEOS["Video Files<br/>videos/YYYY-MM-DD//"]
         end
         
         subgraph "Monitoring"
@@ -568,33 +568,6 @@ DeviceMacF4E2C677E20F: "Door"
 Update these in the CloudFormation template to match your Unifi device MAC addresses.
 
 ## 🧪 Testing
-
-### Local Video Download Testing
-
-The project includes a comprehensive local testing script for video download functionality:
-
-```bash
-# Run the complete test suite
-./test-video-download.sh
-```
-
-**What the test does:**
-- ✅ Validates .NET 8 installation
-- 🔨 Builds all projects (main + test)
-- 🚀 Runs PuppeteerSharp browser automation
-- 📸 Captures screenshots at each step
-- 🎥 Tests video blob extraction
-- 📊 Generates detailed logs
-
-**Test Output Structure:**
-```
-SimpleTest/files/
-├── login-screenshot.png        # Initial login page
-├── pageload-screenshot.png     # After authentication
-├── firstclick-screenshot.png   # Archive button clicked
-├── secondclick-screenshot.png  # Download button clicked
-└── Front 8-14-2025, 12.33.24pm EDT - 8-14-2025, 12.34.07pm EDT.mp4
-```
 
 ### Unit Testing
 
@@ -1289,7 +1262,6 @@ aws cloudwatch get-metric-statistics \
 
 - **📋 [API Documentation](openapi.yaml)** - Complete OpenAPI 3.0 specification
 - **🚀 [Deployment Guide](docs/DEPLOYMENT.md)** - Multi-environment deployment instructions
-- **🎥 Video Download Testing** - Use `./test-video-download.sh` for local testing
 
 ## License
 
