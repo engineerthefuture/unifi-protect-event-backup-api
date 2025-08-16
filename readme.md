@@ -1,20 +1,67 @@
 # Unifi Protect Event Backup API
 
-An AWS Lambda function that receives and processes webhook events from Unifi Dream Machine Protect systems, storing alarm event data in S3 for backup and analysis.
+An AWS Lambda function that receives and processes webhook events from Unifi Dream Machine Protect systems, storing alarm event data in S3 for backup and analysis. **Now featuring automated video download capabilities** using browser automation with PuppeteerSharp.
+
+## 🆕 Latest Updates
+
+- **🎥 Video Download Integration**: Automated video retrieval from Unifi Protect using browser automation
+- **🌍 Multi-Environment Support**: Separate dev and prod environments with automatic deployment
+- **🔄 Enhanced CI/CD**: GitHub Actions workflow supporting multiple branch deployments
+- **📋 OpenAPI 3.0 Specification**: Complete API documentation with video endpoint support
 
 ## Overview
 
-This serverless application provides a reliable backup and retrieval system for Unifi Protect alarm events. When motion detection, intrusion alerts, or other configured events occur in your Unifi Protect system, webhooks are sent to this Lambda function which processes and stores the event data in Amazon S3 with an organized date-based folder structure.
+This serverless application provides a comprehensive backup and retrieval system for Unifi Protect alarm events and associated video content. When motion detection, intrusion alerts, or other configured events occur in your Unifi Protect system, webhooks are sent to this Lambda function which processes and stores both the event data and downloads the corresponding video files to Amazon S3.
 
 ## Features
 
+### Core Functionality
 - **Webhook Processing**: Receives real-time alarm events from Unifi Dream Machine
-- **Data Storage**: Stores event data in S3 with date-organized folder structure (`YYYY-MM-DD/`)
+- **Video Download**: Automated video retrieval using PuppeteerSharp browser automation
+- **Data Storage**: Stores event data and videos in S3 with organized folder structure
 - **Device Mapping**: Maps device MAC addresses to human-readable names via environment variables
-- **Event Retrieval**: RESTful API for retrieving stored alarm events
+- **Event Retrieval**: RESTful API for retrieving stored alarm events and video presigned URLs
+
+### Technical Features
+- **Multi-Environment Deployment**: Separate dev and prod environments
 - **CORS Support**: Cross-origin resource sharing for web client integration
-- **Error Handling**: Comprehensive error handling and logging
-- **Scalable**: Serverless architecture that scales automatically with load
+- **Comprehensive Error Handling**: Detailed logging and error management
+- **Scalable Architecture**: Serverless design that scales automatically
+- **Browser Automation**: Headless Chrome integration for Unifi Protect navigation
+- **Blob URL Processing**: Direct video blob extraction and MP4 conversion
+
+## 🎥 Video Download Capabilities
+
+### Automated Video Retrieval Process
+
+The system now includes sophisticated browser automation to download video content directly from Unifi Protect:
+
+1. **Browser Launch**: PuppeteerSharp launches headless Chrome instance
+2. **Authentication**: Automated login to Unifi Protect using stored credentials  
+3. **Navigation**: Programmatic navigation to specific event pages
+4. **Video Extraction**: Direct blob URL access and video content download
+5. **Format Conversion**: Conversion to MP4 format for standardized storage
+6. **S3 Storage**: Organized storage in S3 with presigned URL generation
+
+### Technical Implementation
+
+- **🔐 Secure Authentication**: Credential-based login with error handling
+- **📱 Responsive Navigation**: Handles Unifi Protect's modern web interface
+- **💾 Blob Processing**: Direct blob URL extraction using JavaScript execution
+- **🔄 Error Recovery**: Comprehensive error handling and retry mechanisms
+- **📊 Progress Monitoring**: Detailed logging and screenshot capture for debugging
+
+### Storage Organization
+
+```
+S3 Bucket Structure:
+├── events/
+│   └── YYYY-MM-DD/
+│       └── {deviceMac}_{timestamp}.json
+└── videos/
+    └── {deviceMac}/
+        └── {timestamp}.mp4
+```
 
 ## Architecture
 
@@ -25,6 +72,7 @@ graph TB
         CAM1[Camera 1]
         CAM2[Camera 2]
         CAM3[Camera N...]
+        VIDEO[Video Storage]
     end
     
     subgraph "AWS Cloud"
@@ -39,15 +87,114 @@ graph TB
             PARSER[JSON Parser]
             MAPPER[Device Mapper]
             VALIDATOR[Input Validator]
+            BROWSER[PuppeteerSharp Browser]
+            DOWNLOADER[Video Downloader]
         end
         
         subgraph "Storage"
             S3[(S3 Bucket)]
-            FOLDERS[Date-based Folders<br/>YYYY-MM-DD/]
+            EVENTS[Event JSON Files<br/>YYYY-MM-DD/]
+            VIDEOS[Video Files<br/>videos/{device}/]
         end
         
         subgraph "Monitoring"
             CW[CloudWatch Logs]
+            METRICS[CloudWatch Metrics]
+        end
+        
+        subgraph "Security"
+            IAM[IAM Roles]
+            ENCRYPT[S3 Encryption]
+        end
+    end
+    
+    subgraph "Multi-Environment CI/CD"
+        GH[GitHub Actions]
+        TEST[Unit Tests]
+        BUILD[Build & Package]
+        DEV_DEPLOY[Dev Environment<br/>Feature Branches]
+        PROD_DEPLOY[Prod Environment<br/>Main Branch]
+    end
+    
+    %% Main data flow
+    CAM1 --> UDM
+    CAM2 --> UDM
+    CAM3 --> UDM
+    UDM --> VIDEO
+    UDM -->|Webhook POST| API
+    API --> AUTH
+    AUTH --> CORS
+    CORS --> HANDLER
+    HANDLER --> PARSER
+    PARSER --> VALIDATOR
+    VALIDATOR --> MAPPER
+    MAPPER --> S3
+    S3 --> EVENTS
+    
+    %% Video download flow
+    HANDLER --> BROWSER
+    BROWSER -->|Authenticate & Navigate| VIDEO
+    VIDEO -->|Extract Blob URL| BROWSER
+    BROWSER --> DOWNLOADER
+    DOWNLOADER -->|MP4 Files| S3
+    S3 --> VIDEOS
+    
+    %% Monitoring flows
+    HANDLER --> CW
+    API --> METRICS
+    HANDLER --> METRICS
+    BROWSER --> CW
+    
+    %% Security flows
+    HANDLER -.-> IAM
+    S3 -.-> ENCRYPT
+    
+    %% CI/CD flows
+    GH --> TEST
+    TEST --> BUILD
+    BUILD --> DEV_DEPLOY
+    BUILD --> PROD_DEPLOY
+    DEV_DEPLOY -.-> API
+    PROD_DEPLOY -.-> API
+    
+    %% GET endpoints
+    API -->|GET /?eventKey=xxx| HANDLER
+    API -->|GET /video?eventKey=xxx| HANDLER
+    HANDLER -->|Retrieve Event| S3
+    HANDLER -->|Download Video| BROWSER
+    S3 -->|JSON/Video Response| API
+    
+    %% Environment separation
+    DEV_DEPLOY -.->|bf-dev-*| S3
+    PROD_DEPLOY -.->|bf-prod-*| S3
+    
+    %% Styling
+    classDef aws fill:#ff9900,stroke:#232f3e,stroke-width:2px,color:#fff
+    classDef unifi fill:#0066cc,stroke:#003d7a,stroke-width:2px,color:#fff
+    classDef cicd fill:#28a745,stroke:#1e7e34,stroke-width:2px,color:#fff
+    classDef security fill:#dc3545,stroke:#721c24,stroke-width:2px,color:#fff
+    classDef video fill:#6f42c1,stroke:#4c2a85,stroke-width:2px,color:#fff
+    
+    class API,HANDLER,S3,CW,METRICS aws
+    class UDM,CAM1,CAM2,CAM3,VIDEO unifi
+    class GH,TEST,BUILD,DEV_DEPLOY,PROD_DEPLOY cicd
+    class IAM,ENCRYPT,AUTH security
+    class BROWSER,DOWNLOADER,VIDEOS video
+```
+
+### Enhanced Data Flow
+
+1. **Event Detection**: Unifi cameras detect motion/intrusion events
+2. **Webhook Trigger**: Unifi Dream Machine sends webhook to API Gateway
+3. **Authentication**: API Gateway validates API key
+4. **Event Processing**: Lambda function parses JSON, maps device names, validates data
+5. **Event Storage**: Events stored in S3 with date-organized folder structure
+6. **Video Download**: For video requests, PuppeteerSharp launches headless browser
+7. **Browser Automation**: Authenticates with Unifi Protect and navigates to event
+8. **Video Extraction**: Extracts blob URL and downloads video content as MP4
+9. **Video Storage**: MP4 files stored in S3 under organized device folders
+10. **Monitoring**: All operations logged to CloudWatch for observability
+11. **Retrieval**: GET endpoints allow querying events and generating video presigned URLs
             METRICS[CloudWatch Metrics]
         end
         
@@ -123,6 +270,29 @@ graph TB
 
 ## API Endpoints
 
+### Core Endpoints
+
+#### 1. **Webhook Receiver** - `POST /{stage}/alarmevent`
+Receives alarm events from Unifi Protect systems
+- **Purpose**: Process and store alarm event data
+- **Authentication**: API Key required
+- **Request**: JSON webhook payload from Unifi Dream Machine
+- **Response**: Success confirmation with event key
+
+#### 2. **Event Retrieval** - `GET /{stage}/?eventKey={eventKey}`
+Retrieves stored alarm event data
+- **Purpose**: Fetch specific alarm event JSON data
+- **Authentication**: API Key required
+- **Parameters**: `eventKey` - Event identifier (format: `{deviceMac}_{timestamp}.json`)
+- **Response**: Complete alarm event JSON object
+
+#### 3. **🆕 Video Download** - `GET /{stage}/video?eventKey={eventKey}`
+Downloads video content for alarm events
+- **Purpose**: Automated video retrieval from Unifi Protect
+- **Authentication**: API Key required
+- **Process**: Browser automation → Video extraction → S3 storage
+- **Response**: Video metadata with S3 presigned URL for download
+
 ### OpenAPI 3.0 Specification
 
 📋 **Complete API Documentation**: [openapi.yaml](openapi.yaml)
@@ -131,6 +301,7 @@ The full OpenAPI 3.0 specification is available in the [`openapi.yaml`](openapi.
 
 - **Complete endpoint documentation** with detailed request/response schemas
 - **Interactive examples** for all supported event types (motion, person, vehicle detection)
+- **Video endpoint documentation** with automation workflow details
 - **Comprehensive error handling** documentation with specific error codes
 - **Authentication and security** requirements
 - **Validation patterns** for MAC addresses, timestamps, and event keys
@@ -197,28 +368,41 @@ Handles CORS preflight requests for web client support.
 
 ## Setup and Deployment
 
-This project supports multiple deployment methods, with the recommended approach being automated deployment via GitHub Actions.
+This project supports **multi-environment deployment** with automated CI/CD via GitHub Actions. Deploy to development environments from feature branches and production from the main branch.
+
+### 🌍 Multi-Environment Support
+
+| Environment | Trigger | Stack Name | S3 Buckets | Lambda Function |
+|-------------|---------|------------|------------|-----------------|
+| **Development** | Feature branches<br/>`feature/*`, `bugfix/*`, `hotfix/*`, `develop` | `bf-dev-unifi-protect-event-backup-api` | `bf-dev-s3-*` | `bf-dev-lambda-unifi-protect-event-backup-api` |
+| **Production** | Main branch<br/>`main` | `bf-prod-unifi-protect-event-backup-api` | `bf-prod-s3-*` | `bf-prod-lambda-unifi-protect-event-backup-api` |
 
 ### Prerequisites
 
 - .NET 8.0 SDK
-- AWS CLI configured with appropriate permissions
+- AWS CLI configured with appropriate permissions  
 - AWS Lambda Tools for .NET (for manual deployment)
 - GitHub repository with Actions enabled (for automated deployment)
+- **🆕 Unifi Protect Credentials** for video download functionality
 
 ## Automated Deployment (Recommended)
 
-### GitHub Actions Workflow
+### 🔄 Multi-Environment GitHub Actions Workflow
 
-The project includes a comprehensive CI/CD pipeline that automatically builds, tests, and deploys your application when code is pushed to the main branch.
+The project includes a comprehensive CI/CD pipeline that automatically builds, tests, and deploys to the appropriate environment based on the branch:
+
+- **🚀 Production Deployment**: Push to `main` branch → Production environment
+- **🧪 Development Deployment**: Push to any other branch → Development environment
 
 #### Workflow Features
 
-- **Quality Gate**: Automatically runs unit tests and blocks deployment if any tests fail
-- **Multi-Stage Pipeline**: Separate build and deploy jobs for better error isolation
+- **Environment Detection**: Automatically determines target environment based on branch name
+- **Quality Gate**: Runs unit tests and blocks deployment if any tests fail
+- **Multi-Stage Pipeline**: Separate build and deploy jobs for better error isolation  
 - **Artifact Management**: Preserves build outputs and test results
 - **AWS Integration**: Uses OIDC for secure AWS authentication
-- **CloudFormation**: Manages complete AWS infrastructure as code
+- **Infrastructure as Code**: Complete CloudFormation-based infrastructure management
+- **🆕 Video Download Testing**: Validates PuppeteerSharp browser automation functionality
 
 #### Required GitHub Repository Variables
 
@@ -230,6 +414,16 @@ Configure these variables in your GitHub repository settings (Settings → Secre
 | `OIDC_ROLE_NAME` | IAM role for GitHub OIDC | `GitHubActionsRole` |
 | `OWNER_NAME` | Resource owner name | `Brent Foster` |
 | `APP_NAME` | Application name | `unifi-protect-event-backup-api` |
+| `APP_DESCRIPTION` | Application description | `Unifi webhook alarm event processing and backup API` |
+
+#### Required GitHub Repository Secrets
+
+Configure these secrets in your GitHub repository settings (Settings → Secrets and variables → Actions → Secrets):
+
+| Secret | Description | Required For |
+|--------|-------------|--------------|
+| `UNIFI_USERNAME` | Unifi Protect username | Video download functionality |
+| `UNIFI_PASSWORD` | Unifi Protect password | Video download functionality |
 | `APP_DESCRIPTION` | Application description | `Unifi webhook alarm event processing and backup API` |
 
 #### OIDC IAM Role Setup
@@ -372,6 +566,69 @@ DeviceMacF4E2C677E20F: "Door"
 ```
 
 Update these in the CloudFormation template to match your Unifi device MAC addresses.
+
+## 🧪 Testing
+
+### Local Video Download Testing
+
+The project includes a comprehensive local testing script for video download functionality:
+
+```bash
+# Run the complete test suite
+./test-video-download.sh
+```
+
+**What the test does:**
+- ✅ Validates .NET 8 installation
+- 🔨 Builds all projects (main + test)
+- 🚀 Runs PuppeteerSharp browser automation
+- 📸 Captures screenshots at each step
+- 🎥 Tests video blob extraction
+- 📊 Generates detailed logs
+
+**Test Output Structure:**
+```
+SimpleTest/files/
+├── login-screenshot.png        # Initial login page
+├── pageload-screenshot.png     # After authentication
+├── firstclick-screenshot.png   # Archive button clicked
+├── secondclick-screenshot.png  # Download button clicked
+└── Front 8-14-2025, 12.33.24pm EDT - 8-14-2025, 12.34.07pm EDT.mp4
+```
+
+### Unit Testing
+
+```bash
+# Run unit tests only
+dotnet test test/ --verbosity normal
+
+# Generate test coverage report
+dotnet test test/ --collect:"XPlat Code Coverage"
+```
+
+### API Testing Examples
+
+#### Test Webhook Endpoint
+```bash
+curl -X POST "https://your-api-gateway-url/prod/alarmevent" \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: your-api-key" \
+  -d '{
+    "eventLocalLink": "https://192.168.0.1/protect/events/event/123",
+    "triggers": [{
+      "device": "F4E2C67A2FE8",
+      "key": "motion",
+      "eventId": "test-event-123"
+    }],
+    "timestamp": 1755383421797
+  }'
+```
+
+#### Test Video Download Endpoint  
+```bash
+curl -X GET "https://your-api-gateway-url/prod/video?eventKey=F4E2C67A2FE8_1755383421797.json" \
+  -H "x-api-key: your-api-key"
+```
 
 ## Manual Deployment (Alternative)
 
@@ -1014,18 +1271,25 @@ aws cloudwatch get-metric-statistics \
 
 ## Future Enhancements
 
-- **Video Upload Support**: Integration with Unifi Protect video export functionality
-- **Pre-signed URLs**: Generate temporary URLs for direct video upload to S3
-- **Event Filtering**: Advanced filtering and processing rules for specific event types
-- **Notification Integration**: SNS/SES integration for real-time alerting
+- **🎬 Advanced Video Processing**: Video compression and format optimization
+- **🔍 Event Analytics**: Machine learning-based event analysis and categorization  
+- **📱 Mobile Integration**: Push notifications and mobile app connectivity
+- **🔄 Real-time Streaming**: Live video streaming capabilities
+- **🛡️ Advanced Security**: Enhanced encryption and access control mechanisms
 
 ## Contributing
 
 1. Fork the repository
-2. Create a feature branch
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
 3. Make your changes
 4. Add tests for new functionality
 5. Submit a pull request
+
+## Documentation
+
+- **📋 [API Documentation](openapi.yaml)** - Complete OpenAPI 3.0 specification
+- **🚀 [Deployment Guide](docs/DEPLOYMENT.md)** - Multi-environment deployment instructions
+- **🎥 Video Download Testing** - Use `./test-video-download.sh` for local testing
 
 ## License
 
@@ -1035,5 +1299,14 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **Brent Foster**  
 Created: December 23, 2024  
-Updated: August 11, 2025
+Updated: August 16, 2025
+
+---
+
+### 📞 Support
+
+For questions, issues, or contributions:
+- 📧 **Issues**: [GitHub Issues](https://github.com/engineerthefuture/unifi-protect-event-backup-api/issues)
+- 🔧 **Feature Requests**: Use GitHub Issues with the `enhancement` label
+- 📖 **Documentation**: Check the `docs/` directory for detailed guides
 

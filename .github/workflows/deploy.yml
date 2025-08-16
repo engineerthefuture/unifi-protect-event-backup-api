@@ -8,10 +8,10 @@ on:
   push:
     branches:
       - main
-      - 'feature/**'
-      - 'bugfix/**'
-      - 'hotfix/**'
-      - develop
+      - 'feature-**'
+      - 'bugfix-**'
+      - 'hotfix-**'
+      - dev
 
 jobs:
   # Build job: Compiles code, runs tests, and prepares deployment artifacts
@@ -224,7 +224,7 @@ jobs:
               BucketNameDeployment="${{ steps.env.outputs.BUCKET_DEPLOYMENT }}" \
               FunctionName="${{ steps.env.outputs.LAMBDA_NAME }}" \
               RoleName="${{ steps.env.outputs.LAMBDA_NAME }}-role" \
-              UnifiHost="${{ vars.UNIFI_HOST }}" \
+              UnifiHost="${{ secrets.UNIFI_HOST }}" \
               UnifiUsername="${{ secrets.UNIFI_USERNAME }}" \
               UnifiPassword="${{ secrets.UNIFI_PASSWORD }}" \
             --tags \

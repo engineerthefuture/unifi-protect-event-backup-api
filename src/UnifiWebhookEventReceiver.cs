@@ -358,75 +358,23 @@ namespace UnifiWebhookEventReceiver
                                 // Get request to download an event object received
                                 else if(method == HttpMethod.Get.ToString().ToUpper())
                                 {
-                                    // Check if this is a video download request
-                                    if (route == "video")
+                                    string eventKey = req.QueryStringParameters["eventKey"];
+                                    if(eventKey == null || eventKey.Length == 0)
                                     {
-                                        string? eventKey = req.QueryStringParameters?.ContainsKey("eventKey") == true 
-                                            ? req.QueryStringParameters["eventKey"] : null;
-                                        if(string.IsNullOrEmpty(eventKey))
+                                        // Return response
+                                        log.LogLine(ERROR_MESSAGE_400 + ERROR_EVENTKEY);
+                                        var response = new APIGatewayProxyResponse
                                         {
-                                            log.LogLine(ERROR_MESSAGE_400 + "eventKey parameter is required for video download");
-                                            var response = new APIGatewayProxyResponse
-                                            {
-                                                StatusCode = (int)HttpStatusCode.BadRequest,
-                                                Body = JsonConvert.SerializeObject(new { msg = (ERROR_MESSAGE_400 + "eventKey parameter is required for video download") }),
-                                                Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                                            };
-                                            return response;
-                                        }
-
-                                        // First, get the event object to extract the eventLocalLink
-                                        String? eventObject = await GetJsonFileFromS3BlobAsync(eventKey);
-                                        if (eventObject == null)
-                                        {
-                                            log.LogLine("Event object for " + eventKey + " not found.");
-                                            var notFoundResponse = new APIGatewayProxyResponse
-                                            {
-                                                StatusCode = (int)HttpStatusCode.NotFound,
-                                                Body = JsonConvert.SerializeObject(new { msg = "Event not found" }),
-                                                Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                                            };
-                                            return notFoundResponse;
-                                        }
-
-                                        // Parse the event object to get eventLocalLink
-                                        var eventData = JsonConvert.DeserializeObject<Alarm>(eventObject);
-                                        if (eventData == null || string.IsNullOrEmpty(eventData.eventLocalLink))
-                                        {
-                                            log.LogLine("eventLocalLink not found in event object for " + eventKey);
-                                            var badRequestResponse = new APIGatewayProxyResponse
-                                            {
-                                                StatusCode = (int)HttpStatusCode.BadRequest,
-                                                Body = JsonConvert.SerializeObject(new { msg = "eventLocalLink not found in event object" }),
-                                                Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                                            };
-                                            return badRequestResponse;
-                                        }
-
-                                        log.LogLine("Starting video download for eventKey: " + eventKey + " from: " + eventData.eventLocalLink);
-                                        return await DownloadVideoFromUnifiProtect(eventData.eventLocalLink, eventKey);
+                                            StatusCode = (int)HttpStatusCode.BadRequest,
+                                            Body = JsonConvert.SerializeObject(new { msg = (ERROR_MESSAGE_400 + ERROR_EVENTKEY) }),
+                                            Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
+                                        };
+                                        return response;
                                     }
-                                    // Regular event retrieval
                                     else
                                     {
-                                        string eventKey = req.QueryStringParameters["eventKey"];
-                                        if(eventKey == null || eventKey.Length == 0)
-                                        {
-                                            // Return response
-                                            log.LogLine(ERROR_MESSAGE_400 + ERROR_EVENTKEY);
-                                            var response = new APIGatewayProxyResponse
-                                            {
-                                                StatusCode = (int)HttpStatusCode.BadRequest,
-                                                Body = JsonConvert.SerializeObject(new { msg = (ERROR_MESSAGE_400 + ERROR_EVENTKEY) }),
-                                                Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                                            };
-                                            return response;
-                                        }
-                                        else
-                                        {
-                                            log.LogLine("eventKey: " + eventKey);
-                                            return await GetEventFunction(eventKey);
-                                        }
+                                        log.LogLine("eventKey: " + eventKey);
+                                        return await GetEventFunction(eventKey);
                                     }
                                 }
                                 // Invalid route
@@ -890,17 +838,9 @@ namespace UnifiWebhookEventReceiver
         /// <param name="eventLocalLink">Direct URL to the event in Unifi Protect web interface</param>
         /// <param name="eventKey">Unique event identifier for naming the video file</param>
         /// <returns>API Gateway response indicating success or failure of video download</returns>
-        public static async Task<APIGatewayProxyResponse> DownloadVideoFromUnifiProtect(string eventLocalLink, string eventKey)
+        public static async Task<APIGatewayProxyResponse> DownloadVideoFromLocalUnifiProtect(string eventLocalLink, string eventKey)
         {
-            // TODO - REMOVE THIS LATER
-                UNIFI_HOST = "192.168.0.1";
-                UNIFI_USERNAME = "automation";
-                UNIFI_PASSWORD = "wuwduf-8jiqju-sUsjun";
-                //eventLocalLink = "https://192.168.0.1/protect/events/event/689e0fd900e9cf03e491403c";
-                eventLocalLink = "https://192.168.0.1/protect/events/event/689e0fd900e9cf03e491403c";
-
             log.LogLine($"Starting video download for event: {eventKey} from URL: {eventLocalLink}");
-            System.Console.WriteLine($"Starting video download for event: {eventKey} from URL: {eventLocalLink}");
 
             //Create a dictionary of coordinates for clicks to download videos
             int archiveButtonX = 1205;
@@ -932,11 +872,9 @@ namespace UnifiWebhookEventReceiver
                 var browserFetcher = new BrowserFetcher();
                 await browserFetcher.DownloadAsync();
                 log.LogLine("Chromium download completed successfully");
-                System.Console.WriteLine("Chromium download completed successfully");
 
                 // Launch headless browser
                 log.LogLine("Launching headless browser...");
-                System.Console.WriteLine("Launching headless browser...");
                 using var browser = await Puppeteer.LaunchAsync(new LaunchOptions
                 {
                     Headless = true, // Set to true for headless mode
@@ -977,7 +915,6 @@ namespace UnifiWebhookEventReceiver
                 });
 
                     log.LogLine($"Navigating to Unifi Protect: {eventLocalLink}");
-                    System.Console.WriteLine($"Navigating to Unifi Protect: {eventLocalLink}");
 
                     // Navigate to the event link
                     await page.GoToAsync(eventLocalLink, new NavigationOptions
@@ -995,7 +932,6 @@ namespace UnifiWebhookEventReceiver
                     var screenshotPath = Path.Combine(downloadDirectory, "login-screenshot.png");
                     await page.ScreenshotAsync(screenshotPath);
                     log.LogLine($"Screenshot taken: {screenshotPath}");
-                    System.Console.WriteLine($"Screenshot taken: {screenshotPath}");
 
                     // Check if username and password fields are present
                     if (usernameField != null && passwordField != null)
@@ -1014,7 +950,6 @@ namespace UnifiWebhookEventReceiver
                         {
                             await loginButton.ClickAsync();
                             log.LogLine("Login button clicked, waiting for authentication...");
-                            System.Console.WriteLine("Login button clicked, waiting for authentication...");
 
                             // Wait for navigation after login
                             await page.WaitForNavigationAsync(new NavigationOptions
@@ -1035,37 +970,30 @@ namespace UnifiWebhookEventReceiver
                     log.LogLine("Waiting for page to load...");
                     await Task.Delay(8000);
 
-                    //print line to console
-                    System.Console.WriteLine("Page loaded, preparing to click to download...");
                     log.LogLine("Page loaded, preparing to click to download...");
 
                     // Take a screenshot of the page
                     screenshotPath = Path.Combine(downloadDirectory, "pageload-screenshot.png");
                     await page.ScreenshotAsync(screenshotPath);
                     log.LogLine($"Screenshot taken of the loaded page: {screenshotPath}");
-                    System.Console.WriteLine($"Screenshot taken of the loaded page: {screenshotPath}");
 
                     // Click at click coordinates for archive button
                     await page.Mouse.ClickAsync(clickCoordinates["archiveButton"].x, clickCoordinates["archiveButton"].y);
                     log.LogLine("Clicked on archive button at coordinates: " + clickCoordinates["archiveButton"]);
-                    System.Console.WriteLine("Clicked on archive button at coordinates: " + clickCoordinates["archiveButton"]);
 
                     // Take a screenshot of the clicked archive button
                     screenshotPath = Path.Combine(downloadDirectory, "firstclick-screenshot.png");
                     await page.ScreenshotAsync(screenshotPath);
                     log.LogLine($"Screenshot taken of the clicked archive button: {screenshotPath}");
-                    System.Console.WriteLine($"Screenshot taken of the clicked archive button: {screenshotPath}");
 
                     // Click at click coordinates for download button
                     await page.Mouse.ClickAsync(clickCoordinates["downloadButton"].x, clickCoordinates["downloadButton"].y);
                     log.LogLine("Clicked on download button at coordinates: " + clickCoordinates["downloadButton"]);
-                    System.Console.WriteLine("Clicked on download button at coordinates: " + clickCoordinates["downloadButton"]);
 
                     // Take a screenshot of the clicked download button
                     screenshotPath = Path.Combine(downloadDirectory, "secondclick-screenshot.png");
                     await page.ScreenshotAsync(screenshotPath);
                     log.LogLine($"Screenshot taken of the clicked download button: {screenshotPath}");
-                    System.Console.WriteLine($"Screenshot taken of the clicked download button: {screenshotPath}");
 
                     // Wait for download to complete
                     log.LogLine("Waiting for video download to complete...");
@@ -1075,22 +1003,18 @@ namespace UnifiWebhookEventReceiver
                 var videoFiles = Directory.GetFiles(downloadDirectory, "*.mp4");
                 log.LogLine($"Searching for .mp4 video files in directory: {downloadDirectory}");
                 log.LogLine($"Found {videoFiles.Length} video files in the current directory.");
-                System.Console.WriteLine($"Found {videoFiles.Length} video files in the current directory.");
 
                 var latestVideoFile = videoFiles.OrderByDescending(f => f).FirstOrDefault();
                 log.LogLine($"Latest video file: {latestVideoFile}");
-                System.Console.WriteLine($"Latest video file: {latestVideoFile}");
 
                 byte[] videoData = File.ReadAllBytes(latestVideoFile);  
                 log.LogLine($"Video data size: {videoData.Length} bytes");
-                System.Console.WriteLine($"Video data size: {videoData.Length} bytes");
 
                 // Generate S3 key for the video file
                 var videoKey = $"videos/{eventKey}";
 
                     // Generate presigned URL for the downloaded video
                     log.LogLine($"Generating presigned URL for video key: {videoKey}");
-                    System.Console.WriteLine($"Generating presigned URL for video key: {videoKey}");
                     
                     if (string.IsNullOrEmpty(ALARM_BUCKET_NAME))
                     {
@@ -1100,16 +1024,13 @@ namespace UnifiWebhookEventReceiver
 
                     string presignedUrl = GeneratePreSignedURL(videoKey, HttpVerb.GET, EXPIRATION_SECONDS, "video/mp4");
                     log.LogLine($"Presigned URL generated: {presignedUrl}");
-                    System.Console.WriteLine($"Presigned URL generated: {presignedUrl}");
 
                     // Upload the video to S3
                 log.LogLine($"Uploading video to S3 bucket: {ALARM_BUCKET_NAME}, key: {videoKey}");
-                    System.Console.WriteLine($"Uploading video to S3 bucket: {ALARM_BUCKET_NAME}, key: {videoKey}");
                     
                     await UploadVideoToS3Async(ALARM_BUCKET_NAME, videoKey, videoData);
                     
                     log.LogLine($"Video successfully uploaded to S3: {ALARM_BUCKET_NAME}/{videoKey}");
-                    System.Console.WriteLine($"Video successfully uploaded to S3: {ALARM_BUCKET_NAME}/{videoKey}");
 
                 return new APIGatewayProxyResponse
                 {
@@ -1129,7 +1050,6 @@ namespace UnifiWebhookEventReceiver
                 }
                 catch (Exception ex)
                 {
-                    System.Console.WriteLine($"Error while processing video download: {ex.Message}");
                     log.LogLine($"Error while processing video download: {ex.Message}");
 
                     return new APIGatewayProxyResponse
