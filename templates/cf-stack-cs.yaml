@@ -65,6 +65,10 @@ Parameters:
     Type: String
     Description: Unifi Protect password for video downloads
     NoEcho: true
+  DownloadDirectory:
+    Type: String
+    Description: Directory path for temporary video downloads (defaults to /tmp for Lambda compatibility)
+    Default: "/tmp"
 
 # Resources
 Resources: 
@@ -340,6 +344,7 @@ Resources:
           UnifiHost: !Ref UnifiHost
           UnifiUsername: !Ref UnifiUsername
           UnifiPassword: !Ref UnifiPassword
+          DownloadDirectory: !Ref DownloadDirectory
       Tags: 
         - Key: "FunctionName"
           Value: !Sub "${FunctionName}"

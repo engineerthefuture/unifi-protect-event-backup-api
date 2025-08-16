@@ -114,6 +114,9 @@ namespace UnifiWebhookEventReceiver
         /// <summary>Unifi Protect password for authentication</summary>
         static string? UNIFI_PASSWORD = Environment.GetEnvironmentVariable("UnifiPassword");
 
+        /// <summary>Download directory for temporary video files. Defaults to /tmp for Lambda compatibility.</summary>
+        static string DOWNLOAD_DIRECTORY = Environment.GetEnvironmentVariable("DownloadDirectory") ?? "/tmp";
+
         /// <summary>AWS region for S3 operations</summary>
         static RegionEndpoint AWS_REGION = RegionEndpoint.USEast1;
         
@@ -906,8 +909,18 @@ namespace UnifiWebhookEventReceiver
                 // Create a new page
                 using var page = await browser.NewPageAsync();
 
-                // Set the download path for the page
-                var downloadDirectory = Path.Combine(Directory.GetCurrentDirectory(), "files");
+                // Set the download path for the page - use configurable directory with Lambda-compatible default
+                var downloadDirectory = DOWNLOAD_DIRECTORY;
+                
+                // Ensure the download directory exists
+                if (!Directory.Exists(downloadDirectory))
+                {
+                    Directory.CreateDirectory(downloadDirectory);
+                    log.LogLine($"Created download directory: {downloadDirectory}");
+                }
+                
+                log.LogLine($"Using download directory: {downloadDirectory}");
+                
                 await page.Client.SendAsync("Page.setDownloadBehavior", new
                 {
                     behavior = "allow",
