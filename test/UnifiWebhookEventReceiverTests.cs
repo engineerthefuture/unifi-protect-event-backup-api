@@ -29,25 +29,41 @@ namespace UnifiWebhookEventReceiver.Tests
         }
 
         [Fact]
-        public void FunctionHandler_ReturnsBadRequest_WhenRequestBodyIsNull()
+        public async Task FunctionHandler_ReturnsInternalServerError_WhenInvalidJson()
         {
             // Arrange
             SetEnv();
             var receiver = new UnifiWebhookEventReceiver();
             var context = new StubContext();
-            // Empty body stream (will yield empty string)
-            var stream = new MemoryStream();
+            var json = "invalid json";
+            var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(json));
 
             // Act
-            var response = receiver.FunctionHandler(stream, context);
+            var response = await receiver.FunctionHandler(stream, context);
 
             // Assert
-            Assert.Equal((int)HttpStatusCode.BadRequest, response.StatusCode);
-            Assert.Contains("malformed or invalid", response.Body);
+            Assert.Equal((int)HttpStatusCode.InternalServerError, response.StatusCode);
+            Assert.Contains("An internal server error has occured", response.Body);
         }
 
         [Fact]
-        public void FunctionHandler_ReturnsOptionsResponse_WhenOptionsMethod()
+        public async Task FunctionHandler_ReturnsBadRequest_WhenInputStreamIsNull()
+        {
+            // Arrange
+            SetEnv();
+            var receiver = new UnifiWebhookEventReceiver();
+            var context = new StubContext();
+
+            // Act
+            var response = await receiver.FunctionHandler(null, context);
+
+            // Assert
+            Assert.Equal((int)HttpStatusCode.BadRequest, response.StatusCode);
+            Assert.Contains("you must have a valid body object in your request", response.Body);
+        }
+
+        [Fact]
+        public async Task FunctionHandler_ReturnsOptionsResponse_WhenOptionsMethod()
         {
             // Arrange
             SetEnv();
@@ -58,7 +74,7 @@ namespace UnifiWebhookEventReceiver.Tests
             var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(json));
 
             // Act
-            var response = receiver.FunctionHandler(stream, context);
+            var response = await receiver.FunctionHandler(stream, context);
 
             // Assert
             Assert.Equal((int)HttpStatusCode.OK, response.StatusCode);

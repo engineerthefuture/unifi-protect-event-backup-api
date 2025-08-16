@@ -3,10 +3,15 @@ name: Build, Test, and Deploy CloudFormation Stack for Unifi Webhook Event Recei
 
 # This workflow builds the application, runs unit tests, and deploys to AWS
 # Deployment will only proceed if all unit tests pass
+# Deploys to 'prod' environment from main branch, 'dev' environment from other branches
 on:
   push:
     branches:
       - main
+      - 'feature-**'
+      - 'bugfix-**'
+      - 'hotfix-**'
+      - dev
 
 jobs:
   # Build job: Compiles code, runs tests, and prepares deployment artifacts
@@ -24,6 +29,27 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Determine environment
+        id: env
+        run: |
+          if [[ "${{ github.ref_name }}" == "main" ]]; then
+            echo "ENV_PREFIX=prod" >> $GITHUB_OUTPUT
+            echo "STACK_NAME=bf-prod-unifi-protect-event-backup-api" >> $GITHUB_OUTPUT
+            echo "BUCKET_DEPLOYMENT=bf-prod-s3-deployments" >> $GITHUB_OUTPUT
+            echo "BUCKET_STORAGE=bf-prod-s3-unifi-protect-event-backup-api" >> $GITHUB_OUTPUT
+            echo "LAMBDA_NAME=bf-prod-lambda-unifi-protect-event-backup-api" >> $GITHUB_OUTPUT
+            echo "S3_KEY_PREFIX=bf-prod-lambda-unifi-protect-event-backup-api" >> $GITHUB_OUTPUT
+          else
+            echo "ENV_PREFIX=dev" >> $GITHUB_OUTPUT
+            echo "STACK_NAME=bf-dev-unifi-protect-event-backup-api" >> $GITHUB_OUTPUT
+            echo "BUCKET_DEPLOYMENT=bf-dev-s3-deployments" >> $GITHUB_OUTPUT
+            echo "BUCKET_STORAGE=bf-dev-s3-unifi-protect-event-backup-api" >> $GITHUB_OUTPUT
+            echo "LAMBDA_NAME=bf-dev-lambda-unifi-protect-event-backup-api" >> $GITHUB_OUTPUT
+            echo "S3_KEY_PREFIX=bf-dev-lambda-unifi-protect-event-backup-api" >> $GITHUB_OUTPUT
+          fi
+          echo "Deploying to environment: $ENV_PREFIX"
+          echo "Stack name: $STACK_NAME"
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -137,7 +163,7 @@ jobs:
       - name: Upload Lambda package to S3
         if: steps.test.outcome == 'success'
         run: |
-          aws s3 cp lambda.zip s3://bf-prod-s3-deployments/bf-prod-lambda-unifi-protect-event-backup-api/publish.zip
+          aws s3 cp lambda.zip s3://${{ steps.env.outputs.BUCKET_DEPLOYMENT }}/${{ steps.env.outputs.S3_KEY_PREFIX }}/publish.zip
 
   # Deploy job: Deploys the CloudFormation stack and updates Lambda function code
   # Only runs if the build job (including tests) completes successfully
@@ -156,6 +182,27 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Determine environment
+        id: env
+        run: |
+          if [[ "${{ github.ref_name }}" == "main" ]]; then
+            echo "ENV_PREFIX=prod" >> $GITHUB_OUTPUT
+            echo "STACK_NAME=bf-prod-unifi-protect-event-backup-api" >> $GITHUB_OUTPUT
+            echo "BUCKET_DEPLOYMENT=bf-prod-s3-deployments" >> $GITHUB_OUTPUT
+            echo "BUCKET_STORAGE=bf-prod-s3-unifi-protect-event-backup-api" >> $GITHUB_OUTPUT
+            echo "LAMBDA_NAME=bf-prod-lambda-unifi-protect-event-backup-api" >> $GITHUB_OUTPUT
+            echo "S3_KEY_PREFIX=bf-prod-lambda-unifi-protect-event-backup-api" >> $GITHUB_OUTPUT
+          else
+            echo "ENV_PREFIX=dev" >> $GITHUB_OUTPUT
+            echo "STACK_NAME=bf-dev-unifi-protect-event-backup-api" >> $GITHUB_OUTPUT
+            echo "BUCKET_DEPLOYMENT=bf-dev-s3-deployments" >> $GITHUB_OUTPUT
+            echo "BUCKET_STORAGE=bf-dev-s3-unifi-protect-event-backup-api" >> $GITHUB_OUTPUT
+            echo "LAMBDA_NAME=bf-dev-lambda-unifi-protect-event-backup-api" >> $GITHUB_OUTPUT
+            echo "S3_KEY_PREFIX=bf-dev-lambda-unifi-protect-event-backup-api" >> $GITHUB_OUTPUT
+          fi
+          echo "Deploying to environment: $ENV_PREFIX"
+          echo "Stack name: $STACK_NAME"
+
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -166,21 +213,29 @@ jobs:
         run: |
           aws cloudformation deploy \
             --template-file templates/cf-stack-cs.yaml \
-            --stack-name bf-prod-unifi-protect-event-backup-api \
+            --stack-name ${{ steps.env.outputs.STACK_NAME }} \
             --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
             --parameter-overrides \
               OwnerName="${{ vars.OWNER_NAME }}" \
               AppName="${{ vars.APP_NAME }}" \
               AppDescription="${{ vars.APP_DESCRIPTION }}" \
-              BucketNameDeployment="bf-prod-s3-deployments" \
+              EnvPrefix="${{ steps.env.outputs.ENV_PREFIX }}" \
+              BucketName="${{ steps.env.outputs.BUCKET_STORAGE }}" \
+              BucketNameDeployment="${{ steps.env.outputs.BUCKET_DEPLOYMENT }}" \
+              FunctionName="${{ steps.env.outputs.LAMBDA_NAME }}" \
+              RoleName="${{ steps.env.outputs.LAMBDA_NAME }}-role" \
+              UnifiHost="${{ secrets.UNIFI_HOST }}" \
+              UnifiUsername="${{ secrets.UNIFI_USERNAME }}" \
+              UnifiPassword="${{ secrets.UNIFI_PASSWORD }}" \
             --tags \
               Owner="${{ vars.OWNER_NAME }}" \
               AppName="${{ vars.APP_NAME }}" \
-              Description="${{ vars.APP_DESCRIPTION }}"
+              Description="${{ vars.APP_DESCRIPTION }}" \
+              Environment="${{ steps.env.outputs.ENV_PREFIX }}"
 
       - name: Update Lambda function code
         run: |
           aws lambda update-function-code \
-            --function-name bf-prod-lambda-unifi-protect-event-backup-api \
-            --s3-bucket bf-prod-s3-deployments \
-            --s3-key bf-prod-lambda-unifi-protect-event-backup-api/publish.zip
+            --function-name ${{ steps.env.outputs.LAMBDA_NAME }} \
+            --s3-bucket ${{ steps.env.outputs.BUCKET_DEPLOYMENT }} \
+            --s3-key ${{ steps.env.outputs.S3_KEY_PREFIX }}/publish.zip

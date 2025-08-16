@@ -22,27 +22,27 @@ Parameters:
     Description: Name of the application
     AllowedPattern: "[a-zA-Z][a-zA-Z0-9_-]*"
   EnvPrefix:
-    Default: prod
+    Default: dev
     Type: String
-    Description: Prefix for the environment
+    Description: Prefix for the environment (dev, prod, staging)
+    AllowedValues:
+      - dev
+      - prod
+      - staging
     AllowedPattern: "[a-zA-Z][a-zA-Z0-9_-]*"
   BucketName:
-    Default: bf-prod-s3-unifi-protect-event-backup-api
     Type: String
     Description: Bucket name for Unifi Protect event backup API
     AllowedPattern: "[a-zA-Z][a-zA-Z0-9_-]*"
   BucketNameDeployment:
-    Default: bf-prod-s3-deployments
     Type: String
     Description: S3 bucket for Lambda deployments
     AllowedPattern: "[a-zA-Z][a-zA-Z0-9_-]*"
   FunctionName:
-    Default: bf-prod-lambda-unifi-protect-event-backup-api
     Type: String
     Description: Lambda function to create.
     AllowedPattern: "[a-zA-Z][a-zA-Z0-9_-]*"
   RoleName:
-    Default: bf-prod-lambda-unifi-protect-event-backup-api-role
     Type: String
     Description: Lambda function role to create.
     AllowedPattern: "[a-zA-Z][a-zA-Z0-9_-]*"
@@ -54,6 +54,21 @@ Parameters:
     Default: "Unifi webhook alarm event processing and backup API"
     Type: String
     Description: App description
+  UnifiHost:
+    Type: String
+    Description: Unifi Protect hostname or IP address (e.g., udm.local, 192.168.1.1)
+  UnifiUsername:
+    Type: String
+    Description: Unifi Protect username for video downloads
+    NoEcho: true
+  UnifiPassword:
+    Type: String
+    Description: Unifi Protect password for video downloads
+    NoEcho: true
+  DownloadDirectory:
+    Type: String
+    Description: Directory path for temporary video downloads (defaults to /tmp for Lambda compatibility)
+    Default: "/tmp"
 
 # Resources
 Resources: 
@@ -89,7 +104,7 @@ Resources:
   LambdaRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub "${FunctionName}-role"
+      RoleName: !Ref RoleName
       AssumeRolePolicyDocument:
         Statement:
           - Action:
@@ -108,7 +123,7 @@ Resources:
       Path: /
       Tags: 
         - Key: "Name"
-          Value: !Sub "${FunctionName}-role"
+          Value: !Ref RoleName
       
   # S3 Bucket for storing uploaded files
   S3Bucket:
@@ -326,6 +341,10 @@ Resources:
           DeviceMac28704E113C44: "Side"
           DeviceMac28704E113F33: "Backyard West"
           DeviceMacF4E2C677E20F: "Door"
+          UnifiHost: !Ref UnifiHost
+          UnifiUsername: !Ref UnifiUsername
+          UnifiPassword: !Ref UnifiPassword
+          DownloadDirectory: !Ref DownloadDirectory
       Tags: 
         - Key: "FunctionName"
           Value: !Sub "${FunctionName}"
