@@ -379,9 +379,16 @@ namespace UnifiWebhookEventReceiver
             try
             {
                 // Handle scheduled events
-                if (string.IsNullOrEmpty(requestBody) || requestBody.Contains(SOURCE_EVENT_TRIGGER))
+                if (!string.IsNullOrEmpty(requestBody) && requestBody.Contains(SOURCE_EVENT_TRIGGER))
                 {
                     return HandleScheduledEvent();
+                }
+
+                // Handle empty request body as bad request
+                if (string.IsNullOrEmpty(requestBody))
+                {
+                    log.LogLine(ERROR_MESSAGE_400 + ERROR_GENERAL);
+                    return CreateErrorResponse(HttpStatusCode.BadRequest, ERROR_MESSAGE_400 + ERROR_GENERAL);
                 }
 
                 // Parse the request
@@ -422,10 +429,17 @@ namespace UnifiWebhookEventReceiver
             {
                 return JsonConvert.DeserializeObject<APIGatewayProxyRequest>(requestBody);
             }
+            catch (JsonException e)
+            {
+                logger.LogLine("Failed to deserialize API Gateway request from: " + requestBody + ". Error: " + e.Message);
+                // For JSON parsing errors, throw to trigger 500 error
+                throw;
+            }
             catch (Exception e)
             {
                 logger.LogLine("Failed to deserialize API Gateway request from: " + requestBody + ". Error: " + e.Message);
-                return null;
+                // For other errors, throw to trigger 500 error
+                throw;
             }
         }
 

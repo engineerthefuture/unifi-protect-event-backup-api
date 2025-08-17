@@ -1,0 +1,25 @@
+🔍 CYCLOMATIC COMPLEXITY ANALYSIS 🔍
+=====================================
+📊 Analyzing complexity in source files...
+
+📄 Event.cs:
+   Decision points:
+   - if: 0, else: 0, while: 0, for: 0
+   - foreach: 0, switch: 0, case: 0, catch: 0
+   - &&: 0, ||: 0
+   📈 Total complexity: 1
+   ✅ Low complexity
+
+📄 UnifiWebhookEventReceiver.cs:
+   Decision points:
+   - if: 62, else: 7, while: 4, for: 0
+   - foreach: 3, switch: 0, case: 0, catch: 28
+   - &&: 12, ||: 5
+   📈 Total complexity: 122
+   🔴 High complexity - consider refactoring
+
+💡 Use these tools for detailed analysis:
+• SonarQube/SonarCloud for comprehensive metrics
+• Visual Studio Code with SonarLint extension
+• dotnet-counters for runtime analysis
+• Code Metrics PowerTool for Visual Studio

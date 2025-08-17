@@ -256,18 +256,23 @@ jobs:
         with:
           recreate: true
           message: |
-            ## 📊 Code Coverage Report
+            ## 📊 Code Quality Report
             
+            ### Coverage Analysis
             Coverage reports have been generated and uploaded as artifacts.
             
             You can download the detailed HTML coverage report from the workflow run artifacts.
             
-            ### Quick Stats
+            ### Complexity Analysis  
+            Cyclomatic complexity analysis has been performed. Check the workflow logs and complexity-results artifacts for detailed metrics.
+            
+            ### Quality Metrics
             - **Line Coverage**: Check the detailed report for exact percentages
             - **Branch Coverage**: Detailed branch analysis available
-            - **Cyclomatic Complexity**: Method complexity metrics included
+            - **Cyclomatic Complexity**: Method complexity metrics included in artifacts
+            - **Overall Code Health**: Quality assessment complete
             
-            📈 Full interactive HTML report available in workflow artifacts!
+            📈 Full interactive HTML coverage report and complexity analysis available in workflow artifacts!
 
       - name: Display test results summary
         if: always()
@@ -308,6 +313,66 @@ jobs:
             find ./coverage-results -type f -name "*.xml" -o -name "*.json" -o -name "*.html" | head -20
           fi
 
+      - name: Run Complexity Analysis
+        if: always()
+        run: |
+          echo "🔍 Running Cyclomatic Complexity Analysis..."
+          chmod +x ./complexity-simple.sh
+          ./complexity-simple.sh > complexity-results.txt 2>&1
+          
+          echo "📊 Complexity Analysis Results:"
+          cat complexity-results.txt
+          
+          # Extract complexity score for main file
+          complexity_score=$(grep -A10 "UnifiWebhookEventReceiver.cs" complexity-results.txt | grep "Total complexity:" | grep -o '[0-9]\+' | head -1)
+          echo "COMPLEXITY_SCORE=${complexity_score:-0}" >> $GITHUB_ENV
+          
+          # Create complexity summary file
+          echo "${complexity_score:-0}" > complexity_score.txt
+          
+          # Determine complexity status
+          if [ "${complexity_score:-0}" -le 50 ]; then
+            echo "COMPLEXITY_STATUS=✅ Low" >> $GITHUB_ENV
+            echo "✅ Low" > complexity_status.txt
+            echo "✅" > complexity_icon.txt
+          elif [ "${complexity_score:-0}" -le 100 ]; then
+            echo "COMPLEXITY_STATUS=⚠️ Moderate" >> $GITHUB_ENV
+            echo "⚠️ Moderate" > complexity_status.txt
+            echo "⚠️" > complexity_icon.txt
+          else
+            echo "COMPLEXITY_STATUS=🔴 High" >> $GITHUB_ENV
+            echo "🔴 High" > complexity_status.txt
+            echo "🔴" > complexity_icon.txt
+          fi
+
+      - name: Upload complexity results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: complexity-results
+          path: |
+            complexity-results.txt
+            complexity_score.txt
+            complexity_status.txt
+            complexity_icon.txt
+
+      - name: Complexity Quality Gate
+        if: always()
+        run: |
+          echo "🎯 Checking complexity quality gate..."
+          complexity_score=$(cat complexity_score.txt 2>/dev/null || echo "0")
+          
+          # Currently set to warning-only (threshold: 200)
+          # To enforce stricter limits, lower this threshold and change to exit 1
+          if [ "${complexity_score}" -gt 200 ]; then
+            echo "⚠️ WARNING: Complexity score ${complexity_score} exceeds recommended threshold of 200"
+            echo "Consider refactoring to improve maintainability"
+            # Uncomment the next line to fail the build on high complexity:
+            # exit 1
+          else
+            echo "✅ Complexity score ${complexity_score} is within acceptable limits"
+          fi
+
       - name: Test Summary
         if: always()
         run: |
@@ -341,6 +406,15 @@ jobs:
               print(f'Could not parse coverage: {e}')
               sys.exit(0)
           EOF
+            fi
+            
+            # Display quality metrics summary
+            echo ""
+            echo "📋 Quality Metrics Summary:"
+            echo "=========================="
+            echo "${COMPLEXITY_ICON} Complexity Score: ${COMPLEXITY_SCORE} (${COMPLEXITY_STATUS})"
+            if [ -f "coverage_summary.txt" ]; then
+              echo "📊 Coverage: $(cat coverage_summary.txt)"
             fi
           else
             echo "❌ Unit tests failed! Deployment will be skipped."
