@@ -174,9 +174,9 @@ graph TB
     
     %% GET endpoints
     API -->|GET /?eventKey=xxx| HANDLER
-    API -->|GET /video?eventKey=xxx| HANDLER
+    API -->|GET /latestvideo| HANDLER
     HANDLER -->|Retrieve Event| S3
-    HANDLER -->|Download Video| BROWSER
+    HANDLER -->|Download Latest Video| S3
     S3 -->|JSON/Video Response| API
     
     %% Environment separation
@@ -229,6 +229,16 @@ Retrieves stored alarm event data
 - **Authentication**: API Key required
 - **Parameters**: `eventKey` - Event identifier (format: `{deviceMac}_{timestamp}.json`)
 - **Response**: Complete alarm event JSON object
+
+#### 3. Latest Video Access - `GET /{stage}/latestvideo`
+Provides presigned URL for downloading the most recent video file from all stored events
+- **Purpose**: Get secure download URL for the latest MP4 video file
+- **Authentication**: API Key required
+- **Parameters**: None required
+- **Response**: JSON with presigned S3 URL and metadata (URL expires in 1 hour)
+- **File Naming**: Suggested filename `latest_video_{YYYY-MM-DD_HH-mm-ss}.mp4`
+- **Optimization**: Efficiently searches from today's date folder backwards, day by day
+- **Payload Limit Solution**: Uses presigned URLs to handle large video files (>6MB) that exceed API Gateway limits
 
 ### OpenAPI 3.0 Specification
 
@@ -298,6 +308,22 @@ Retrieves a stored alarm event by its unique key.
 - `eventKey`: Unique event identifier (format: `{deviceMac}_{timestamp}.json`)
 
 **Response**: JSON alarm event data
+
+#### GET /latestvideo
+Returns a presigned URL for downloading the most recent video file from all stored events.
+
+**Parameters**: None required
+
+**Response**: JSON object containing:
+- `downloadUrl`: Presigned S3 URL for direct video download (expires in 1 hour)
+- `filename`: Suggested filename (`latest_video_{YYYY-MM-DD_HH-mm-ss}.mp4`)
+- `videoKey`: S3 object key for the video file
+- `timestamp`: Unix timestamp when the event occurred
+- `eventDate`: Human-readable event date and time
+- `expiresAt`: When the download URL expires
+- `message`: Instructions for using the download URL
+
+**Why Presigned URL?**: Video files typically exceed API Gateway's 6MB payload limit, so this endpoint returns a secure, time-limited URL for direct S3 download instead of the video data itself.
 
 #### OPTIONS /alarmevent
 Handles CORS preflight requests for web client support.

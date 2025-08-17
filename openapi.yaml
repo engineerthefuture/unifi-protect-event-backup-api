@@ -3,19 +3,26 @@ info:
   title: Unifi Protect Event Backup API
   description: |
     AWS Lambda function that receives and processes webhook events from Unifi Dream Machine Protect systems, 
-    storing alarm event data in S3 for backup and analysis.
+    storing alarm event data and video files in S3 for backup and analysis.
     
     ## Features
     - Real-time webhook processing from Unifi Protect systems
     - Secure S3 storage with date-organized folder structure
     - Device MAC address to human-readable name mapping
     - RESTful event retrieval API
+    - Direct video file download with optimized search
     - Comprehensive CORS support for web clients
     
     ## Architecture
     This serverless application uses AWS Lambda, API Gateway, and S3 to provide a scalable, 
-    cost-effective solution for backing up Unifi Protect alarm events. Events are automatically 
-    organized by date and enriched with device names for easy identification.
+    cost-effective solution for backing up Unifi Protect alarm events and video files. Events are automatically 
+    organized by date and enriched with device names for easy identification. Video files are downloaded
+    directly from Unifi Protect and stored alongside event metadata.
+    
+    ## Video Download Optimization
+    The latest video endpoint uses an efficient search algorithm that leverages the date-organized
+    folder structure in S3. Instead of scanning all objects, it starts from today's date folder
+    and works backwards day by day until a video is found, making retrieval fast and cost-effective.
     
     ## Authentication
     All endpoints require an API key passed in the `X-API-Key` header. The API key is generated 
@@ -439,6 +446,163 @@ paths:
                   value:
                     msg: "Server configuration error: StorageBucket not configured"
 
+  /latestvideo:
+    get:
+      summary: Get latest video download URL
+      description: |
+        Finds the most recent video file (.mp4) from stored alarm events and returns a presigned URL for download.
+        
+        **Why Presigned URL?**
+        Video files typically exceed API Gateway's 6MB payload limit, so instead of returning the video data directly,
+        this endpoint returns a secure, time-limited URL that allows direct download from S3. This approach is more
+        efficient and can handle videos of any size.
+        
+        **Search Algorithm:**
+        This endpoint uses an optimized search that efficiently searches through date-organized 
+        folders in S3 to find the most recent video file. It starts from today's date folder 
+        and works backwards day by day until a video is found, making it much more efficient 
+        than scanning all objects in the bucket.
+        
+        **Search Process:**
+        1. Start from today's date folder (YYYY-MM-DD format)
+        2. Search for .mp4 files in that folder
+        3. If found, return metadata for the one with the highest timestamp
+        4. If not found, move to previous day and repeat
+        5. Continue for up to 30 days maximum
+        
+        **File Format:**
+        Video files follow the naming pattern: `{deviceMac}_{timestamp}.mp4`
+        - **deviceMac**: 12-character hexadecimal MAC address
+        - **timestamp**: Unix timestamp in milliseconds when the event occurred
+        
+        **Storage Organization:**
+        Videos are stored in S3 with date-based organization:
+        `s3://{bucket}/{YYYY-MM-DD}/{deviceMac}_{timestamp}.mp4`
+        
+        **Response Format:**
+        Returns JSON containing:
+        - **downloadUrl**: Presigned S3 URL for direct download (expires in 1 hour)
+        - **filename**: Suggested filename for download
+        - **metadata**: Event timestamp, date, and video key information
+        
+        **Security:**
+        - Presigned URLs expire after 1 hour for security
+        - URLs include proper Content-Disposition headers for filename handling
+        - Direct S3 access without requiring API credentials
+        
+        **Use Cases:**
+        - Quick access to most recent security footage
+        - Automated monitoring systems that can handle URLs
+        - Mobile applications for security alerts
+        - Integration with notification systems
+      operationId: getLatestVideo
+      tags:
+        - Video Retrieval
+      responses:
+        '200':
+          description: Latest video metadata and download URL successfully retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - downloadUrl
+                  - filename
+                  - videoKey
+                  - timestamp
+                  - eventDate
+                  - expiresAt
+                  - message
+                properties:
+                  downloadUrl:
+                    type: string
+                    format: uri
+                    description: |
+                      Presigned S3 URL for direct video download. This URL expires after 1 hour for security.
+                      The URL includes proper headers to suggest the filename when downloaded.
+                    example: "https://s3.amazonaws.com/bucket/2025-01-17/28704E113F33_1739819436108.mp4?AWSAccessKeyId=...&Expires=...&Signature=..."
+                  filename:
+                    type: string
+                    description: |
+                      Suggested filename for the video download based on the event timestamp.
+                      Format: latest_video_{YYYY-MM-DD_HH-mm-ss}.mp4
+                    example: "latest_video_2025-01-17_20-43-56.mp4"
+                  videoKey:
+                    type: string
+                    description: |
+                      S3 object key for the video file, useful for logging and tracking.
+                      Format: {YYYY-MM-DD}/{deviceMac}_{timestamp}.mp4
+                    example: "2025-01-17/28704E113F33_1739819436108.mp4"
+                  timestamp:
+                    type: integer
+                    format: int64
+                    description: |
+                      Unix timestamp in milliseconds when the alarm event occurred.
+                    example: 1739819436108
+                  eventDate:
+                    type: string
+                    description: |
+                      Human-readable date and time when the event occurred.
+                      Format: YYYY-MM-DD HH:mm:ss
+                    example: "2025-01-17 20:43:56"
+                  expiresAt:
+                    type: string
+                    description: |
+                      When the download URL expires in UTC.
+                      Format: YYYY-MM-DD HH:mm:ss UTC
+                    example: "2025-01-17 21:43:56 UTC"
+                  message:
+                    type: string
+                    description: |
+                      Instructions for using the download URL.
+                    example: "Use the downloadUrl to download the video file directly. URL expires in 1 hour."
+              examples:
+                motionVideo:
+                  summary: Motion detection video URL
+                  description: "Download URL for motion detection event from Backyard West camera"
+                  value:
+                    downloadUrl: "https://s3.amazonaws.com/unifi-events/2025-01-17/28704E113F33_1739819436108.mp4?AWSAccessKeyId=AKIAIOSFODNN7EXAMPLE&Expires=1739823036&Signature=example..."
+                    filename: "latest_video_2025-01-17_20-43-56.mp4"
+                    videoKey: "2025-01-17/28704E113F33_1739819436108.mp4"
+                    timestamp: 1739819436108
+                    eventDate: "2025-01-17 20:43:56"
+                    expiresAt: "2025-01-17 21:43:56 UTC"
+                    message: "Use the downloadUrl to download the video file directly. URL expires in 1 hour."
+        '404':
+          description: No video files found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                noVideos:
+                  summary: No videos in storage
+                  value:
+                    msg: "No video files found"
+                searchTimeout:
+                  summary: No videos found within search window
+                  value:
+                    msg: "No video files found in the last 30 days"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                s3Error:
+                  summary: S3 access error
+                  value:
+                    msg: "Error retrieving latest video: Access denied"
+                configError:
+                  summary: Configuration error
+                  value:
+                    msg: "Server configuration error: StorageBucket not configured"
+                searchError:
+                  summary: Search algorithm error
+                  value:
+                    msg: "Error retrieving latest video: Failed to search date folders"
+
 components:
   securitySchemes:
     ApiKeyAuth:
@@ -749,6 +913,22 @@ tags:
       - Historical analysis
       - Event correlation
       - Audit trails
+      
+  - name: Video Retrieval
+    description: |
+      Direct access to video files associated with alarm events.
+      
+      **Features:**
+      - Optimized search using date-organized folder structure
+      - Efficient backwards chronological search algorithm
+      - Binary MP4 file download with proper headers
+      - Automatic filename suggestion based on event timestamp
+      
+      **Use Cases:**
+      - Quick access to recent security footage
+      - Mobile security applications
+      - Automated monitoring and alerting
+      - Integration with third-party security systems
       
   - name: CORS
     description: |

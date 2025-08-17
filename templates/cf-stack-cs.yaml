@@ -72,11 +72,11 @@ Parameters:
   ArchiveButtonX:
     Type: Number
     Description: X coordinate for archive button click in Unifi Protect UI
-    Default: 1274
+    Default: 1205
   ArchiveButtonY:
     Type: Number
     Description: Y coordinate for archive button click in Unifi Protect UI
-    Default: 257
+    Default: 242
   DownloadButtonX:
     Type: Number
     Description: X coordinate for download button click in Unifi Protect UI

@@ -44,6 +44,7 @@ namespace UnifiWebhookEventReceiver
     /// Supported HTTP methods:
     /// - POST /alarmevent: Processes alarm webhook events from Unifi Protect
     /// - GET /?eventKey={key}: Retrieves stored alarm event data
+    /// - GET /latestvideo: Downloads the most recent video file as MP4
     /// - OPTIONS: Handles CORS preflight requests for web client support
     /// 
     /// Environment Variables Required:
@@ -55,13 +56,16 @@ namespace UnifiWebhookEventReceiver
     /// - UnifiUsername: Username for Unifi Protect authentication
     /// - UnifiPassword: Password for Unifi Protect authentication
     /// - DownloadDirectory: Directory for temporary video files (defaults to /tmp)
-    /// - ArchiveButtonX: X coordinate for archive button click 
-    /// - ArchiveButtonY: Y coordinate for archive button click 
-    /// - DownloadButtonX: X coordinate for download button click 
-    /// - DownloadButtonY: Y coordinate for download button click 
+    /// - ArchiveButtonX: X coordinate for archive button click (used for "Door" device, defaults to 1274)
+    /// - ArchiveButtonY: Y coordinate for archive button click (used for "Door" device, defaults to 257)
+    /// - DownloadButtonX: X coordinate for download button click (used for "Door" device, defaults to 1095)
+    /// - DownloadButtonY: Y coordinate for download button click (used for "Door" device, defaults to 275)
+    /// 
+    /// Note: For devices other than "Door", coordinates are automatically adjusted to (1205, 241) for archive
+    /// and (1026, 259) for download to accommodate different UI layouts in Unifi Protect.
     /// 
     /// Dependencies:
-    /// - For local development, ensure PuppeteerSharp can download browser or provide custom path
+    /// - For local development, ensure HeadlessChromium can be initialized properly
     /// </summary>
     public class UnifiWebhookEventReceiver
     {
@@ -96,6 +100,9 @@ namespace UnifiWebhookEventReceiver
 
         /// <summary>API route for alarm event webhook processing</summary>
         const string ROUTE_ALARM = "alarmevent";
+
+        /// <summary>API route for latest video download</summary>
+        const string ROUTE_LATEST_VIDEO = "latestvideo";
 
         /// <summary>Event source identifier for AWS scheduled events</summary>
         const string SOURCE_EVENT_TRIGGER = "aws.events";
@@ -384,23 +391,33 @@ namespace UnifiWebhookEventReceiver
                                 // Get request to download an event object received
                                 else if (method == HttpMethod.Get.ToString().ToUpper())
                                 {
-                                    string eventKey = req.QueryStringParameters["eventKey"];
-                                    if (eventKey == null || eventKey.Length == 0)
+                                    // Check for latest video route
+                                    if (route == ROUTE_LATEST_VIDEO)
                                     {
-                                        // Return response
-                                        log.LogLine(ERROR_MESSAGE_400 + ERROR_EVENTKEY);
-                                        var response = new APIGatewayProxyResponse
-                                        {
-                                            StatusCode = (int)HttpStatusCode.BadRequest,
-                                            Body = JsonConvert.SerializeObject(new { msg = (ERROR_MESSAGE_400 + ERROR_EVENTKEY) }),
-                                            Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                                        };
-                                        return response;
+                                        log.LogLine("Latest video request received");
+                                        return await GetLatestVideoFunction();
                                     }
+                                    // Default event retrieval by eventKey
                                     else
                                     {
-                                        log.LogLine("eventKey: " + eventKey);
-                                        return await GetEventFunction(eventKey);
+                                        string eventKey = req.QueryStringParameters["eventKey"];
+                                        if (eventKey == null || eventKey.Length == 0)
+                                        {
+                                            // Return response
+                                            log.LogLine(ERROR_MESSAGE_400 + ERROR_EVENTKEY);
+                                            var response = new APIGatewayProxyResponse
+                                            {
+                                                StatusCode = (int)HttpStatusCode.BadRequest,
+                                                Body = JsonConvert.SerializeObject(new { msg = (ERROR_MESSAGE_400 + ERROR_EVENTKEY) }),
+                                                Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
+                                            };
+                                            return response;
+                                        }
+                                        else
+                                        {
+                                            log.LogLine("eventKey: " + eventKey);
+                                            return await GetEventFunction(eventKey);
+                                        }
                                     }
                                 }
                                 // Invalid route
@@ -581,7 +598,7 @@ namespace UnifiWebhookEventReceiver
 
                     // Get the video file byte array
                     eventLocalLink = UNIFI_HOST + alarm.eventPath;
-                    byte[] videoData = await GetVideoFromLocalUnifiProtectViaHeadlessClient(eventLocalLink);
+                    byte[] videoData = await GetVideoFromLocalUnifiProtectViaHeadlessClient(eventLocalLink, deviceName);
 
                     // Upload the video file to S3
                     await UploadFileAsync(ALARM_BUCKET_NAME, videoFileKey, videoData, "video/mp4");
@@ -909,26 +926,321 @@ namespace UnifiWebhookEventReceiver
             }
         }
 
+        /// <summary>
+        /// Retrieves the latest video from S3 and returns a presigned URL for download.
+        /// 
+        /// This method efficiently searches through date-organized folders in S3 to find the most recent
+        /// video file (.mp4) based on the timestamp in the filename. It starts from today's date folder
+        /// and works backwards day by day until a video is found, making it much more efficient than
+        /// scanning all objects in the bucket.
+        /// 
+        /// Instead of returning the video data directly (which would exceed API Gateway's 6MB limit),
+        /// this method returns a presigned URL that allows direct download from S3. The URL expires
+        /// after 1 hour for security purposes.
+        /// 
+        /// The search looks through folders in YYYY-MM-DD format and finds files matching
+        /// the pattern {deviceMac}_{timestamp}.mp4, returning metadata and download URL for the one 
+        /// with the highest timestamp from the most recent date that contains videos.
+        /// </summary>
+        /// <returns>API Gateway response containing download URL and metadata, or error message</returns>
+        public static async Task<APIGatewayProxyResponse> GetLatestVideoFunction()
+        {
+            log.LogLine("Executing Get latest video function");
+
+            try
+            {
+                if (string.IsNullOrEmpty(ALARM_BUCKET_NAME))
+                {
+                    log.LogLine("StorageBucket environment variable is not configured");
+                    return new APIGatewayProxyResponse
+                    {
+                        StatusCode = (int)HttpStatusCode.InternalServerError,
+                        Body = JsonConvert.SerializeObject(new { msg = "Server configuration error: StorageBucket not configured" }),
+                        Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
+                    };
+                }
+
+                // Search for latest video using date-organized folder structure
+                log.LogLine("Searching for latest video file in S3 bucket using date-organized approach: " + ALARM_BUCKET_NAME);
+
+                string? latestVideoKey = null;
+                long latestTimestamp = 0;
+
+                // Start from today and work backwards day by day
+                DateTime searchDate = DateTime.UtcNow.Date;
+                int maxDaysToSearch = 30; // Limit search to avoid infinite loops
+                int daysSearched = 0;
+
+                while (latestVideoKey == null && daysSearched < maxDaysToSearch)
+                {
+                    string dateFolder = searchDate.ToString("yyyy-MM-dd");
+                    log.LogLine($"Searching for videos in date folder: {dateFolder}");
+
+                    var listRequest = new ListObjectsV2Request
+                    {
+                        BucketName = ALARM_BUCKET_NAME,
+                        Prefix = dateFolder + "/",
+                        MaxKeys = 1000 // Should be plenty for a single day
+                    };
+
+                    string? dayLatestVideoKey = null;
+                    long dayLatestTimestamp = 0;
+
+                    // Search through all objects in this date folder
+                    do
+                    {
+                        var response = await s3Client.ListObjectsV2Async(listRequest);
+
+                        foreach (var obj in response.S3Objects)
+                        {
+                            // Look for .mp4 files
+                            if (obj.Key.EndsWith(".mp4"))
+                            {
+                                // Extract timestamp from filename: {dateFolder}/{deviceMac}_{timestamp}.mp4
+                                var fileName = Path.GetFileName(obj.Key);
+                                var underscoreIndex = fileName.LastIndexOf('_');
+                                var dotIndex = fileName.LastIndexOf('.');
+
+                                if (underscoreIndex > 0 && dotIndex > underscoreIndex)
+                                {
+                                    var timestampStr = fileName.Substring(underscoreIndex + 1, dotIndex - underscoreIndex - 1);
+                                    if (long.TryParse(timestampStr, out var timestamp))
+                                    {
+                                        if (timestamp > dayLatestTimestamp)
+                                        {
+                                            dayLatestTimestamp = timestamp;
+                                            dayLatestVideoKey = obj.Key;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        listRequest.ContinuationToken = response.NextContinuationToken;
+                    } while (listRequest.ContinuationToken != null);
+
+                    // If we found a video in this day, it's the latest overall
+                    if (dayLatestVideoKey != null)
+                    {
+                        latestVideoKey = dayLatestVideoKey;
+                        latestTimestamp = dayLatestTimestamp;
+                        log.LogLine($"Found latest video in {dateFolder}: {latestVideoKey} with timestamp {latestTimestamp}");
+                        break;
+                    }
+
+                    // Move to previous day
+                    searchDate = searchDate.AddDays(-1);
+                    daysSearched++;
+                    log.LogLine($"No videos found in {dateFolder}, moving to previous day: {searchDate:yyyy-MM-dd}");
+                }
+
+                if (string.IsNullOrEmpty(latestVideoKey))
+                {
+                    log.LogLine("No video files found in S3 bucket");
+                    return new APIGatewayProxyResponse
+                    {
+                        StatusCode = (int)HttpStatusCode.NotFound,
+                        Body = JsonConvert.SerializeObject(new { msg = "No video files found" }),
+                        Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
+                    };
+                }
+
+                log.LogLine($"Latest video found: {latestVideoKey} with timestamp: {latestTimestamp}");
+
+                // Verify the video file exists in S3 without downloading it
+                try
+                {
+                    var headRequest = new GetObjectMetadataRequest
+                    {
+                        BucketName = ALARM_BUCKET_NAME,
+                        Key = latestVideoKey
+                    };
+                    var metadata = await s3Client.GetObjectMetadataAsync(headRequest);
+                    log.LogLine($"Video file confirmed in S3: {latestVideoKey} ({metadata.ContentLength} bytes)");
+                }
+                catch (AmazonS3Exception e) when (e.ErrorCode == "NoSuchKey")
+                {
+                    log.LogLine($"Video file {latestVideoKey} not found in S3");
+                    return new APIGatewayProxyResponse
+                    {
+                        StatusCode = (int)HttpStatusCode.NotFound,
+                        Body = JsonConvert.SerializeObject(new { msg = "Video file not found" }),
+                        Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
+                    };
+                }
+
+                // Generate a presigned URL for direct download from S3
+                DateTime dt = DateTimeOffset.FromUnixTimeMilliseconds(latestTimestamp).DateTime;
+                string suggestedFilename = $"latest_video_{dt:yyyy-MM-dd_HH-mm-ss}.mp4";
+                
+                // Generate presigned URL with 1 hour expiration and suggested filename
+                var presignedRequest = new GetPreSignedUrlRequest
+                {
+                    BucketName = ALARM_BUCKET_NAME,
+                    Key = latestVideoKey,
+                    Verb = HttpVerb.GET,
+                    Expires = DateTime.UtcNow.AddHours(1),
+                    ResponseHeaderOverrides = new ResponseHeaderOverrides
+                    {
+                        ContentDisposition = $"attachment; filename=\"{suggestedFilename}\""
+                    }
+                };
+
+                string presignedUrl = s3Client.GetPreSignedURL(presignedRequest);
+                log.LogLine($"Generated presigned URL for {latestVideoKey}, expires in 1 hour");
+
+                // Return the presigned URL and metadata instead of the video data
+                var responseData = new
+                {
+                    downloadUrl = presignedUrl,
+                    filename = suggestedFilename,
+                    videoKey = latestVideoKey,
+                    timestamp = latestTimestamp,
+                    eventDate = dt.ToString("yyyy-MM-dd HH:mm:ss"),
+                    expiresAt = DateTime.UtcNow.AddHours(1).ToString("yyyy-MM-dd HH:mm:ss UTC"),
+                    message = "Use the downloadUrl to download the video file directly. URL expires in 1 hour."
+                };
+
+                return new APIGatewayProxyResponse
+                {
+                    StatusCode = (int)HttpStatusCode.OK,
+                    Body = JsonConvert.SerializeObject(responseData, Formatting.Indented),
+                    Headers = new Dictionary<string, string> 
+                    { 
+                        { "Content-Type", "application/json" },
+                        { "Access-Control-Allow-Origin", "*" }
+                    }
+                };
+            }
+            catch (Exception e)
+            {
+                log.LogLine($"Error retrieving latest video: {e.Message}");
+                return new APIGatewayProxyResponse
+                {
+                    StatusCode = (int)HttpStatusCode.InternalServerError,
+                    Body = JsonConvert.SerializeObject(new { msg = $"Error retrieving latest video: {e.Message}" }),
+                    Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
+                };
+            }
+        }
+
+        /// <summary>
+        /// Retrieves video binary data from S3 and returns it as a byte array.
+        /// 
+        /// This method handles the low-level S3 operations for fetching stored video data.
+        /// It performs the S3 GetObject operation, reads the response stream, and returns
+        /// the binary content as a byte array for video processing.
+        /// 
+        /// Handles common S3 exceptions including missing objects (NoSuchKey) and access errors.
+        /// </summary>
+        /// <param name="keyName">S3 object key to retrieve</param>
+        /// <returns>Byte array containing the video data, or null if object doesn't exist</returns>
+        private static async Task<byte[]?> GetVideoFileFromS3BlobAsync(string keyName)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(ALARM_BUCKET_NAME))
+                {
+                    throw new InvalidOperationException("StorageBucket environment variable is not configured");
+                }
+
+                log.LogLine("Attempting to get video object: " + keyName + " from " + ALARM_BUCKET_NAME + ".");
+
+                // Prepare request
+                var getObjectRequest = new GetObjectRequest
+                {
+                    BucketName = ALARM_BUCKET_NAME,
+                    Key = keyName,
+                };
+
+                // Get the object
+                MemoryStream ms = new MemoryStream();
+                using (GetObjectResponse response = await s3Client.GetObjectAsync(getObjectRequest))
+                using (Stream responseStream = response.ResponseStream)
+                    responseStream.CopyTo(ms);
+                
+                byte[] fileBytes = ms.ToArray();
+
+                // Return the file byte array
+                log.LogLine("Successfully retrieved the video from S3: " + ALARM_BUCKET_NAME + "/" + keyName + " with a size of: " + fileBytes.Length + " bytes");
+                return fileBytes;
+            }
+            catch (AmazonS3Exception e)
+            {
+                if (e.ErrorCode == "NoSuchKey")
+                {
+                    log.LogLine("Video object doesn't exist.");
+                    return null;
+                }
+                else
+                {
+                    log.LogLine("Error encountered while reading video object from S3: " + e.Message);
+                    throw new Exception("Error encountered while getting video file from S3.");
+                }
+            }
+            catch (Exception e)
+            {
+                log.LogLine("Unknown error encountered when reading video object: " + e.Message);
+                throw new Exception("Error encountered while getting video file from S3.");
+            }
+        }
+
         #endregion
 
         #region Video Download Operations
 
         /// <summary>
+        /// Calculates device-specific click coordinates for video download automation.
+        /// 
+        /// Different devices/cameras may have slightly different UI layouts in Unifi Protect,
+        /// requiring adjusted click coordinates for reliable automation.
+        /// 
+        /// Coordinate Logic:
+        /// - "Door" device: Uses default coordinates from environment variables
+        /// - Other devices: Uses adjusted coordinates (1205, 241) for archive and offset (-179, +18) for download
+        /// </summary>
+        /// <param name="deviceName">Name of the device to determine coordinates for</param>
+        /// <returns>Tuple containing archive and download button coordinates</returns>
+        private static ((int x, int y) archiveButton, (int x, int y) downloadButton) GetDeviceSpecificCoordinates(string deviceName)
+        {
+            // For "Door" device, use the default coordinates from environment variables
+            if (string.Equals(deviceName, "Door", StringComparison.OrdinalIgnoreCase))
+            {
+                return (
+                    archiveButton: (ARCHIVE_BUTTON_X, ARCHIVE_BUTTON_Y),
+                    downloadButton: (DOWNLOAD_BUTTON_X, DOWNLOAD_BUTTON_Y)
+                );
+            }
+            
+            // For all other devices, use adjusted coordinates
+            int archiveX = 1205;
+            int archiveY = 241;
+            int downloadX = archiveX - 179;  // 1205 - 179 = 1026
+            int downloadY = archiveY + 18;   // 241 + 18 = 259
+            
+            return (
+                archiveButton: (archiveX, archiveY),
+                downloadButton: (downloadX, downloadY)
+            );
+        }
+
+        /// <summary>
         /// Downloads video from Unifi Protect using automated browser navigation.
         /// 
-        /// This method uses PuppeteerSharp to automate a headless browser session that:
+        /// This method uses HeadlessChromium to automate a headless browser session that:
         /// 1. Navigates to the Unifi Protect event link
         /// 2. Authenticates using stored credentials
-        /// 3. Downloads the video file for the event
+        /// 3. Downloads the video file for the event using device-specific coordinates
         /// 4. Returns the video data as a byte array
         /// 
         /// The method handles the complete workflow of video retrieval from Unifi Protect
-        /// systems that require web-based authentication and interaction.
+        /// systems that require web-based authentication and interaction. Click coordinates
+        /// are adjusted based on the device name to account for UI differences.
         /// </summary>
         /// <param name="eventLocalLink">Direct URL to the event in Unifi Protect web interface</param>
-        /// <param name="eventKey">Unique event identifier for naming the video file</param>
+        /// <param name="deviceName">Name of the device to determine appropriate click coordinates</param>
         /// <returns>Byte array containing the downloaded video data</returns>
-        public static async Task<byte[]> GetVideoFromLocalUnifiProtectViaHeadlessClient(string eventLocalLink)
+        public static async Task<byte[]> GetVideoFromLocalUnifiProtectViaHeadlessClient(string eventLocalLink, string deviceName)
         {
             log.LogLine($"Starting video download for event from URL: {eventLocalLink}");
 
@@ -945,14 +1257,17 @@ namespace UnifiWebhookEventReceiver
                 throw new InvalidOperationException("Server configuration error: StorageBucket not configured");
             }
 
+            // Calculate device-specific coordinates
+            var coordinates = GetDeviceSpecificCoordinates(deviceName);
+            
             //Create a dictionary of coordinates for clicks to download videos
             Dictionary<string, (int x, int y)> clickCoordinates = new Dictionary<string, (int x, int y)>
             {
-                { "archiveButton", (ARCHIVE_BUTTON_X, ARCHIVE_BUTTON_Y) },
-                { "downloadButton", (DOWNLOAD_BUTTON_X, DOWNLOAD_BUTTON_Y) }
+                { "archiveButton", coordinates.archiveButton },
+                { "downloadButton", coordinates.downloadButton }
             };
 
-            log.LogLine($"Using click coordinates - Archive: ({ARCHIVE_BUTTON_X}, {ARCHIVE_BUTTON_Y}), Download: ({DOWNLOAD_BUTTON_X}, {DOWNLOAD_BUTTON_Y})");
+            log.LogLine($"Device: {deviceName ?? "Unknown"} - Using click coordinates - Archive: ({coordinates.archiveButton.x}, {coordinates.archiveButton.y}), Download: ({coordinates.downloadButton.x}, {coordinates.downloadButton.y})");
 
             try
             {
