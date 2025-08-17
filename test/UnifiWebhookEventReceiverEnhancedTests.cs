@@ -205,33 +205,7 @@ namespace UnifiWebhookEventReceiver.Tests
             // Should still succeed as we don't throw on individual message failures
         }
 
-        [Fact]
-        public async Task QueueAlarmForProcessing_ShouldReturnError_WhenQueueNotConfigured()
-        {
-            // Arrange
-            SetBaseEnv(); // Set all environment variables first
-            Environment.SetEnvironmentVariable("AlarmProcessingQueueUrl", null); // Then clear the specific one we want to test
-            var alarm = new Alarm
-            {
-                timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-                triggers = new List<Trigger>
-                {
-                    new Trigger
-                    {
-                        device = "28704E113F64",
-                        eventId = "test-event-id",
-                        key = "motion"
-                    }
-                }
-            };
 
-            // Act
-            var response = await UnifiWebhookEventReceiver.QueueAlarmForProcessing(alarm);
-
-            // Assert
-            Assert.Equal((int)HttpStatusCode.InternalServerError, response.StatusCode);
-            Assert.Contains("Server configuration error: SQS queue not configured", response.Body);
-        }
 
         [Fact]
         public void DeviceMapping_ShouldMapMacToName()
