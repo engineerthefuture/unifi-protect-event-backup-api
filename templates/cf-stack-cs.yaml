@@ -181,6 +181,12 @@ Resources:
               BlockPublicPolicy: true
               IgnorePublicAcls: true
               RestrictPublicBuckets: true
+            LifecycleConfiguration:
+              Rules:
+                - Id: DeleteAfter30Days
+                  Status: Enabled
+                  ExpirationInDays: 30
+                  NoncurrentVersionExpirationInDays: 30
             Tags: 
               - Key: "Name"
                 Value: !Sub "${BucketName}"
@@ -527,9 +533,23 @@ Resources:
 # Output useful details
 Outputs:
   Repository:
-    Value: Manually published
+    Description: Source code repository
+    Value: https://github.com/engineerthefuture/unifi-protect-event-backup-api
   POSTUnfiWebhookAlarmEventEndpoint:
+    Description: POST endpoint for receiving alarm webhooks from Unifi Protect
     Value: !Sub
       - https://${ApiId}.execute-api.${AWS::Region}.amazonaws.com/${EnvPrefix}/alarmevent
+      - ApiId: !Ref ApiGateway
+        StageName: !Ref ApiGatewayStage
+  GETLatestVideoEndpoint:
+    Description: GET endpoint for downloading the most recent video file
+    Value: !Sub
+      - https://${ApiId}.execute-api.${AWS::Region}.amazonaws.com/${EnvPrefix}/latestvideo
+      - ApiId: !Ref ApiGateway
+        StageName: !Ref ApiGatewayStage
+  GETEventDataEndpoint:
+    Description: GET endpoint for retrieving stored alarm event data by eventKey
+    Value: !Sub
+      - https://${ApiId}.execute-api.${AWS::Region}.amazonaws.com/${EnvPrefix}/?eventKey={key}
       - ApiId: !Ref ApiGateway
         StageName: !Ref ApiGatewayStage
