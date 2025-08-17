@@ -1152,6 +1152,22 @@ namespace UnifiWebhookEventReceiver
 
                     log.LogLine("Page loaded, preparing to click to download...");
 
+                    // Take a screenshot of the page
+                    screenshotPath = Path.Combine(downloadDirectory, "pageload-screenshot.png");
+                    await page.ScreenshotAsync(screenshotPath);
+                    log.LogLine($"Screenshot taken of the loaded page: {screenshotPath}");
+                    await UploadFileAsync(ALARM_BUCKET_NAME, "screenshots/pageload-screenshot.png", File.ReadAllBytes(screenshotPath), "image/png");
+
+                    // Click at click coordinates for archive button
+                    await page.Mouse.ClickAsync(clickCoordinates["archiveButton"].x, clickCoordinates["archiveButton"].y);
+                    log.LogLine("Clicked on archive button at coordinates: " + clickCoordinates["archiveButton"]);
+
+                    // Take a screenshot of the clicked archive button
+                    screenshotPath = Path.Combine(downloadDirectory, "firstclick-screenshot.png");
+                    await page.ScreenshotAsync(screenshotPath);
+                    log.LogLine($"Screenshot taken of the clicked archive button: {screenshotPath}");
+                    await UploadFileAsync(ALARM_BUCKET_NAME, "screenshots/firstclick-screenshot.png", File.ReadAllBytes(screenshotPath), "image/png");
+
                     // Set up download event monitoring for better tracking
                     bool downloadStarted = false;
                     string? downloadGuid = null;
@@ -1161,11 +1177,15 @@ namespace UnifiWebhookEventReceiver
                     {
                         try
                         {
+                                // Click at click coordinates for download button
+                page.Mouse.ClickAsync(clickCoordinates["downloadButton"].x, clickCoordinates["downloadButton"].y);
+                    log.LogLine("Clicked on download button at coordinates: " + clickCoordinates["downloadButton"]);
+
                             if (e.MessageID == "Browser.downloadWillBegin")
                             {
                                 downloadStarted = true;
                                 log.LogLine("Download event detected: Browser.downloadWillBegin");
-                                
+
                                 // Try to extract GUID if available
                                 var data = e.MessageData;
                                 if (data.ValueKind == System.Text.Json.JsonValueKind.Object)
@@ -1200,23 +1220,7 @@ namespace UnifiWebhookEventReceiver
                         }
                     };
 
-                    // Take a screenshot of the page
-                    screenshotPath = Path.Combine(downloadDirectory, "pageload-screenshot.png");
-                    await page.ScreenshotAsync(screenshotPath);
-                    log.LogLine($"Screenshot taken of the loaded page: {screenshotPath}");
-                    await UploadFileAsync(ALARM_BUCKET_NAME, "screenshots/pageload-screenshot.png", File.ReadAllBytes(screenshotPath), "image/png");
-
-                    // Click at click coordinates for archive button
-                    await page.Mouse.ClickAsync(clickCoordinates["archiveButton"].x, clickCoordinates["archiveButton"].y);
-                    log.LogLine("Clicked on archive button at coordinates: " + clickCoordinates["archiveButton"]);
-
-                    // Take a screenshot of the clicked archive button
-                    screenshotPath = Path.Combine(downloadDirectory, "firstclick-screenshot.png");
-                    await page.ScreenshotAsync(screenshotPath);
-                    log.LogLine($"Screenshot taken of the clicked archive button: {screenshotPath}");
-                    await UploadFileAsync(ALARM_BUCKET_NAME, "screenshots/firstclick-screenshot.png", File.ReadAllBytes(screenshotPath), "image/png");
-
-                    // Click at click coordinates for download button
+                // Click at click coordinates for download button
                 await page.Mouse.ClickAsync(clickCoordinates["downloadButton"].x, clickCoordinates["downloadButton"].y);
                     log.LogLine("Clicked on download button at coordinates: " + clickCoordinates["downloadButton"]);
 
