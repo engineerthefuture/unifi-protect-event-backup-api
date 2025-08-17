@@ -204,84 +204,13 @@ graph TB
 3. **Authentication**: API Gateway validates API key
 4. **Event Processing**: Lambda function parses JSON, maps device names, validates data
 5. **Event Storage**: Events stored in S3 with date-organized folder structure
-6. **Video Download**: For video requests, PuppeteerSharp launches headless browser
-7. **Browser Automation**: Authenticates with Unifi Protect and navigates to event
+6. **Video Download**: For video requests, HeadlessChromium launches optimized browser
+7. **Browser Automation**: Authenticates with Unifi Protect and navigates to event using configurable coordinates
 8. **Video Extraction**: Extracts blob URL and downloads video content as MP4
-9. **Video Storage**: MP4 files stored in S3 under organized device folders
-10. **Monitoring**: All operations logged to CloudWatch for observability
-11. **Retrieval**: GET endpoints allow querying events and generating video presigned URLs
-            METRICS[CloudWatch Metrics]
-        end
-        
-        subgraph "Security"
-            IAM[IAM Roles]
-            ENCRYPT[S3 Encryption]
-        end
-    end
-    
-    subgraph "CI/CD Pipeline"
-        GH[GitHub Actions]
-        TEST[Unit Tests]
-        BUILD[Build & Package]
-        DEPLOY[CloudFormation Deploy]
-    end
-    
-    %% Main data flow
-    CAM1 --> UDM
-    CAM2 --> UDM
-    CAM3 --> UDM
-    UDM -->|Webhook POST| API
-    API --> AUTH
-    AUTH --> CORS
-    CORS --> HANDLER
-    HANDLER --> PARSER
-    PARSER --> VALIDATOR
-    VALIDATOR --> MAPPER
-    MAPPER --> S3
-    S3 --> FOLDERS
-    
-    %% Monitoring flows
-    HANDLER --> CW
-    API --> METRICS
-    HANDLER --> METRICS
-    
-    %% Security flows
-    HANDLER -.-> IAM
-    S3 -.-> ENCRYPT
-    
-    %% CI/CD flows
-    GH --> TEST
-    TEST --> BUILD
-    BUILD --> DEPLOY
-    DEPLOY -.-> API
-    DEPLOY -.-> HANDLER
-    
-    %% GET endpoint for retrieval
-    API -->|GET /?eventKey=xxx| HANDLER
-    HANDLER -->|Retrieve| S3
-    S3 -->|JSON Response| API
-    
-    %% Styling
-    classDef aws fill:#ff9900,stroke:#232f3e,stroke-width:2px,color:#fff
-    classDef unifi fill:#0066cc,stroke:#003d7a,stroke-width:2px,color:#fff
-    classDef cicd fill:#28a745,stroke:#1e7e34,stroke-width:2px,color:#fff
-    classDef security fill:#dc3545,stroke:#721c24,stroke-width:2px,color:#fff
-    
-    class API,HANDLER,S3,CW,METRICS aws
-    class UDM,CAM1,CAM2,CAM3 unifi
-    class GH,TEST,BUILD,DEPLOY cicd
-    class IAM,ENCRYPT,AUTH security
-```
-
-### Data Flow
-
-1. **Event Detection**: Unifi cameras detect motion/intrusion events
-2. **Webhook Trigger**: Unifi Dream Machine sends webhook to API Gateway
-3. **Authentication**: API Gateway validates API key
-4. **Processing**: Lambda function parses JSON, maps device names, validates data
-5. **Storage**: Events stored in S3 with date-organized folder structure
-6. **Monitoring**: All operations logged to CloudWatch for observability
-7. **Retrieval**: GET endpoint allows querying stored events by event key
+9. **Video Storage**: MP4 files stored in S3 under organized date-based folders
+10. **Screenshot Capture**: Diagnostic screenshots captured at key automation stages for debugging
+11. **Monitoring**: All operations logged to CloudWatch for observability
+12. **Retrieval**: GET endpoints allow querying events and generating video presigned URLs
 
 ## API Endpoints
 

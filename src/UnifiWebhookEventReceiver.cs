@@ -1216,7 +1216,7 @@ namespace UnifiWebhookEventReceiver
                 };
 
                 // Take a screenshot of the page
-                await Task.Delay(2000); // Brief wait for any immediate changes
+                await Task.Delay(3000); // Brief wait for any immediate changes
                 screenshotPath = Path.Combine(downloadDirectory, "pageload-screenshot.png");
                 await page.ScreenshotAsync(screenshotPath);
                 log.LogLine($"Screenshot taken of the loaded page: {screenshotPath}");
