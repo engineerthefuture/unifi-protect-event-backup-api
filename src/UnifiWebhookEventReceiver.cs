@@ -26,8 +26,13 @@ using HeadlessChromium.Puppeteer.Lambda.Dotnet;
 using Amazon;
 using Amazon.Lambda.APIGatewayEvents;
 using Amazon.Lambda.Core;
+using Amazon.Lambda.SQSEvents;
 using Amazon.S3;
 using Amazon.S3.Model;
+using Amazon.SQS;
+using Amazon.SQS.Model;
+using Amazon.SecretsManager;
+using Amazon.SecretsManager.Model;
 
 // Assembly attribute to enable the Lambda function's JSON input to be converted into a .NET class
 [assembly: LambdaSerializer(typeof(Amazon.Lambda.Serialization.SystemTextJson.DefaultLambdaJsonSerializer))]
@@ -49,17 +54,24 @@ namespace UnifiWebhookEventReceiver
     /// 
     /// Environment Variables Required:
     /// - StorageBucket: S3 bucket name for storing alarm events
+    /// - AlarmProcessingQueueUrl: SQS queue URL for delayed alarm processing
+    /// - ProcessingDelaySeconds: Delay in seconds before processing (default: 120)
     /// - DevicePrefix: Prefix for environment variables containing device name mappings
     /// - DeployedEnv: Environment identifier (dev, prod, etc.)
     /// - FunctionName: Lambda function name for logging
-    /// - UnifiHost: Hostname or IP of Unifi Protect system
-    /// - UnifiUsername: Username for Unifi Protect authentication
-    /// - UnifiPassword: Password for Unifi Protect authentication
+    /// - UnifiCredentialsSecretArn: AWS Secrets Manager ARN containing Unifi Protect credentials
     /// - DownloadDirectory: Directory for temporary video files (defaults to /tmp)
     /// - ArchiveButtonX: X coordinate for archive button click (used for "Door" device, defaults to 1274)
     /// - ArchiveButtonY: Y coordinate for archive button click (used for "Door" device, defaults to 257)
     /// - DownloadButtonX: X coordinate for download button click (used for "Door" device, defaults to 1095)
     /// - DownloadButtonY: Y coordinate for download button click (used for "Door" device, defaults to 275)
+    /// 
+    /// AWS Secrets Manager Secret Format (JSON):
+    /// {
+    ///   "hostname": "unifi-host.local or IP address",
+    ///   "username": "unifi-protect-username",
+    ///   "password": "unifi-protect-password"
+    /// }
     /// 
     /// Note: For devices other than "Door", coordinates are automatically adjusted to (1205, 241) for archive
     /// and (1026, 259) for download to accommodate different UI layouts in Unifi Protect.
@@ -120,14 +132,8 @@ namespace UnifiWebhookEventReceiver
         /// <summary>Lambda function name for logging and identification</summary>
         static string? FUNCTION_NAME = Environment.GetEnvironmentVariable("FunctionName");
 
-        /// <summary>Unifi Protect hostname or IP address for video downloads</summary>
-        static string? UNIFI_HOST = Environment.GetEnvironmentVariable("UnifiHost");
-
-        /// <summary>Unifi Protect username for authentication</summary>
-        static string? UNIFI_USERNAME = Environment.GetEnvironmentVariable("UnifiUsername");
-
-        /// <summary>Unifi Protect password for authentication</summary>
-        static string? UNIFI_PASSWORD = Environment.GetEnvironmentVariable("UnifiPassword");
+        /// <summary>AWS Secrets Manager ARN containing Unifi Protect credentials</summary>
+        static string? UNIFI_CREDENTIALS_SECRET_ARN = Environment.GetEnvironmentVariable("UnifiCredentialsSecretArn");
 
         /// <summary>Download directory for temporary video files. Defaults to /tmp for Lambda compatibility.</summary>
         static string DOWNLOAD_DIRECTORY = Environment.GetEnvironmentVariable("DownloadDirectory") ?? "/tmp";
@@ -144,11 +150,79 @@ namespace UnifiWebhookEventReceiver
         /// <summary>Y coordinate for download button click. Defaults to 275.</summary>
         static int DOWNLOAD_BUTTON_Y = int.TryParse(Environment.GetEnvironmentVariable("DownloadButtonY"), out var downloadY) ? downloadY : 275;
 
+        /// <summary>SQS queue URL for delayed alarm processing</summary>
+        static string? ALARM_PROCESSING_QUEUE_URL = Environment.GetEnvironmentVariable("AlarmProcessingQueueUrl");
+
+        /// <summary>Delay in seconds before processing alarm events (defaults to 2 minutes)</summary>
+        static int PROCESSING_DELAY_SECONDS = int.TryParse(Environment.GetEnvironmentVariable("ProcessingDelaySeconds"), out var delay) ? delay : 120;
+
         /// <summary>AWS region for S3 operations</summary>
         static RegionEndpoint AWS_REGION = RegionEndpoint.USEast1;
 
         /// <summary>S3 client instance for bucket operations</summary>
         static IAmazonS3 s3Client = new AmazonS3Client(AWS_REGION);
+
+        /// <summary>SQS client instance for queue operations</summary>
+        static IAmazonSQS sqsClient = new AmazonSQSClient(AWS_REGION);
+
+        /// <summary>Secrets Manager client instance for credential retrieval</summary>
+        static IAmazonSecretsManager secretsClient = new AmazonSecretsManagerClient(AWS_REGION);
+
+        #endregion
+
+        #region Unifi Credentials Management
+
+        /// <summary>Class to hold Unifi Protect credentials retrieved from Secrets Manager</summary>
+        public class UnifiCredentials
+        {
+            public string hostname { get; set; } = string.Empty;
+            public string username { get; set; } = string.Empty;
+            public string password { get; set; } = string.Empty;
+        }
+
+        /// <summary>Cache for Unifi credentials to avoid repeated Secrets Manager calls</summary>
+        private static UnifiCredentials? _cachedCredentials = null;
+
+        /// <summary>
+        /// Retrieves Unifi Protect credentials from AWS Secrets Manager
+        /// </summary>
+        /// <returns>UnifiCredentials object containing hostname, username, and password</returns>
+        private static async Task<UnifiCredentials> GetUnifiCredentialsAsync()
+        {
+            if (_cachedCredentials != null)
+            {
+                return _cachedCredentials;
+            }
+
+            if (string.IsNullOrEmpty(UNIFI_CREDENTIALS_SECRET_ARN))
+            {
+                throw new InvalidOperationException("UnifiCredentialsSecretArn environment variable is not set");
+            }
+
+            try
+            {
+                var request = new GetSecretValueRequest
+                {
+                    SecretId = UNIFI_CREDENTIALS_SECRET_ARN
+                };
+
+                var response = await secretsClient.GetSecretValueAsync(request);
+                var credentials = JsonConvert.DeserializeObject<UnifiCredentials>(response.SecretString);
+                
+                if (credentials == null)
+                {
+                    throw new InvalidOperationException("Failed to deserialize Unifi credentials from Secrets Manager");
+                }
+
+                _cachedCredentials = credentials;
+                return credentials;
+            }
+            catch (Exception ex)
+            {
+                log.LogError($"Error retrieving Unifi credentials from Secrets Manager: {ex.Message}");
+                throw;
+            }
+        }
 
         #endregion
 
@@ -172,22 +246,20 @@ namespace UnifiWebhookEventReceiver
         #region Main Lambda Handler
 
         /// <summary>
-        /// Main AWS Lambda function handler for processing HTTP requests.
+        /// Main AWS Lambda function handler for processing both HTTP requests and SQS events.
         /// 
-        /// This method serves as the entry point for all incoming requests to the Lambda function.
-        /// It handles various types of requests including:
-        /// - Unifi Protect alarm webhook events (POST /alarmevent)
-        /// - Event retrieval requests (GET /?eventKey={key})
-        /// - CORS preflight requests (OPTIONS)
+        /// This method serves as the entry point for all incoming events to the Lambda function.
+        /// It handles various types of events including:
+        /// - API Gateway HTTP requests (POST /alarmevent, GET /*, OPTIONS)
+        /// - SQS events for delayed alarm processing
         /// - AWS scheduled events for keep-alive functionality
         /// 
-        /// The function processes the input stream, deserializes the request, routes it to the
-        /// appropriate handler, and returns a properly formatted API Gateway response with
-        /// CORS headers for web client compatibility.
+        /// The function detects the event type from the input stream and routes to the appropriate
+        /// handler, returning properly formatted responses for each event type.
         /// </summary>
-        /// <param name="input">Raw request stream containing the HTTP request data</param>
+        /// <param name="input">Raw request stream containing the event data</param>
         /// <param name="context">Lambda execution context providing logging and runtime information</param>
-        /// <returns>API Gateway proxy response with status code, headers, and JSON body</returns>
+        /// <returns>API Gateway proxy response for HTTP events, or void response for SQS events</returns>
         public async Task<APIGatewayProxyResponse> FunctionHandler(Stream input, ILambdaContext context)
         {
             try
@@ -203,27 +275,115 @@ namespace UnifiWebhookEventReceiver
                         Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
                     };
                 }
+
                 var functionName = FUNCTION_NAME ?? "UnknownFunction";
-                log.LogLine("C# HTTP trigger function processed a request for " + functionName + ".");
+                log.LogLine("C# trigger function processed a request for " + functionName + ".");
+
+                // Read the input stream
+                string requestBody = "";
+                using (var reader = new StreamReader(input))
+                {
+                    requestBody = await reader.ReadToEndAsync();
+                }
+
+                log.LogLine("Request body: " + (requestBody?.Length > 0 ? "Present" : "Empty"));
+
+                // Check if this is an SQS event
+                if (!string.IsNullOrEmpty(requestBody) && requestBody.Contains("\"Records\"") && requestBody.Contains("\"eventSource\":\"aws:sqs\""))
+                {
+                    log.LogLine("Detected SQS event, processing delayed alarm");
+                    await ProcessSQSEvent(requestBody);
+                    
+                    // Return success response for SQS events
+                    return new APIGatewayProxyResponse
+                    {
+                        StatusCode = (int)HttpStatusCode.OK,
+                        Body = JsonConvert.SerializeObject(new { msg = "SQS event processed successfully" }),
+                        Headers = new Dictionary<string, string> { { "Content-Type", "application/json" } }
+                    };
+                }
+
+                // Otherwise, process as API Gateway event
+                return await ProcessAPIGatewayEvent(requestBody ?? "");
             }
-            catch (Exception ex)
+            catch (Exception e)
             {
-                // If we can't even log, return basic error response
+                log.LogLine($"Error in main handler: {e}");
                 return new APIGatewayProxyResponse
                 {
                     StatusCode = (int)HttpStatusCode.InternalServerError,
-                    Body = JsonConvert.SerializeObject(new { msg = "Handler initialization error: " + ex.Message }),
+                    Body = JsonConvert.SerializeObject(new { msg = (ERROR_MESSAGE_500 + e.Message) }),
                     Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
                 };
             }
+        }
 
+        /// <summary>
+        /// Processes SQS events containing delayed alarm processing requests.
+        /// 
+        /// This method handles SQS messages that contain alarm event data for processing
+        /// after a delay period to ensure video files are fully available in Unifi Protect.
+        /// </summary>
+        /// <param name="requestBody">JSON string containing the SQS event</param>
+        /// <returns>Task representing the asynchronous processing operation</returns>
+        private async Task ProcessSQSEvent(string requestBody)
+        {
             try
             {
-                // Read the request
-                StreamReader streamReader = new StreamReader(input);
-                string requestBody = streamReader.ReadToEnd();
-                //log.LogLine("Request: " + requestBody);
+                var sqsEvent = JsonConvert.DeserializeObject<SQSEvent>(requestBody);
+                if (sqsEvent?.Records == null)
+                {
+                    log.LogLine("No SQS records found in event");
+                    return;
+                }
 
+                foreach (var record in sqsEvent.Records)
+                {
+                    try
+                    {
+                        log.LogLine($"Processing SQS message: {record.MessageId}");
+                        
+                        // Parse the alarm data from the message body
+                        var messageBody = record.Body;
+                        var alarm = JsonConvert.DeserializeObject<Alarm>(messageBody);
+                        
+                        if (alarm != null)
+                        {
+                            log.LogLine($"Processing delayed alarm for device: {alarm.triggers?.FirstOrDefault()?.device}");
+                            await AlarmReceiverFunction(alarm);
+                            log.LogLine($"Successfully processed delayed alarm: {record.MessageId}");
+                        }
+                        else
+                        {
+                            log.LogLine($"Failed to deserialize alarm from message: {record.MessageId}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        log.LogLine($"Error processing SQS message {record.MessageId}: {ex.Message}");
+                        // Don't throw here - we want to continue processing other messages
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                log.LogLine($"Error processing SQS event: {ex.Message}");
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Processes API Gateway HTTP requests.
+        /// 
+        /// This method handles the original HTTP request processing logic including
+        /// webhook receipt, event retrieval, and CORS support.
+        /// </summary>
+        /// <param name="requestBody">JSON string containing the API Gateway request</param>
+        /// <returns>API Gateway proxy response</returns>
+        private async Task<APIGatewayProxyResponse> ProcessAPIGatewayEvent(string requestBody)
+        {
+            try
+            {
                 // Ensure there is a payload
                 if (requestBody != null)
                 {
@@ -357,7 +517,7 @@ namespace UnifiWebhookEventReceiver
                                                 return errorResponse;
                                             }
                                             alarm.timestamp = timestamp;
-                                            return await AlarmReceiverFunction(alarm);
+                                            return await QueueAlarmForProcessing(alarm);
                                         }
                                         else
                                         {
@@ -494,6 +654,105 @@ namespace UnifiWebhookEventReceiver
 
         #endregion
 
+        #region SQS Queue Operations
+
+        /// <summary>
+        /// Queues an alarm event for delayed processing via SQS.
+        /// 
+        /// This method sends the alarm event to an SQS queue with a configurable delay
+        /// to allow time for video files to become fully available in Unifi Protect
+        /// before attempting to download them. This improves reliability and reduces
+        /// the likelihood of download failures due to timing issues.
+        /// </summary>
+        /// <param name="alarm">Alarm event to queue for processing</param>
+        /// <returns>API Gateway response indicating the event has been queued</returns>
+        public static async Task<APIGatewayProxyResponse> QueueAlarmForProcessing(Alarm alarm)
+        {
+            log.LogLine("Queueing alarm event for delayed processing");
+
+            try
+            {
+                if (string.IsNullOrEmpty(ALARM_PROCESSING_QUEUE_URL))
+                {
+                    log.LogLine("AlarmProcessingQueueUrl environment variable is not configured");
+                    return new APIGatewayProxyResponse
+                    {
+                        StatusCode = (int)HttpStatusCode.InternalServerError,
+                        Body = JsonConvert.SerializeObject(new { msg = "Server configuration error: SQS queue not configured" }),
+                        Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
+                    };
+                }
+
+                // Serialize the alarm for the queue message
+                string messageBody = JsonConvert.SerializeObject(alarm);
+                
+                // Get the first trigger for event details
+                var trigger = alarm.triggers?.FirstOrDefault();
+                string eventId = trigger?.eventId ?? "unknown";
+                string device = trigger?.device ?? "unknown";
+
+                // Send message to SQS with delay
+                var sendMessageRequest = new SendMessageRequest
+                {
+                    QueueUrl = ALARM_PROCESSING_QUEUE_URL,
+                    MessageBody = messageBody,
+                    DelaySeconds = PROCESSING_DELAY_SECONDS,
+                    MessageAttributes = new Dictionary<string, MessageAttributeValue>
+                    {
+                        ["EventId"] = new MessageAttributeValue
+                        {
+                            DataType = "String",
+                            StringValue = eventId
+                        },
+                        ["Device"] = new MessageAttributeValue
+                        {
+                            DataType = "String", 
+                            StringValue = device
+                        },
+                        ["Timestamp"] = new MessageAttributeValue
+                        {
+                            DataType = "Number",
+                            StringValue = alarm.timestamp.ToString()
+                        }
+                    }
+                };
+
+                var result = await sqsClient.SendMessageAsync(sendMessageRequest);
+                
+                log.LogLine($"Successfully queued alarm event {eventId} for processing in {PROCESSING_DELAY_SECONDS} seconds. MessageId: {result.MessageId}");
+
+                // Return immediate success response
+                var responseData = new
+                {
+                    msg = $"Alarm event has been queued for processing",
+                    eventId = eventId,
+                    device = device,
+                    processingDelay = PROCESSING_DELAY_SECONDS,
+                    messageId = result.MessageId,
+                    estimatedProcessingTime = DateTime.UtcNow.AddSeconds(PROCESSING_DELAY_SECONDS).ToString("yyyy-MM-dd HH:mm:ss UTC")
+                };
+
+                return new APIGatewayProxyResponse
+                {
+                    StatusCode = (int)HttpStatusCode.OK,
+                    Body = JsonConvert.SerializeObject(responseData),
+                    Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
+                };
+            }
+            catch (Exception e)
+            {
+                log.LogLine($"Error queueing alarm for processing: {e.Message}");
+                return new APIGatewayProxyResponse
+                {
+                    StatusCode = (int)HttpStatusCode.InternalServerError,
+                    Body = JsonConvert.SerializeObject(new { msg = $"Error queueing alarm for processing: {e.Message}" }),
+                    Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
+                };
+            }
+        }
+
+        #endregion
+
         #region Alarm Event Processing
 
         /// <summary>
@@ -518,6 +777,9 @@ namespace UnifiWebhookEventReceiver
 
             try
             {
+                // Get Unifi credentials from Secrets Manager
+                var credentials = await GetUnifiCredentialsAsync();
+
                 // Check for null object
                 if (alarm != null)
                 {
@@ -588,8 +850,8 @@ namespace UnifiWebhookEventReceiver
                     await UploadFileAsync(ALARM_BUCKET_NAME, eventFileKey, JsonConvert.SerializeObject(alarm));
 
                     // Get the video file byte array
-                    eventLocalLink = UNIFI_HOST + alarm.eventPath;
-                    byte[] videoData = await GetVideoFromLocalUnifiProtectViaHeadlessClient(eventLocalLink, deviceName);
+                    eventLocalLink = credentials.hostname + alarm.eventPath;
+                    byte[] videoData = await GetVideoFromLocalUnifiProtectViaHeadlessClient(eventLocalLink, deviceName, credentials);
 
                     // Upload the video file to S3
                     await UploadFileAsync(ALARM_BUCKET_NAME, videoFileKey, videoData, "video/mp4");
@@ -1392,12 +1654,12 @@ namespace UnifiWebhookEventReceiver
         /// <param name="eventLocalLink">Direct URL to the event in Unifi Protect web interface</param>
         /// <param name="deviceName">Name of the device to determine appropriate click coordinates</param>
         /// <returns>Byte array containing the downloaded video data</returns>
-        public static async Task<byte[]> GetVideoFromLocalUnifiProtectViaHeadlessClient(string eventLocalLink, string deviceName)
+        public static async Task<byte[]> GetVideoFromLocalUnifiProtectViaHeadlessClient(string eventLocalLink, string deviceName, UnifiCredentials credentials)
         {
             log.LogLine($"Starting video download for event from URL: {eventLocalLink}");
 
             // Validate all required environment variables first to fail fast
-            if (string.IsNullOrEmpty(eventLocalLink) || string.IsNullOrEmpty(UNIFI_USERNAME) || string.IsNullOrEmpty(UNIFI_PASSWORD))
+            if (string.IsNullOrEmpty(eventLocalLink) || string.IsNullOrEmpty(credentials.username) || string.IsNullOrEmpty(credentials.password))
             {
                 log.LogLine("Missing required Unifi Protect credentials in environment variables");
                 throw new InvalidOperationException("Server configuration error: Unifi Protect credentials not configured");
@@ -1549,14 +1811,14 @@ namespace UnifiWebhookEventReceiver
 
                     // Take the username and password and * out all but the first 3 characters of the username and all of the characters of the password
                     log.LogLine("Filling in credentials for login...");
-                    var maskedUsername = UNIFI_USERNAME.Length > 3 ? UNIFI_USERNAME.Substring(0, 3) + new string('*', UNIFI_USERNAME.Length - 3) : UNIFI_USERNAME;
-                    var maskedPassword = new string('*', UNIFI_PASSWORD.Length);
+                    var maskedUsername = credentials.username.Length > 3 ? credentials.username.Substring(0, 3) + new string('*', credentials.username.Length - 3) : credentials.username;
+                    var maskedPassword = new string('*', credentials.password.Length);
 
                     log.LogLine($"Using credentials - Username: {maskedUsername}, Password: {maskedPassword}");
 
                     // Fill in credentials
-                    await usernameField.TypeAsync(UNIFI_USERNAME);
-                    await passwordField.TypeAsync(UNIFI_PASSWORD);
+                    await usernameField.TypeAsync(credentials.username);
+                    await passwordField.TypeAsync(credentials.password);
 
                     // Look for login button
                     var loginButton = await page.QuerySelectorAsync("button[type='submit']");
