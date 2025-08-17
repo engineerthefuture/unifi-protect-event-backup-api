@@ -80,11 +80,11 @@ Parameters:
   DownloadButtonX:
     Type: Number
     Description: X coordinate for download button click in Unifi Protect UI
-    Default: 1270
+    Default: 1095
   DownloadButtonY:
     Type: Number
     Description: Y coordinate for download button click in Unifi Protect UI
-    Default: 298
+    Default: 275
 
 # Resources
 Resources: 

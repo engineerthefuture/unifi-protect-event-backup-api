@@ -55,10 +55,10 @@ namespace UnifiWebhookEventReceiver
     /// - UnifiUsername: Username for Unifi Protect authentication
     /// - UnifiPassword: Password for Unifi Protect authentication
     /// - DownloadDirectory: Directory for temporary video files (defaults to /tmp)
-    /// - ArchiveButtonX: X coordinate for archive button click (defaults to 1274)
-    /// - ArchiveButtonY: Y coordinate for archive button click (defaults to 257)
-    /// - DownloadButtonX: X coordinate for download button click (defaults to 1095)
-    /// - DownloadButtonY: Y coordinate for download button click (defaults to 275)
+    /// - ArchiveButtonX: X coordinate for archive button click 
+    /// - ArchiveButtonY: Y coordinate for archive button click 
+    /// - DownloadButtonX: X coordinate for download button click 
+    /// - DownloadButtonY: Y coordinate for download button click 
     /// 
     /// Dependencies:
     /// - For local development, ensure PuppeteerSharp can download browser or provide custom path
@@ -135,10 +135,10 @@ namespace UnifiWebhookEventReceiver
         static int ARCHIVE_BUTTON_Y = int.TryParse(Environment.GetEnvironmentVariable("ArchiveButtonY"), out var archiveY) ? archiveY : 257;
 
         /// <summary>X coordinate for download button click. Defaults to 1095.</summary>
-        static int DOWNLOAD_BUTTON_X = int.TryParse(Environment.GetEnvironmentVariable("DownloadButtonX"), out var downloadX) ? downloadX : 1270;
+        static int DOWNLOAD_BUTTON_X = int.TryParse(Environment.GetEnvironmentVariable("DownloadButtonX"), out var downloadX) ? downloadX : 1095;
 
         /// <summary>Y coordinate for download button click. Defaults to 275.</summary>
-        static int DOWNLOAD_BUTTON_Y = int.TryParse(Environment.GetEnvironmentVariable("DownloadButtonY"), out var downloadY) ? downloadY : 298;
+        static int DOWNLOAD_BUTTON_Y = int.TryParse(Environment.GetEnvironmentVariable("DownloadButtonY"), out var downloadY) ? downloadY : 275;
 
         /// <summary>AWS region for S3 operations</summary>
         static RegionEndpoint AWS_REGION = RegionEndpoint.USEast1;
@@ -1216,6 +1216,7 @@ namespace UnifiWebhookEventReceiver
                 };
 
                 // Take a screenshot of the page
+                await Task.Delay(3000); // Brief wait for any immediate changes
                 screenshotPath = Path.Combine(downloadDirectory, "pageload-screenshot.png");
                 await page.ScreenshotAsync(screenshotPath);
                 log.LogLine($"Screenshot taken of the loaded page: {screenshotPath}");
