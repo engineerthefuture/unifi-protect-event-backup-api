@@ -1024,6 +1024,13 @@ namespace UnifiWebhookEventReceiver
                 {
                     log.LogLine("Login form detected, attempting authentication...");
 
+                    // Take the username and password and * out all but the first 3 characters of the username and all of the characters of the password
+                    log.LogLine("Filling in credentials for login...");
+                    var maskedUsername = UNIFI_USERNAME.Length > 3 ? UNIFI_USERNAME.Substring(0, 3) + new string('*', UNIFI_USERNAME.Length - 3) : UNIFI_USERNAME;
+                    var maskedPassword = new string('*', UNIFI_PASSWORD.Length);
+
+                    log.LogLine($"Using credentials - Username: {maskedUsername}, Password: {maskedPassword}");
+
                     // Fill in credentials
                     await usernameField.TypeAsync(UNIFI_USERNAME);
                     await passwordField.TypeAsync(UNIFI_PASSWORD);
@@ -1041,7 +1048,7 @@ namespace UnifiWebhookEventReceiver
                         await page.WaitForNavigationAsync(new NavigationOptions
                         {
                             WaitUntil = new[] { WaitUntilNavigation.Networkidle0 },
-                            Timeout = 15000
+                            Timeout = 10000
                         });
                     }
                     else
