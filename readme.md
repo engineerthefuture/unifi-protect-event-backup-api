@@ -1,13 +1,14 @@
 # Unifi Protect Event Backup API
 
-An AWS Lambda function that receives and processes webhook events from Unifi Dream Machine Protect systems, storing alarm event data in S3 for backup and analysis. **Now featuring automated video download capabilities** using browser automation with PuppeteerSharp.
+An AWS Lambda function that receives and processes webhook events from Unifi Dream Machine Protect systems, storing alarm event data in S3 for backup and analysis. The system includes automated video download capabilities using browser automation.
 
-## 🆕 Latest Updates
+## Recent Updates
 
-- **🎥 Video Download Integration**: Automated video retrieval from Unifi Protect using browser automation
-- **🌍 Multi-Environment Support**: Separate dev and prod environments with automatic deployment
-- **🔄 Enhanced CI/CD**: GitHub Actions workflow supporting multiple branch deployments
-- **📋 OpenAPI 3.0 Specification**: Complete API documentation with video endpoint support
+- **Video Download Integration**: Automated video retrieval from Unifi Protect using HeadlessChromium browser automation optimized for AWS Lambda
+- **Configurable UI Automation**: Environment variable-based coordinate configuration for browser automation click targets
+- **Multi-Environment Support**: Separate development and production environments with automated deployment
+- **Enhanced CI/CD Pipeline**: GitHub Actions workflow supporting branch-based deployments
+- **OpenAPI 3.0 Specification**: Complete API documentation with comprehensive endpoint coverage
 
 ## Overview
 
@@ -17,37 +18,38 @@ This serverless application provides a comprehensive backup and retrieval system
 
 ### Core Functionality
 - **Webhook Processing**: Receives real-time alarm events from Unifi Dream Machine
-- **Video Download**: Automated video retrieval using PuppeteerSharp browser automation
+- **Automated Video Download**: Browser automation for video retrieval using HeadlessChromium optimized for AWS Lambda
 - **Data Storage**: Stores event data and videos in S3 with organized folder structure
 - **Device Mapping**: Maps device MAC addresses to human-readable names via environment variables
 - **Event Retrieval**: RESTful API for retrieving stored alarm events and video presigned URLs
 
 ### Technical Features
-- **Multi-Environment Deployment**: Separate dev and prod environments
+- **Multi-Environment Deployment**: Separate development and production environments
 - **CORS Support**: Cross-origin resource sharing for web client integration
 - **Comprehensive Error Handling**: Detailed logging and error management
 - **Scalable Architecture**: Serverless design that scales automatically
-- **Browser Automation**: Headless Chrome integration for Unifi Protect navigation
+- **Configurable UI Automation**: Environment variable-based coordinate configuration for browser interactions
 
-## 🎥 Video Download Capabilities
+## Video Download Capabilities
 
 ### Automated Video Retrieval Process
 
-The system now includes sophisticated browser automation to download video content directly from Unifi Protect:
+The system includes browser automation to download video content directly from Unifi Protect:
 
-1. **Browser Launch**: PuppeteerSharp launches headless Chrome instance
+1. **Browser Launch**: HeadlessChromium launches optimized for AWS Lambda environment
 2. **Authentication**: Automated login to Unifi Protect using stored credentials  
-3. **Navigation**: Programmatic navigation to specific event pages
+3. **Navigation**: Programmatic navigation to specific event pages using configurable coordinates
 4. **Video Extraction**: Direct blob URL access and video content download
 5. **Format Conversion**: Conversion to MP4 format for standardized storage
-6. **S3 Storage**: Organized storage in S3 
+6. **S3 Storage**: Organized storage in S3 with date-based folder structure
 
 ### Technical Implementation
 
-- **🔐 Secure Authentication**: Credential-based login with error handling
-- **📱 Responsive Navigation**: Handles Unifi Protect's modern web interface
-- **🔄 Error Recovery**: Comprehensive error handling and retry mechanisms
-- **📊 Progress Monitoring**: Detailed logging and screenshot capture for debugging
+- **AWS Lambda Optimization**: Uses HeadlessChromium.Puppeteer.Lambda.Dotnet for Lambda-optimized browser automation
+- **Configurable UI Interaction**: Click coordinates for archive and download buttons configurable via environment variables
+- **Enhanced Download Configuration**: Chrome DevTools Protocol (CDP) integration for reliable download handling
+- **Comprehensive Error Handling**: Detailed logging and retry mechanisms for browser automation
+- **Performance Monitoring**: Four diagnostic screenshots captured at key stages (login, page load, archive click, download click) for debugging
 
 ### Storage Organization
 
@@ -55,9 +57,26 @@ The system now includes sophisticated browser automation to download video conte
 S3 Bucket Structure:
 ├── events/
 │   └── YYYY-MM-DD/
-│       └── {deviceMac}_{timestamp}.json
-        └── {deviceMac}_{timestamp}.mp4
+│       ├── {deviceMac}_{timestamp}.json
+│       └── {deviceMac}_{timestamp}.mp4
+└── screenshots/
+    ├── login-screenshot.png
+    ├── pageload-screenshot.png
+    ├── firstclick-screenshot.png
+    └── secondclick-screenshot.png
 ```
+
+### Recent Technical Improvements
+
+#### AWS Lambda Optimization
+- **HeadlessChromium Integration**: Replaced standard PuppeteerSharp BrowserFetcher with HeadlessChromium.Puppeteer.Lambda.Dotnet for improved AWS Lambda compatibility
+- **Enhanced Download Handling**: Implemented Chrome DevTools Protocol (CDP) configuration for reliable download behavior in serverless environments
+- **Memory and Performance Optimization**: Browser launch optimized for Lambda's execution environment
+
+#### Configurable UI Automation
+- **Environment Variable Configuration**: Browser automation coordinates now configurable via CloudFormation parameters
+- **Flexible Deployment**: Different environments can use different UI coordinates without code changes
+- **Default Value Support**: Maintains backward compatibility with sensible defaults for all coordinate values
 
 ## Architecture
 
@@ -268,14 +287,14 @@ graph TB
 
 ### Core Endpoints
 
-#### 1. **Webhook Receiver** - `POST /{stage}/alarmevent`
+#### 1. Webhook Receiver - `POST /{stage}/alarmevent`
 Receives alarm events from Unifi Protect systems
 - **Purpose**: Process and store alarm event data
 - **Authentication**: API Key required
 - **Request**: JSON webhook payload from Unifi Dream Machine
 - **Response**: Success confirmation with event key
 
-#### 2. **Event Retrieval** - `GET /{stage}/?eventKey={eventKey}`
+#### 2. Event Retrieval - `GET /{stage}/?eventKey={eventKey}`
 Retrieves stored alarm event data
 - **Purpose**: Fetch specific alarm event JSON data
 - **Authentication**: API Key required
@@ -284,7 +303,7 @@ Retrieves stored alarm event data
 
 ### OpenAPI 3.0 Specification
 
-📋 **Complete API Documentation**: [openapi.yaml](openapi.yaml)
+**Complete API Documentation**: [openapi.yaml](openapi.yaml)
 
 The full OpenAPI 3.0 specification is available in the [`openapi.yaml`](openapi.yaml) file and includes:
 
@@ -356,9 +375,9 @@ Handles CORS preflight requests for web client support.
 
 ## Setup and Deployment
 
-This project supports **multi-environment deployment** with automated CI/CD via GitHub Actions. Deploy to development environments from feature branches and production from the main branch.
+This project supports multi-environment deployment with automated CI/CD via GitHub Actions. Deploy to development environments from feature branches and production from the main branch.
 
-### 🌍 Multi-Environment Support
+### Multi-Environment Support
 
 | Environment | Trigger | Stack Name | S3 Buckets | Lambda Function |
 |-------------|---------|------------|------------|-----------------|
@@ -371,16 +390,35 @@ This project supports **multi-environment deployment** with automated CI/CD via 
 - AWS CLI configured with appropriate permissions  
 - AWS Lambda Tools for .NET (for manual deployment)
 - GitHub repository with Actions enabled (for automated deployment)
-- **🆕 Unifi Protect Credentials** for video download functionality
+- Unifi Protect credentials for video download functionality
+
+### Unifi Protect Dependencies
+
+Before deploying this system, ensure your Unifi Protect environment meets these requirements:
+
+#### User and Role Configuration
+- **Camera Viewing Role**: A role exists that allows for Protect Camera Viewing Only
+- **Dedicated User Account**: A user exists that is a member of the Camera Viewing Only role
+- **Local Access Restriction**: The user account has "Restrict to Local Access" enabled with local credentials configured
+- **Credential Storage**: The local credentials are stored as `UNIFI_USERNAME` and `UNIFI_PASSWORD` repository secrets in your GitHub repo, which will be injected as environment variables in your Lambda function
+
+#### Network Configuration
+- **Internet Accessibility**: Your Protect system must be internet accessible over TCP and UDP on port 443 for HTTPS communication
+- **Firewall Rules**: Ensure appropriate firewall rules allow inbound HTTPS traffic to your Unifi Protect system
+
+#### Security Considerations
+- **Minimal Privileges**: Use a dedicated account with only Camera Viewing permissions to minimize security exposure
+- **Secrets Management**: Consider migrating credentials from GitHub repository secrets to AWS Secrets Manager for enhanced security, especially in multi-user AWS environments
+- **Network Security**: Implement proper network segmentation and access controls for your Unifi Protect system
 
 ## Automated Deployment (Recommended)
 
-### 🔄 Multi-Environment GitHub Actions Workflow
+### Multi-Environment GitHub Actions Workflow
 
 The project includes a comprehensive CI/CD pipeline that automatically builds, tests, and deploys to the appropriate environment based on the branch:
 
-- **🚀 Production Deployment**: Push to `main` branch → Production environment
-- **🧪 Development Deployment**: Push to any other branch → Development environment
+- **Production Deployment**: Push to `main` branch → Production environment
+- **Development Deployment**: Push to any other branch → Development environment
 
 #### Workflow Features
 
@@ -539,6 +577,14 @@ The CloudFormation template automatically configures these Lambda environment va
 | `ApiKey` | Generated API key | API Gateway authentication |
 | `DevicePrefix` | Fixed value: `DeviceMac` | Device mapping prefix |
 | `DeviceMac{MacAddress}` | Template values | Device name mappings |
+| `UnifiHost` | CloudFormation parameter | Unifi Protect hostname/IP |
+| `UnifiUsername` | CloudFormation parameter | Unifi Protect username |
+| `UnifiPassword` | CloudFormation parameter | Unifi Protect password |
+| `DownloadDirectory` | CloudFormation parameter | Download directory (default: `/tmp`) |
+| `ArchiveButtonX` | CloudFormation parameter | X coordinate for archive button (default: 1274) |
+| `ArchiveButtonY` | CloudFormation parameter | Y coordinate for archive button (default: 257) |
+| `DownloadButtonX` | CloudFormation parameter | X coordinate for download button (default: 1095) |
+| `DownloadButtonY` | CloudFormation parameter | Y coordinate for download button (default: 275) |
 
 #### Pre-configured Device Mappings
 
@@ -554,7 +600,7 @@ DeviceMacF4E2C677E20F: "Door"
 
 Update these in the CloudFormation template to match your Unifi device MAC addresses.
 
-## 🧪 Testing
+## Testing
 
 ### Unit Testing
 
@@ -596,6 +642,14 @@ If deploying manually, configure these environment variables in your Lambda func
 | `DevicePrefix` | Prefix for device name mapping variables | `DeviceMac` |
 | `DeployedEnv` | Environment identifier | `prod` |
 | `FunctionName` | Lambda function name | `UnifiProtectEventReceiver` |
+| `UnifiHost` | Unifi Protect hostname or IP address | `192.168.1.1` |
+| `UnifiUsername` | Unifi Protect username | `admin` |
+| `UnifiPassword` | Unifi Protect password | `password123` |
+| `DownloadDirectory` | Download directory path | `/tmp` |
+| `ArchiveButtonX` | X coordinate for archive button click | `1274` |
+| `ArchiveButtonY` | Y coordinate for archive button click | `257` |
+| `DownloadButtonX` | X coordinate for download button click | `1095` |
+| `DownloadButtonY` | Y coordinate for download button click | `275` |
 
 ### Device Name Mapping
 
@@ -662,6 +716,17 @@ aws apigateway get-api-keys \
 
 ### Unifi Protect Configuration
 
+#### User Account Setup
+1. **Create Camera Viewing Role** (if not exists):
+   - Navigate to Settings → Users & Authentication → Roles
+   - Create or verify a role with "Protect Camera Viewing Only" permissions
+2. **Create Dedicated User Account**:
+   - Navigate to Settings → Users & Authentication → Users
+   - Create a new user and assign to the Camera Viewing Only role
+   - Enable "Restrict to Local Access" and configure local credentials
+   - Use these credentials as your `UNIFI_USERNAME` and `UNIFI_PASSWORD`
+
+#### Webhook Configuration
 1. **Open Unifi Protect web interface**
 2. **Navigate to Settings → Integrations → Webhooks**
 3. **Add a new webhook**:
@@ -864,13 +929,30 @@ Events are processed and stored in S3 as JSON files with additional metadata:
 
 ```
 my-unifi-events-bucket/
-├── 2024-01-01/
-│   ├── AA:BB:CC:DD:EE:FF_1704067200000.json
-│   └── 11:22:33:44:55:66_1704070800000.json
-├── 2024-01-02/
-│   └── AA:BB:CC:DD:EE:FF_1704153600000.json
-└── ...
+├── events/
+│   ├── 2024-01-01/
+│   │   ├── AA:BB:CC:DD:EE:FF_1704067200000.json
+│   │   ├── AA:BB:CC:DD:EE:FF_1704067200000.mp4
+│   │   └── 11:22:33:44:55:66_1704070800000.json
+│   ├── 2024-01-02/
+│   │   ├── AA:BB:CC:DD:EE:FF_1704153600000.json
+│   │   └── AA:BB:CC:DD:EE:FF_1704153600000.mp4
+│   └── ...
+└── screenshots/
+    ├── login-screenshot.png
+    ├── pageload-screenshot.png
+    ├── firstclick-screenshot.png
+    └── secondclick-screenshot.png
 ```
+
+**File Descriptions:**
+- **Event JSON files**: Webhook payload data with device mappings and timestamps
+- **Video MP4 files**: Downloaded surveillance footage corresponding to alarm events
+- **Diagnostic Screenshots**: Browser automation screenshots for debugging:
+  - `login-screenshot.png`: Unifi Protect login page state
+  - `pageload-screenshot.png`: Event page after navigation
+  - `firstclick-screenshot.png`: Archive button click state
+  - `secondclick-screenshot.png`: Download button click state
 
 ## Development
 
@@ -1233,8 +1315,8 @@ aws cloudwatch get-metric-statistics \
 
 ## Documentation
 
-- **📋 [API Documentation](openapi.yaml)** - Complete OpenAPI 3.0 specification
-- **🚀 [Deployment Guide](docs/DEPLOYMENT.md)** - Multi-environment deployment instructions
+- **[API Documentation](openapi.yaml)** - Complete OpenAPI 3.0 specification
+- **[Deployment Guide](docs/DEPLOYMENT.md)** - Multi-environment deployment instructions
 
 ## License
 
@@ -1244,14 +1326,14 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **Brent Foster**  
 Created: December 23, 2024  
-Updated: August 16, 2025
+Updated: August 17, 2025
 
 ---
 
-### 📞 Support
+### Support
 
 For questions, issues, or contributions:
-- 📧 **Issues**: [GitHub Issues](https://github.com/engineerthefuture/unifi-protect-event-backup-api/issues)
-- 🔧 **Feature Requests**: Use GitHub Issues with the `enhancement` label
-- 📖 **Documentation**: Check the `docs/` directory for detailed guides
+- **Issues**: [GitHub Issues](https://github.com/engineerthefuture/unifi-protect-event-backup-api/issues)
+- **Feature Requests**: Use GitHub Issues with the `enhancement` label
+- **Documentation**: Check the `docs/` directory for detailed guides
 
