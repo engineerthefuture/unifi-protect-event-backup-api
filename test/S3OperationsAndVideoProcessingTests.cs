@@ -20,7 +20,7 @@ namespace UnifiWebhookEventReceiver.Tests
     /// </summary>
     public class S3OperationsAndVideoProcessingTests
     {
-        private void SetupEnvironmentVariables()
+        private static void SetupEnvironmentVariables()
         {
             Environment.SetEnvironmentVariable("StorageBucket", "test-s3-bucket");
             Environment.SetEnvironmentVariable("DevicePrefix", "TestDevice");
@@ -43,10 +43,9 @@ namespace UnifiWebhookEventReceiver.Tests
         {
             // Arrange
             SetupEnvironmentVariables();
-            var receiver = new UnifiWebhookEventReceiver();
 
             // Act
-            var response = await receiver.FunctionHandler(null, new StubContext());
+            var response = await UnifiWebhookEventReceiver.FunctionHandler(null, new StubContext());
 
             // Assert
             Assert.Equal((int)HttpStatusCode.BadRequest, response.StatusCode);
@@ -58,7 +57,6 @@ namespace UnifiWebhookEventReceiver.Tests
         {
             // Arrange
             SetupEnvironmentVariables();
-            var receiver = new UnifiWebhookEventReceiver();
 
             var apiEvent = new APIGatewayProxyRequest
             {
@@ -74,7 +72,7 @@ namespace UnifiWebhookEventReceiver.Tests
             var stream = new MemoryStream(Encoding.UTF8.GetBytes(json));
 
             // Act
-            var response = await receiver.FunctionHandler(stream, new StubContext());
+            var response = await UnifiWebhookEventReceiver.FunctionHandler(stream, new StubContext());
 
             // Assert
             Assert.Equal((int)HttpStatusCode.BadRequest, response.StatusCode);
@@ -85,7 +83,6 @@ namespace UnifiWebhookEventReceiver.Tests
         {
             // Arrange
             SetupEnvironmentVariables();
-            var receiver = new UnifiWebhookEventReceiver();
 
             var apiEvent = new APIGatewayProxyRequest
             {
@@ -101,7 +98,7 @@ namespace UnifiWebhookEventReceiver.Tests
             var stream = new MemoryStream(Encoding.UTF8.GetBytes(json));
 
             // Act
-            var response = await receiver.FunctionHandler(stream, new StubContext());
+            var response = await UnifiWebhookEventReceiver.FunctionHandler(stream, new StubContext());
 
             // Assert
             Assert.Equal((int)HttpStatusCode.BadRequest, response.StatusCode);
@@ -112,7 +109,6 @@ namespace UnifiWebhookEventReceiver.Tests
         {
             // Arrange
             SetupEnvironmentVariables();
-            var receiver = new UnifiWebhookEventReceiver();
 
             var apiEvent = new APIGatewayProxyRequest
             {
@@ -128,7 +124,7 @@ namespace UnifiWebhookEventReceiver.Tests
             var stream = new MemoryStream(Encoding.UTF8.GetBytes(json));
 
             // Act
-            var response = await receiver.FunctionHandler(stream, new StubContext());
+            var response = await UnifiWebhookEventReceiver.FunctionHandler(stream, new StubContext());
 
             // Assert
             // Should handle gracefully (may succeed or fail, but shouldn't throw)
@@ -185,7 +181,7 @@ namespace UnifiWebhookEventReceiver.Tests
             var stream = new MemoryStream(Encoding.UTF8.GetBytes(json));
 
             // Act
-            var response = await new UnifiWebhookEventReceiver().FunctionHandler(stream, new StubContext());
+            var response = await UnifiWebhookEventReceiver.FunctionHandler(stream, new StubContext());
 
             // Assert
             // Should process multiple triggers (may succeed or fail based on AWS connectivity)
@@ -222,7 +218,7 @@ namespace UnifiWebhookEventReceiver.Tests
             var stream = new MemoryStream(Encoding.UTF8.GetBytes(json));
 
             // Act
-            var response = await new UnifiWebhookEventReceiver().FunctionHandler(stream, new StubContext());
+            var response = await UnifiWebhookEventReceiver.FunctionHandler(stream, new StubContext());
 
             // Assert
             Assert.Equal((int)HttpStatusCode.BadRequest, response.StatusCode);

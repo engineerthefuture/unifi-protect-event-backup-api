@@ -20,7 +20,7 @@ namespace UnifiWebhookEventReceiver.Tests
     /// </summary>
     public class ErrorHandlingAndEdgeCasesTests
     {
-        private void SetupEnvironmentVariables()
+        private static void SetupEnvironmentVariables()
         {
             Environment.SetEnvironmentVariable("StorageBucket", "test-error-bucket");
             Environment.SetEnvironmentVariable("DevicePrefix", "ErrorTest");
@@ -45,7 +45,6 @@ namespace UnifiWebhookEventReceiver.Tests
         {
             // Arrange
             SetupEnvironmentVariables();
-            var receiver = new UnifiWebhookEventReceiver();
             var context = new StubContext();
             
             // Create JSON that will cause deserialization to fail in a specific way
@@ -53,7 +52,7 @@ namespace UnifiWebhookEventReceiver.Tests
             var stream = new MemoryStream(Encoding.UTF8.GetBytes(malformedJson));
 
             // Act
-            var response = await receiver.FunctionHandler(stream, context);
+            var response = await UnifiWebhookEventReceiver.FunctionHandler(stream, context);
 
             // Assert
             Assert.Equal((int)HttpStatusCode.InternalServerError, response.StatusCode);
@@ -102,7 +101,7 @@ namespace UnifiWebhookEventReceiver.Tests
             var stream = new MemoryStream(Encoding.UTF8.GetBytes(json));
 
             // Act
-            var response = await new UnifiWebhookEventReceiver().FunctionHandler(stream, new StubContext());
+            var response = await UnifiWebhookEventReceiver.FunctionHandler(stream, new StubContext());
 
             // Assert
             // Should handle invalid timestamp gracefully
@@ -147,7 +146,7 @@ namespace UnifiWebhookEventReceiver.Tests
             var stream = new MemoryStream(Encoding.UTF8.GetBytes(json));
 
             // Act
-            var response = await new UnifiWebhookEventReceiver().FunctionHandler(stream, new StubContext());
+            var response = await UnifiWebhookEventReceiver.FunctionHandler(stream, new StubContext());
 
             // Assert
             // Should handle zero timestamp gracefully
@@ -196,7 +195,7 @@ namespace UnifiWebhookEventReceiver.Tests
             var stream = new MemoryStream(Encoding.UTF8.GetBytes(json));
 
             // Act
-            var response = await new UnifiWebhookEventReceiver().FunctionHandler(stream, new StubContext());
+            var response = await UnifiWebhookEventReceiver.FunctionHandler(stream, new StubContext());
 
             // Assert
             // Should handle invalid event IDs appropriately
@@ -244,7 +243,7 @@ namespace UnifiWebhookEventReceiver.Tests
             var stream = new MemoryStream(Encoding.UTF8.GetBytes(json));
 
             // Act
-            var response = await new UnifiWebhookEventReceiver().FunctionHandler(stream, new StubContext());
+            var response = await UnifiWebhookEventReceiver.FunctionHandler(stream, new StubContext());
 
             // Assert
             // Should handle large alarm data appropriately

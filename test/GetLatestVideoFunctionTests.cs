@@ -19,14 +19,14 @@ namespace UnifiWebhookEventReceiver.Tests
 {
     public class GetLatestVideoFunctionTests
     {
-        private void SetupTestEnvironment()
+        private static void SetupTestEnvironment()
         {
             Environment.SetEnvironmentVariable("StorageBucket", "test-bucket");
             Environment.SetEnvironmentVariable("DevicePrefix", "dev");
             Environment.SetEnvironmentVariable("FunctionName", "TestFunction");
         }
 
-        private void ClearEnvironment()
+        private static void ClearEnvironment()
         {
             Environment.SetEnvironmentVariable("StorageBucket", null);
         }

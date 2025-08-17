@@ -19,7 +19,7 @@ namespace UnifiWebhookEventReceiver.Tests
 {
     public class SQSIntegrationTests
     {
-        private void SetSQSEnv()
+        private static void SetSQSEnv()
         {
             Environment.SetEnvironmentVariable("AlarmProcessingQueueUrl", "https://sqs.us-east-1.amazonaws.com/123456789012/test-queue");
             Environment.SetEnvironmentVariable("ProcessingDelaySeconds", "120");

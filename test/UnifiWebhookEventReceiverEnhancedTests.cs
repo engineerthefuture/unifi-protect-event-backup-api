@@ -27,7 +27,7 @@ namespace UnifiWebhookEventReceiver.Tests
 {
     public class UnifiWebhookEventReceiverEnhancedTests
     {
-        private void SetBaseEnv()
+        private static void SetBaseEnv()
         {
             Environment.SetEnvironmentVariable("StorageBucket", "test-bucket");
             Environment.SetEnvironmentVariable("DevicePrefix", "DeviceMac");
@@ -68,12 +68,10 @@ namespace UnifiWebhookEventReceiver.Tests
             Assert.Equal("testpass", credentials.password);
         }
 
-                        [Fact]
-        public async Task FunctionHandler_ShouldDetectSQSEvent()
+                                [Fact]
+        public async Task TestFunctionHandler_SQSEvent_ReturnsExpectedResult()
         {
             // Arrange
-            SetBaseEnv();
-            var receiver = new UnifiWebhookEventReceiver();
             var context = new StubContext();
             
             // Create proper SQS event structure
@@ -105,7 +103,7 @@ namespace UnifiWebhookEventReceiver.Tests
             var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(json));
 
             // Act
-            var response = await receiver.FunctionHandler(stream, context);
+            var response = await UnifiWebhookEventReceiver.FunctionHandler(stream, context);
 
             // Assert
             Assert.Equal((int)HttpStatusCode.OK, response.StatusCode);
@@ -117,7 +115,6 @@ namespace UnifiWebhookEventReceiver.Tests
         {
             // Arrange
             SetBaseEnv();
-            var receiver = new UnifiWebhookEventReceiver();
             var context = new StubContext();
             
             // Create a request with an invalid route to test API Gateway integration without AWS dependencies
@@ -131,7 +128,7 @@ namespace UnifiWebhookEventReceiver.Tests
             var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(json));
 
             // Act
-            var response = await receiver.FunctionHandler(stream, context);
+            var response = await UnifiWebhookEventReceiver.FunctionHandler(stream, context);
 
             // Assert - just verify it returns a valid API Gateway response structure
             Assert.Equal((int)HttpStatusCode.BadRequest, response.StatusCode);
@@ -177,7 +174,6 @@ namespace UnifiWebhookEventReceiver.Tests
         {
             // Arrange
             SetBaseEnv();
-            var receiver = new UnifiWebhookEventReceiver();
             var context = new StubContext();
             
             // Create a valid SQS event but with invalid JSON in the message body
@@ -198,7 +194,7 @@ namespace UnifiWebhookEventReceiver.Tests
             var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(json));
 
             // Act
-            var response = await receiver.FunctionHandler(stream, context);
+            var response = await UnifiWebhookEventReceiver.FunctionHandler(stream, context);
 
             // Assert
             Assert.Equal((int)HttpStatusCode.OK, response.StatusCode);
@@ -392,13 +388,13 @@ namespace UnifiWebhookEventReceiver.Tests
                 UnifiWebhookEventReceiver.GetVideoFromLocalUnifiProtectViaHeadlessClient(eventLocalLink, deviceName, credentials));
         }
 
-        private class TestLogger : ILambdaLogger 
+        private sealed class TestLogger : ILambdaLogger 
         { 
             public void Log(string message) { } 
             public void LogLine(string message) { } 
         }
 
-        private class StubContext : ILambdaContext
+        private sealed class StubContext : ILambdaContext
         {
             public string AwsRequestId => "test";
             public IClientContext ClientContext => null;

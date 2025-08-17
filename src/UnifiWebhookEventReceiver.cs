@@ -14,6 +14,7 @@
 // System includes
 using System.Collections;
 using System.Net;
+using System.Reflection;
 using System.Text;
 
 // Third-party includes
@@ -34,7 +35,8 @@ using Amazon.SQS.Model;
 using Amazon.SecretsManager;
 using Amazon.SecretsManager.Model;
 
-// Assembly attribute to enable the Lambda function's JSON input to be converted into a .NET class
+// Assembly attributes
+[assembly: AssemblyVersion("1.0.0.0")]
 [assembly: LambdaSerializer(typeof(Amazon.Lambda.Serialization.SystemTextJson.DefaultLambdaJsonSerializer))]
 
 namespace UnifiWebhookEventReceiver
@@ -154,13 +156,13 @@ namespace UnifiWebhookEventReceiver
         static RegionEndpoint AWS_REGION = RegionEndpoint.USEast1;
 
         /// <summary>S3 client instance for bucket operations</summary>
-        static IAmazonS3 s3Client = new AmazonS3Client(AWS_REGION);
+        static AmazonS3Client s3Client = new AmazonS3Client(AWS_REGION);
 
         /// <summary>SQS client instance for queue operations</summary>
-        static IAmazonSQS sqsClient = new AmazonSQSClient(AWS_REGION);
+        static AmazonSQSClient sqsClient = new AmazonSQSClient(AWS_REGION);
 
         /// <summary>Secrets Manager client instance for credential retrieval</summary>
-        static IAmazonSecretsManager secretsClient = new AmazonSecretsManagerClient(AWS_REGION);
+        static AmazonSecretsManagerClient secretsClient = new AmazonSecretsManagerClient(AWS_REGION);
 
         #endregion
 
@@ -1060,13 +1062,13 @@ namespace UnifiWebhookEventReceiver
                 else
                 {
                     log.LogLine("Error encountered while reading object from S3: " + e.Message);
-                    throw new Exception("Error encountered while getting file from S3.");
+                    throw new InvalidOperationException("Error encountered while getting file from S3.", e);
                 }
             }
             catch (Exception e)
             {
                 log.LogLine("Unknown encountered on server. Message:'{0}' when reading an object" + e.Message);
-                throw new Exception("Error encountered while getting file from S3.");
+                throw new InvalidOperationException("Error encountered while getting file from S3.", e);
             }
         }
 
@@ -1475,11 +1477,16 @@ namespace UnifiWebhookEventReceiver
 
             var response = await s3Client.ListObjectsV2Async(listRequest);
 
-            foreach (var obj in response.S3Objects.Where(o => o.Key.EndsWith(".json")))
+            var eventFile = response.S3Objects
+                .Where(o => o.Key.EndsWith(".json"))
+                .Select(obj => obj.Key)
+                .FirstOrDefault();
+
+            if (eventFile != null)
             {
-                string eventKey = obj.Key;
-                string videoKey = obj.Key.Replace(".json", ".mp4");
-                long timestamp = ExtractTimestampFromEventFileName(obj.Key);
+                string eventKey = eventFile;
+                string videoKey = eventFile.Replace(".json", ".mp4");
+                long timestamp = ExtractTimestampFromEventFileName(eventFile);
 
                 log.LogLine($"Found event file: {eventKey}, corresponding video: {videoKey}");
                 return (eventKey, videoKey, timestamp);
@@ -1783,7 +1790,7 @@ namespace UnifiWebhookEventReceiver
 
                     // Take the username and password and * out all but the first 3 characters of the username and all of the characters of the password
                     log.LogLine("Filling in credentials for login...");
-                    var maskedUsername = credentials.username.Length > 3 ? credentials.username.Substring(0, 3) + new string('*', credentials.username.Length - 3) : credentials.username;
+                    var maskedUsername = credentials.username.Length > 3 ? string.Concat(credentials.username.AsSpan(0, 3), new string('*', credentials.username.Length - 3)) : credentials.username;
                     var maskedPassword = new string('*', credentials.password.Length);
 
                     log.LogLine($"Using credentials - Username: {maskedUsername}, Password: {maskedPassword}");
@@ -1884,28 +1891,22 @@ namespace UnifiWebhookEventReceiver
 
                             // Try to extract GUID if available
                             var data = e.MessageData;
-                            if (data.ValueKind == System.Text.Json.JsonValueKind.Object)
+                            if (data.ValueKind == System.Text.Json.JsonValueKind.Object && data.TryGetProperty("guid", out var guidElement))
                             {
-                                if (data.TryGetProperty("guid", out var guidElement))
-                                {
-                                    downloadGuid = guidElement.GetString();
-                                    log.LogLine($"Download started with GUID: {downloadGuid}");
-                                }
+                                downloadGuid = guidElement.GetString();
+                                log.LogLine($"Download started with GUID: {downloadGuid}");
                             }
                         }
                         else if (e.MessageID == "Browser.downloadProgress")
                         {
                             var data = e.MessageData;
-                            if (data.ValueKind == System.Text.Json.JsonValueKind.Object)
+                            if (data.ValueKind == System.Text.Json.JsonValueKind.Object && data.TryGetProperty("state", out var stateElement))
                             {
-                                if (data.TryGetProperty("state", out var stateElement))
+                                var state = stateElement.GetString();
+                                log.LogLine($"Download progress: {state}");
+                                if (state == "completed")
                                 {
-                                    var state = stateElement.GetString();
-                                    log.LogLine($"Download progress: {state}");
-                                    if (state == "completed")
-                                    {
-                                        log.LogLine("Download completed via event notification");
-                                    }
+                                    log.LogLine("Download completed via event notification");
                                 }
                             }
                         }
@@ -1951,16 +1952,16 @@ namespace UnifiWebhookEventReceiver
                 var initialFileCount = Directory.GetFiles(downloadDirectory, "*.mp4").Length;
                 var maxWaitTime = TimeSpan.FromSeconds(100);
                 var checkInterval = TimeSpan.FromSeconds(1);
-                var startTime = DateTime.Now;
+                var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
                 log.LogLine($"Initial file count: {initialFileCount}, Download event detected: {downloadStarted}");
 
-                while (DateTime.Now - startTime < maxWaitTime)
+                while (stopwatch.Elapsed < maxWaitTime)
                 {
                     var currentFileCount = Directory.GetFiles(downloadDirectory, "*.mp4").Length;
                     if (currentFileCount > initialFileCount)
                     {
-                        log.LogLine($"New video file detected after {(DateTime.Now - startTime).TotalSeconds:F1} seconds");
+                        log.LogLine($"New video file detected after {stopwatch.Elapsed.TotalSeconds:F1} seconds");
 
                         // Wait a bit more to ensure the file is completely written
                         await Task.Delay(2000);
@@ -1979,7 +1980,7 @@ namespace UnifiWebhookEventReceiver
                     await Task.Delay(checkInterval);
                 }
 
-                if (DateTime.Now - startTime >= maxWaitTime)
+                if (stopwatch.Elapsed >= maxWaitTime)
                 {
                     log.LogLine("Download timeout reached, checking for any video files...");
 
@@ -2024,7 +2025,7 @@ namespace UnifiWebhookEventReceiver
             catch (Exception ex)
             {
                 log.LogLine($"Error while processing video download: {ex.Message}");
-                throw new Exception($"Error downloading video: {ex.Message}", ex);
+                throw new InvalidOperationException($"Error downloading video: {ex.Message}", ex);
             }
         }
 

@@ -1,5 +1,26 @@
 /************************
- * Unifi Webhook Event Receiver
+ * Unif        {        [Fact]
+        public async Task FunctionHandler_ReturnsInternalServerError_WhenJsonIsInvalid()
+        {
+            // Arrange
+            SetEnv();
+            var context = new StubContext();
+            var json = "invalid json";
+            var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(json));
+
+            // Act
+            var response = await UnifiWebhookEventReceiver.FunctionHandler(stream, context); SetEnv();
+            var context = new StubContext();
+            var json = "invalid json";
+            var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(json));
+
+            // Act
+            var response = await UnifiWebhookEventReceiver.FunctionHandler(stream, context);
+
+            // Assert
+            Assert.Equal((int)HttpStatusCode.InternalServerError, response.StatusCode);
+            Assert.Contains("An internal server error has occured", response.Body);
+        }t Receiver
  * UnifiWebhookEventReceiverTests.cs
  * Testing for receiving alarm event webhooks from Unifi Dream Machine
  * Brent Foster
@@ -20,7 +41,7 @@ namespace UnifiWebhookEventReceiver.Tests
 {
     public class UnifiWebhookEventReceiverTests
     {
-        private void SetEnv()
+        private static void SetEnv()
         {
             Environment.SetEnvironmentVariable("StorageBucket", "test-bucket");
             Environment.SetEnvironmentVariable("DevicePrefix", "dev");
@@ -33,13 +54,12 @@ namespace UnifiWebhookEventReceiver.Tests
         {
             // Arrange
             SetEnv();
-            var receiver = new UnifiWebhookEventReceiver();
             var context = new StubContext();
             var json = "invalid json";
             var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(json));
 
             // Act
-            var response = await receiver.FunctionHandler(stream, context);
+            var response = await UnifiWebhookEventReceiver.FunctionHandler(stream, context);
 
             // Assert
             Assert.Equal((int)HttpStatusCode.InternalServerError, response.StatusCode);
@@ -51,11 +71,10 @@ namespace UnifiWebhookEventReceiver.Tests
         {
             // Arrange
             SetEnv();
-            var receiver = new UnifiWebhookEventReceiver();
             var context = new StubContext();
 
             // Act
-            var response = await receiver.FunctionHandler(null, context);
+            var response = await UnifiWebhookEventReceiver.FunctionHandler(null, context);
 
             // Assert
             Assert.Equal((int)HttpStatusCode.BadRequest, response.StatusCode);
@@ -67,14 +86,13 @@ namespace UnifiWebhookEventReceiver.Tests
         {
             // Arrange
             SetEnv();
-            var receiver = new UnifiWebhookEventReceiver();
             var context = new StubContext();
             var request = new APIGatewayProxyRequest { Path = "alarmevent", HttpMethod = "OPTIONS" };
             var json = JsonConvert.SerializeObject(request);
             var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(json));
 
             // Act
-            var response = await receiver.FunctionHandler(stream, context);
+            var response = await UnifiWebhookEventReceiver.FunctionHandler(stream, context);
 
             // Assert
             Assert.Equal((int)HttpStatusCode.OK, response.StatusCode);
@@ -82,8 +100,8 @@ namespace UnifiWebhookEventReceiver.Tests
             Assert.Contains("Access-Control-Allow-Methods", response.Headers.Keys);
         }
 
-        private class TestLogger : ILambdaLogger { public void Log(string message) { } public void LogLine(string message) { } }
-        private class StubContext : ILambdaContext
+        private sealed class TestLogger : ILambdaLogger { public void Log(string message) { } public void LogLine(string message) { } }
+        private sealed class StubContext : ILambdaContext
         {
             public string AwsRequestId => "test";
             public IClientContext ClientContext => null;
