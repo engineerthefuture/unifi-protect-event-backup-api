@@ -21,6 +21,7 @@
     <PackageReference Include="Amazon.Lambda.APIGatewayEvents" Version="2.7.1" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="PuppeteerSharp" Version="19.0.0" />
+    <PackageReference Include="HeadlessChromium.Puppeteer.Lambda.Dotnet" Version="1.1.0.97" />
   </ItemGroup>
   <ItemGroup>
     <Folder Include="src\" />

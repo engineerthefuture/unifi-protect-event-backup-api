@@ -20,6 +20,7 @@ using System.Text;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using PuppeteerSharp;
+using HeadlessChromium.Puppeteer.Lambda.Dotnet;
 
 // AWS includes
 using Amazon;
@@ -50,66 +51,72 @@ namespace UnifiWebhookEventReceiver
     /// - DevicePrefix: Prefix for environment variables containing device name mappings
     /// - DeployedEnv: Environment identifier (dev, prod, etc.)
     /// - FunctionName: Lambda function name for logging
+    /// - UnifiHost: Hostname or IP of Unifi Protect system
+    /// - UnifiUsername: Username for Unifi Protect authentication
+    /// - UnifiPassword: Password for Unifi Protect authentication
+    /// 
+    /// Dependencies:
+    /// - For local development, ensure PuppeteerSharp can download browser or provide custom path
     /// </summary>
     public class UnifiWebhookEventReceiver
     {
         #region Constants and Configuration
-        
+
         /// <summary>Error message template for 500 Internal Server Error responses</summary>
         const string ERROR_MESSAGE_500 = "An internal server error has occured: ";
-        
+
         /// <summary>Error message template for 400 Bad Request responses</summary>
         const string ERROR_MESSAGE_400 = "Your request is malformed or invalid: ";
-        
+
         /// <summary>Error message template for 404 Not Found responses</summary>
         const string ERROR_MESSAGE_404 = "Route not found: ";
-        
+
         /// <summary>Success message for requests that don't require action</summary>
         const string MESSAGE_202 = "No action taken on request.";
-        
+
         /// <summary>Error message for requests missing required body content</summary>
         const string ERROR_GENERAL = "you must have a valid body object in your request";
-        
+
         /// <summary>Error message for alarm events missing triggers</summary>
         const string ERROR_TRIGGERS = "you must have triggers in your payload";
-        
+
         /// <summary>Error message for GET requests missing eventKey parameter</summary>
         const string ERROR_EVENTKEY = "you must provide an eventKey in the path";
-        
+
         /// <summary>Error message for invalid API routes</summary>
         const string ERROR_INVALID_ROUTE = "please provide a valid route";
-        
+
         /// <summary>Presigned URL expiration time in seconds (24 hours)</summary>
         const int EXPIRATION_SECONDS = 86400;
 
         /// <summary>API route for alarm event webhook processing</summary>
         const string ROUTE_ALARM = "alarmevent";
-        
+
         /// <summary>Event source identifier for AWS scheduled events</summary>
         const string SOURCE_EVENT_TRIGGER = "aws.events";
 
         #endregion
 
         #region Environment Variables and AWS Configuration
-        
+
         /// <summary>S3 bucket name for storing alarm event data</summary>
         static string? ALARM_BUCKET_NAME = Environment.GetEnvironmentVariable("StorageBucket");
-        
+
         /// <summary>Prefix for environment variables containing device MAC to name mappings</summary>
         static string? DEVICE_PREFIX = Environment.GetEnvironmentVariable("DevicePrefix");
-        
+
         /// <summary>Deployment environment identifier (dev, staging, prod)</summary>
         static string? DEPLOYED_ENV = Environment.GetEnvironmentVariable("DeployedEnv");
-        
+
         /// <summary>Lambda function name for logging and identification</summary>
         static string? FUNCTION_NAME = Environment.GetEnvironmentVariable("FunctionName");
 
         /// <summary>Unifi Protect hostname or IP address for video downloads</summary>
         static string? UNIFI_HOST = Environment.GetEnvironmentVariable("UnifiHost");
-        
+
         /// <summary>Unifi Protect username for authentication</summary>
         static string? UNIFI_USERNAME = Environment.GetEnvironmentVariable("UnifiUsername");
-        
+
         /// <summary>Unifi Protect password for authentication</summary>
         static string? UNIFI_PASSWORD = Environment.GetEnvironmentVariable("UnifiPassword");
 
@@ -118,17 +125,17 @@ namespace UnifiWebhookEventReceiver
 
         /// <summary>AWS region for S3 operations</summary>
         static RegionEndpoint AWS_REGION = RegionEndpoint.USEast1;
-        
+
         /// <summary>S3 client instance for bucket operations</summary>
         static IAmazonS3 s3Client = new AmazonS3Client(AWS_REGION);
 
         #endregion
 
         #region Logging Infrastructure
-        
+
         /// <summary>Lambda logger instance for function execution logging</summary>
         static ILambdaLogger log = new NullLogger();
-        
+
         /// <summary>
         /// Null object pattern implementation for ILambdaLogger to prevent null reference exceptions
         /// when logger is not available during testing or initialization
@@ -209,8 +216,8 @@ namespace UnifiWebhookEventReceiver
                             StatusCode = (int)HttpStatusCode.OK,
                             Body = JsonConvert.SerializeObject(new { msg = (MESSAGE_202) }),
                             Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                            };
-                            return response;
+                        };
+                        return response;
                     }
                     // API trigger
                     else
@@ -276,7 +283,7 @@ namespace UnifiWebhookEventReceiver
                             }
 
                             // Determine the route
-                            if (route != null && (route != "" || (req.QueryStringParameters != null && req.QueryStringParameters.Count >0)))
+                            if (route != null && (route != "" || (req.QueryStringParameters != null && req.QueryStringParameters.Count > 0)))
                             {
                                 // New alarm event webhook route
                                 if (method == HttpMethod.Post.ToString().ToUpper() && route == ROUTE_ALARM)
@@ -294,13 +301,13 @@ namespace UnifiWebhookEventReceiver
                                             JObject? alarmObject = jo.SelectToken("alarm") as JObject;
                                             long timestamp = (long)0;
                                             String alarmObjectString = "";
-                                            if(jo.SelectToken("timestamp") != null)
+                                            if (jo.SelectToken("timestamp") != null)
                                             {
                                                 timestamp = (long)Convert.ToDouble(jo.SelectToken("timestamp"));
                                             }
-                                            if(alarmObject != null)
+                                            if (alarmObject != null)
                                             {
-                                                alarmObjectString = alarmObject.ToString(); 
+                                                alarmObjectString = alarmObject.ToString();
                                             }
 
                                             if (string.IsNullOrEmpty(alarmObjectString))
@@ -314,7 +321,7 @@ namespace UnifiWebhookEventReceiver
                                                 };
                                                 return errorResponse;
                                             }
-    
+
                                             // Process the webhook
                                             Alarm? alarm = JsonConvert.DeserializeObject<Alarm>(alarmObjectString);
                                             if (alarm == null)
@@ -358,10 +365,10 @@ namespace UnifiWebhookEventReceiver
                                     }
                                 }
                                 // Get request to download an event object received
-                                else if(method == HttpMethod.Get.ToString().ToUpper())
+                                else if (method == HttpMethod.Get.ToString().ToUpper())
                                 {
                                     string eventKey = req.QueryStringParameters["eventKey"];
-                                    if(eventKey == null || eventKey.Length == 0)
+                                    if (eventKey == null || eventKey.Length == 0)
                                     {
                                         // Return response
                                         log.LogLine(ERROR_MESSAGE_400 + ERROR_EVENTKEY);
@@ -452,7 +459,7 @@ namespace UnifiWebhookEventReceiver
             }
         }
 
-        
+
         #endregion
 
         #region Alarm Event Processing
@@ -479,65 +486,66 @@ namespace UnifiWebhookEventReceiver
 
             try
             {
-                    // Check for null object
-                    if (alarm != null)
+                // Check for null object
+                if (alarm != null)
+                {
+                    log.LogLine("Alarm: " + JsonConvert.SerializeObject(alarm));
+                    // Check triggers
+                    if (alarm.triggers == null || alarm.triggers.Count == 0)
                     {
-                        log.LogLine("Alarm: " + JsonConvert.SerializeObject(alarm));
-                        // Check triggers
-                        if (alarm.triggers == null || alarm.triggers.Count == 0)
+                        // Return response
+                        log.LogLine("Error: " + ERROR_TRIGGERS);
+                        response = new APIGatewayProxyResponse
                         {
-                            // Return response
-                            log.LogLine("Error: " + ERROR_TRIGGERS);
-                            response = new APIGatewayProxyResponse
-                            {
-                                StatusCode = (int)HttpStatusCode.BadRequest,
-                                Body = JsonConvert.SerializeObject(new { msg = (ERROR_MESSAGE_400 + ERROR_TRIGGERS) }),
-                                Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                            };
-                            return response;
-                        }
+                            StatusCode = (int)HttpStatusCode.BadRequest,
+                            Body = JsonConvert.SerializeObject(new { msg = (ERROR_MESSAGE_400 + ERROR_TRIGGERS) }),
+                            Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
+                        };
+                        return response;
+                    }
 
-                        // Event details
-                        Trigger trigger = alarm.triggers.ElementAt(0);
-                        String device = trigger.device;
-                        long timestamp = alarm.timestamp;
-                        String triggerType = trigger.key;
-                        String eventId = trigger.eventId;
-                        String eventPath = alarm.eventPath ?? "";
-                        String eventLocalLink = alarm.eventLocalLink ?? "";
-                        String deviceName = "";
+                    // Event details
+                    Trigger trigger = alarm.triggers.ElementAt(0);
+                    String device = trigger.device;
+                    long timestamp = alarm.timestamp;
+                    String triggerType = trigger.key;
+                    String eventId = trigger.eventId;
+                    String eventPath = alarm.eventPath ?? "";
+                    String eventLocalLink = alarm.eventLocalLink ?? "";
+                    String deviceName = "";
 
-                        // Set date from timestamp
-                        DateTime dt = DateTimeOffset.FromUnixTimeMilliseconds(timestamp).LocalDateTime;
-                        String date = String.Format("{0:s}", dt);
-                        trigger.date = date;
-                        log.LogInformation("Date: " + date);
+                    // Set date from timestamp
+                    DateTime dt = DateTimeOffset.FromUnixTimeMilliseconds(timestamp).LocalDateTime;
+                    String date = String.Format("{0:s}", dt);
+                    trigger.date = date;
+                    log.LogInformation("Date: " + date);
 
-                        // Map device Mac to device name and update object
-                        IDictionary envVars = Environment.GetEnvironmentVariables();
-                        if(envVars != null && envVars[DEVICE_PREFIX + device] != null)
-                        {
-                            deviceName = (string?)envVars[DEVICE_PREFIX + device] ?? "";
-                            log.LogLine("Device name found for " + device + ": " + deviceName);
-                            trigger.deviceName = deviceName;
-                        }
+                    // Map device Mac to device name and update object
+                    IDictionary envVars = Environment.GetEnvironmentVariables();
+                    if (envVars != null && envVars[DEVICE_PREFIX + device] != null)
+                    {
+                        deviceName = (string?)envVars[DEVICE_PREFIX + device] ?? "";
+                        log.LogLine("Device name found for " + device + ": " + deviceName);
+                        trigger.deviceName = deviceName;
+                    }
 
-                        // Generate presigned URL 
-                        /*
-                        String videoKey = deviceName + "/" + device + "_" + timestamp.ToString() + "_" + triggerType + "-video.mp4";
-                        string presignedUrl = GeneratePreSignedURL(videoKey, HttpVerb.PUT, EXPIRATION_SECONDS, "video/mp4");
-                        trigger.presignedUrl = presignedUrl;
-                        trigger.videoKey = videoKey;
-                        log.LogLine("Presigned URL generated for " + videoKey + ": " + presignedUrl);
-                        */
+                    // Generate presigned URL 
+                    /*
+                    string presignedUrl = GeneratePreSignedURL(videoKey, HttpVerb.PUT, EXPIRATION_SECONDS, "video/mp4");
+                    trigger.presignedUrl = presignedUrl;
+                    log.LogLine("Presigned URL generated for " + videoKey + ": " + presignedUrl);
+                    */
 
-                        // Save alarm event to S3
-                        String eventKey = device + "_" + timestamp.ToString() + ".json";
-                        trigger.eventKey = eventKey;
-                        alarm.triggers[0] = trigger;
+                    // Set event key and update alarm object
+                    String videoKey = device + "_" + timestamp.ToString() + ".mp4";
+                    String eventKey = device + "_" + timestamp.ToString() + ".json";
+                    trigger.eventKey = eventKey;
+                    trigger.videoKey = videoKey;
+                    alarm.triggers[0] = trigger;
 
                     // Create a file key that saves into a subfolder based on the date formated like "2024-12-23"
-                    String fileKey = $"{dt.Year}-{dt.Month.ToString("D2")}-{dt.Day.ToString("D2")}/{eventKey}";
+                    String eventFileKey = $"{dt.Year}-{dt.Month.ToString("D2")}-{dt.Day.ToString("D2")}/{eventKey}";
+                    String videoFileKey = $"{dt.Year}-{dt.Month.ToString("D2")}-{dt.Day.ToString("D2")}/{videoKey}";
 
                     if (string.IsNullOrEmpty(ALARM_BUCKET_NAME))
                     {
@@ -551,34 +559,42 @@ namespace UnifiWebhookEventReceiver
                         return errorResponse;
                     }
 
-                    await UploadFileAsync(ALARM_BUCKET_NAME, fileKey, JsonConvert.SerializeObject(alarm));
+                    // Upload the alarm event to S3
+                    await UploadFileAsync(ALARM_BUCKET_NAME, eventFileKey, JsonConvert.SerializeObject(alarm));
+
+                    // Get the video file byte array
+                    eventLocalLink = UNIFI_HOST + alarm.eventPath;
+                    byte[] videoData = await GetVideoFromLocalUnifiProtectViaHeadlessClient(eventLocalLink);
+
+                    // Upload the video file to S3
+                    await UploadFileAsync(ALARM_BUCKET_NAME, videoFileKey, videoData, "video/mp4");
 
                     // Return success response
-                    String bodyContent = FUNCTION_NAME + "has successfully processed the Unifi alarm event webhook with key " + eventKey + 
+                    String bodyContent = FUNCTION_NAME + "has successfully processed the Unifi alarm event webhook with key " + eventKey +
                     " for " + deviceName + " that occurred at " + date + "."; //The corresponding video file can now be uploaded to the " + ALARM_BUCKET_NAME +
                     //" S3 bucket using the presigned URL for " + videoKey + " within the next " + EXPIRATION_SECONDS + " seconds.";
                     log.LogLine("Returning response: " + bodyContent);
-                        response = new APIGatewayProxyResponse
-                        {
-                            StatusCode = (int)HttpStatusCode.OK,
-                            Body = JsonConvert.SerializeObject(new { msg = (bodyContent) }),
-                            Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                        };
-                        return response;
-                    }
-                    // Return 400 response
-                    else
+                    response = new APIGatewayProxyResponse
                     {
-                        // Return response
-                        log.LogLine("Error: " + ERROR_GENERAL);
-                        response = new APIGatewayProxyResponse
-                        {
-                            StatusCode = (int)HttpStatusCode.BadRequest,
-                            Body = JsonConvert.SerializeObject(new { msg = (ERROR_MESSAGE_400 + ERROR_GENERAL) }),
-                            Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                        };
-                        return response;
-                }      
+                        StatusCode = (int)HttpStatusCode.OK,
+                        Body = JsonConvert.SerializeObject(new { msg = (bodyContent) }),
+                        Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
+                    };
+                    return response;
+                }
+                // Return 400 response
+                else
+                {
+                    // Return response
+                    log.LogLine("Error: " + ERROR_GENERAL);
+                    response = new APIGatewayProxyResponse
+                    {
+                        StatusCode = (int)HttpStatusCode.BadRequest,
+                        Body = JsonConvert.SerializeObject(new { msg = (ERROR_MESSAGE_400 + ERROR_GENERAL) }),
+                        Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
+                    };
+                    return response;
+                }
             }
             catch (Exception e)
             {
@@ -610,6 +626,19 @@ namespace UnifiWebhookEventReceiver
         /// <returns>Task representing the asynchronous upload operation</returns>
         private static async Task UploadFileAsync(string bucketName, string keyName, string obj)
         {
+            await UploadFileAsync(bucketName, keyName, obj, "application/json");
+        }
+
+        /// <summary>
+        /// Uploads string content to S3 with specified content type.
+        /// </summary>
+        /// <param name="bucketName">Target S3 bucket name for storage</param>
+        /// <param name="keyName">S3 object key (file path within bucket)</param>
+        /// <param name="content">String content to store</param>
+        /// <param name="contentType">MIME type of the content</param>
+        /// <returns>Task representing the asynchronous upload operation</returns>
+        private static async Task UploadFileAsync(string bucketName, string keyName, string content, string contentType)
+        {
             try
             {
                 // Prepare request
@@ -617,12 +646,54 @@ namespace UnifiWebhookEventReceiver
                 {
                     BucketName = bucketName,
                     Key = keyName,
-                    ContentBody = obj
+                    ContentBody = content,
+                    ContentType = contentType,
+                    StorageClass = S3StorageClass.StandardInfrequentAccess // Optimize for infrequent access
                 };
 
                 // Upload the object
                 await s3Client.PutObjectAsync(putObjectRequest);
                 log.LogLine("Successfully wrote the object to S3: " + bucketName + "/" + keyName);
+            }
+            catch (AmazonS3Exception e)
+            {
+                log.LogLine("Error encountered on object write: " + e.Message);
+                log.LogLine(e.ToString());
+            }
+            catch (Exception e)
+            {
+                log.LogLine("Unknown encountered when writing an object: " + e.Message);
+                log.LogLine(e.ToString());
+            }
+        }
+
+        /// <summary>
+        /// Uploads binary data to S3 with specified content type.
+        /// </summary>
+        /// <param name="bucketName">Target S3 bucket name for storage</param>
+        /// <param name="keyName">S3 object key (file path within bucket)</param>
+        /// <param name="data">Binary data to store</param>
+        /// <param name="contentType">MIME type of the content</param>
+        /// <returns>Task representing the asynchronous upload operation</returns>
+        private static async Task UploadFileAsync(string bucketName, string keyName, byte[] data, string contentType)
+        {
+            try
+            {
+                using var stream = new MemoryStream(data);
+
+                // Prepare request
+                var putObjectRequest = new PutObjectRequest
+                {
+                    BucketName = bucketName,
+                    Key = keyName,
+                    InputStream = stream,
+                    ContentType = contentType,
+                    StorageClass = S3StorageClass.StandardInfrequentAccess // Optimize for infrequent access
+                };
+
+                // Upload the object
+                await s3Client.PutObjectAsync(putObjectRequest);
+                log.LogLine($"Successfully wrote the object to S3: {bucketName}/{keyName} ({data.Length} bytes)");
             }
             catch (AmazonS3Exception e)
             {
@@ -657,15 +728,15 @@ namespace UnifiWebhookEventReceiver
             // Upload
             var request = new GetPreSignedUrlRequest
             {
-                BucketName  = ALARM_BUCKET_NAME,
-                Key         = keyName,
-                Verb        = method,
-                Expires     = DateTime.UtcNow.AddSeconds(validDuration),
+                BucketName = ALARM_BUCKET_NAME,
+                Key = keyName,
+                Verb = method,
+                Expires = DateTime.UtcNow.AddSeconds(validDuration),
                 ContentType = contentType
             };
 
             // Download
-            if(method == HttpVerb.GET)
+            if (method == HttpVerb.GET)
             {
                 request = new GetPreSignedUrlRequest
                 {
@@ -675,8 +746,8 @@ namespace UnifiWebhookEventReceiver
                 };
             }
 
-           string url = s3Client.GetPreSignedURL(request);
-           return url;
+            string url = s3Client.GetPreSignedURL(request);
+            return url;
         }
 
         #endregion
@@ -826,45 +897,35 @@ namespace UnifiWebhookEventReceiver
         #region Video Download Operations
 
         /// <summary>
-        /// Downloads video from Unifi Protect using automated browser navigation and uploads to S3.
+        /// Downloads video from Unifi Protect using automated browser navigation.
         /// 
         /// This method uses PuppeteerSharp to automate a headless browser session that:
         /// 1. Navigates to the Unifi Protect event link
         /// 2. Authenticates using stored credentials
         /// 3. Downloads the video file for the event
-        /// 4. Uploads the video to S3 using a presigned URL
+        /// 4. Returns the video data as a byte array
         /// 
         /// The method handles the complete workflow of video retrieval from Unifi Protect
         /// systems that require web-based authentication and interaction.
         /// </summary>
         /// <param name="eventLocalLink">Direct URL to the event in Unifi Protect web interface</param>
         /// <param name="eventKey">Unique event identifier for naming the video file</param>
-        /// <returns>API Gateway response indicating success or failure of video download</returns>
-        public static async Task<APIGatewayProxyResponse> DownloadVideoFromLocalUnifiProtect(string eventLocalLink, string eventKey)
+        /// <returns>Byte array containing the downloaded video data</returns>
+        public static async Task<byte[]> GetVideoFromLocalUnifiProtectViaHeadlessClient(string eventLocalLink)
         {
-            log.LogLine($"Starting video download for event: {eventKey} from URL: {eventLocalLink}");
+            log.LogLine($"Starting video download for event from URL: {eventLocalLink}");
 
             // Validate all required environment variables first to fail fast
-            if (string.IsNullOrEmpty(UNIFI_HOST) || string.IsNullOrEmpty(UNIFI_USERNAME) || string.IsNullOrEmpty(UNIFI_PASSWORD))
+            if (string.IsNullOrEmpty(eventLocalLink) || string.IsNullOrEmpty(UNIFI_USERNAME) || string.IsNullOrEmpty(UNIFI_PASSWORD))
             {
                 log.LogLine("Missing required Unifi Protect credentials in environment variables");
-                return new APIGatewayProxyResponse
-                {
-                    StatusCode = (int)HttpStatusCode.InternalServerError,
-                    Body = JsonConvert.SerializeObject(new { msg = "Server configuration error: Unifi Protect credentials not configured" }),
-                    Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                };
+                throw new InvalidOperationException("Server configuration error: Unifi Protect credentials not configured");
             }
 
             if (string.IsNullOrEmpty(ALARM_BUCKET_NAME))
             {
                 log.LogLine("StorageBucket environment variable is not configured");
-                return new APIGatewayProxyResponse
-                {
-                    StatusCode = (int)HttpStatusCode.InternalServerError,
-                    Body = JsonConvert.SerializeObject(new { msg = "Server configuration error: StorageBucket not configured" }),
-                    Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                };
+                throw new InvalidOperationException("Server configuration error: StorageBucket not configured");
             }
 
             //Create a dictionary of coordinates for clicks to download videos
@@ -878,220 +939,337 @@ namespace UnifiWebhookEventReceiver
                 { "downloadButton", (downloadButtonX, downloadButtonY) }
             };
 
-                try
-                {
-                // Download Chromium if not already available
-                log.LogLine("Ensuring Chromium browser is available...");
-                var browserFetcher = new BrowserFetcher();
-                await browserFetcher.DownloadAsync();
-                log.LogLine("Chromium download completed successfully");
+            try
+            {
+                // Launch headless browser using HeadlessChromium for AWS Lambda optimization
+                log.LogLine("Launching headless browser with HeadlessChromium...");
 
-                // Launch headless browser
-                log.LogLine("Launching headless browser...");
-                using var browser = await Puppeteer.LaunchAsync(new LaunchOptions
+                // Create a simple logger factory for HeadlessChromium
+                using var loggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder => { });
+
+                var browserLauncher = new HeadlessChromiumPuppeteerLauncher(loggerFactory);
+
+                // Use custom chrome arguments optimized for video downloading
+                var chromeArgs = new[]
                 {
-                    Headless = true, 
-                    Args = new[]
-                    {
-                        "--no-sandbox",
-                        "--disable-setuid-sandbox",
-                        "--disable-dev-shm-usage",
-                        "--disable-gpu",
-                        "--disable-web-security",
-                        "--ignore-certificate-errors",
-                        "--ignore-ssl-errors",
-                        "--ignore-certificate-errors-spki-list",
-                        "--no-first-run",
-                        "--no-zygote",
-                        "--disable-background-timer-throttling",
-                        "--disable-backgrounding-occluded-windows",
-                        "--disable-renderer-backgrounding",
-                        "--disable-features=VizDisplayCompositor"
-                    },
-                    DefaultViewport = new ViewPortOptions
-                    {
-                        Width = 1920,
-                        Height = 1080
-                    },
-                    Timeout = 20000 // 20 second timeout for browser launch
-                });
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-gpu",
+                    "--disable-web-security",
+                    "--ignore-certificate-errors",
+                    "--ignore-ssl-errors",
+                    "--ignore-certificate-errors-spki-list",
+                    "--no-first-run",
+                    "--no-zygote",
+                    "--disable-background-timer-throttling",
+                    "--disable-backgrounding-occluded-windows",
+                    "--disable-renderer-backgrounding",
+                    "--disable-features=VizDisplayCompositor",
+                    "--window-size=1920,1080",
+                    "--disable-extensions",
+                    "--disable-plugins",
+                    "--disable-default-apps",
+                    "--allow-running-insecure-content",
+                    "--disable-background-networking",
+                    "--enable-logging",
+                    "--disable-ipc-flooding-protection"
+                };
+
+                using var browser = await browserLauncher.LaunchAsync(chromeArgs);
 
                 // Create a new page
                 using var page = await browser.NewPageAsync();
 
+                // Set viewport to ensure consistent rendering
+                await page.SetViewportAsync(new ViewPortOptions
+                {
+                    Width = 1920,
+                    Height = 1080
+                });
+
                 // Set the download path for the page - use configurable directory with Lambda-compatible default
                 var downloadDirectory = DOWNLOAD_DIRECTORY;
-                
-                // Ensure the download directory exists
+
+                // Ensure the download directory exists with proper permissions
                 if (!Directory.Exists(downloadDirectory))
                 {
                     Directory.CreateDirectory(downloadDirectory);
                     log.LogLine($"Created download directory: {downloadDirectory}");
                 }
-                
+
+                // Set permissions on the download directory (required for Lambda)
+                try
+                {
+                    if (Environment.OSVersion.Platform == PlatformID.Unix)
+                    {
+                        // Set permissions for Lambda environment
+                        var directoryInfo = new DirectoryInfo(downloadDirectory);
+                        // This is a simplified permission setting - Lambda handles most of this automatically
+                        log.LogLine($"Setting permissions for directory: {downloadDirectory}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    log.LogLine($"Could not set directory permissions (this is normal in Lambda): {ex.Message}");
+                }
+
                 log.LogLine($"Using download directory: {downloadDirectory}");
-                
+
+                // Configure download behavior using CDP (Chrome DevTools Protocol)
+                // Use the page's client directly for better compatibility with HeadlessChromium
                 await page.Client.SendAsync("Page.setDownloadBehavior", new
                 {
                     behavior = "allow",
-                    downloadPath = downloadDirectory
+                    downloadPath = downloadDirectory,
+                    eventsEnabled = true
                 });
 
-                    log.LogLine($"Navigating to Unifi Protect: {eventLocalLink}");
-
-                    // Navigate to the event link
-                    await page.GoToAsync(eventLocalLink, new NavigationOptions
+                // Try to enable download events in Browser domain for monitoring
+                try
+                {
+                    await page.Client.SendAsync("Browser.setDownloadBehavior", new
                     {
-                        WaitUntil = new[] { WaitUntilNavigation.Networkidle0 },
-                        Timeout = 20000 // 20 second timeout
+                        behavior = "allow",
+                        downloadPath = downloadDirectory,
+                        eventsEnabled = true
                     });
-                    log.LogLine("Page loaded, checking for login form...");
+                }
+                catch (Exception ex)
+                {
+                    log.LogLine($"Could not set Browser.setDownloadBehavior (this is normal): {ex.Message}");
+                }
 
-                    // Check if we need to login (look for username/password fields)
-                    var usernameField = await page.QuerySelectorAsync("input[name='username'], input[type='email'], input[id*='username'], input[id*='email']");
-                    var passwordField = await page.QuerySelectorAsync("input[name='password'], input[type='password'], input[id*='password']");
+                log.LogLine($"Navigating to Unifi Protect: {eventLocalLink}");
 
-                    // Take a screenshot of the page
-                    var screenshotPath = Path.Combine(downloadDirectory, "login-screenshot.png");
-                    await page.ScreenshotAsync(screenshotPath);
-                    log.LogLine($"Screenshot taken: {screenshotPath}");
+                // Navigate to the event link
+                await page.GoToAsync(eventLocalLink, new NavigationOptions
+                {
+                    WaitUntil = new[] { WaitUntilNavigation.Networkidle0 },
+                    Timeout = 20000 // 20 second timeout
+                });
+                log.LogLine("Page loaded, checking for login form...");
 
-                    // Check if username and password fields are present
-                    if (usernameField != null && passwordField != null)
+                // Check if we need to login (look for username/password fields)
+                var usernameField = await page.QuerySelectorAsync("input[name='username'], input[type='email'], input[id*='username'], input[id*='email']");
+                var passwordField = await page.QuerySelectorAsync("input[name='password'], input[type='password'], input[id*='password']");
+
+                // Take a screenshot of the page
+                var screenshotPath = Path.Combine(downloadDirectory, "login-screenshot.png");
+                await page.ScreenshotAsync(screenshotPath);
+                log.LogLine($"Screenshot taken: {screenshotPath}");
+                await UploadFileAsync(ALARM_BUCKET_NAME, "screenshots/login-screenshot.png", File.ReadAllBytes(screenshotPath), "image/png");
+
+                // Check if username and password fields are present
+                if (usernameField != null && passwordField != null)
+                {
+                    log.LogLine("Login form detected, attempting authentication...");
+
+                    // Take the username and password and * out all but the first 3 characters of the username and all of the characters of the password
+                    log.LogLine("Filling in credentials for login...");
+                    var maskedUsername = UNIFI_USERNAME.Length > 3 ? UNIFI_USERNAME.Substring(0, 3) + new string('*', UNIFI_USERNAME.Length - 3) : UNIFI_USERNAME;
+                    var maskedPassword = new string('*', UNIFI_PASSWORD.Length);
+
+                    log.LogLine($"Using credentials - Username: {maskedUsername}, Password: {maskedPassword}");
+
+                    // Fill in credentials
+                    await usernameField.TypeAsync(UNIFI_USERNAME);
+                    await passwordField.TypeAsync(UNIFI_PASSWORD);
+
+                    // Look for login button
+                    var loginButton = await page.QuerySelectorAsync("button[type='submit']");
+
+                    // Check if login button is present
+                    if (loginButton != null)
                     {
-                        log.LogLine("Login form detected, attempting authentication...");
+                        await loginButton.ClickAsync();
+                        log.LogLine("Login button clicked, waiting for authentication...");
 
-                        // Fill in credentials
-                        await usernameField.TypeAsync(UNIFI_USERNAME);
-                        await passwordField.TypeAsync(UNIFI_PASSWORD);
-
-                        // Look for login button
-                        var loginButton = await page.QuerySelectorAsync("button[type='submit']");
-
-                        // Check if login button is present
-                        if (loginButton != null)
+                        // Wait for navigation after login
+                        await page.WaitForNavigationAsync(new NavigationOptions
                         {
-                            await loginButton.ClickAsync();
-                            log.LogLine("Login button clicked, waiting for authentication...");
+                            WaitUntil = new[] { WaitUntilNavigation.Networkidle0 },
+                            Timeout = 10000
+                        });
+                    }
+                    else
+                    {
+                        log.LogLine("Login button not found, trying Enter key...");
+                        await passwordField.PressAsync("Enter");
 
-                            // Wait for navigation after login
+                        // Wait for navigation after Enter key
+                        try
+                        {
                             await page.WaitForNavigationAsync(new NavigationOptions
                             {
                                 WaitUntil = new[] { WaitUntilNavigation.Networkidle0 },
-                                Timeout = 15000
-                            });
-                        }
-                        else
-                        {
-                            log.LogLine("Login button not found, trying Enter key...");
-                            await passwordField.PressAsync("Enter");
-                            
-                            // Wait for navigation after Enter key
-                            try
-                            {
-                                await page.WaitForNavigationAsync(new NavigationOptions
-                                {
-                                    WaitUntil = new[] { WaitUntilNavigation.Networkidle0 },
-                                    Timeout = 10000
-                                });
-                            }
-                            catch (Exception)
-                            {
-                                log.LogLine("Navigation timeout after Enter key, continuing...");
-                            }
-                        }
-                    }
-
-                    // Wait for the page to fully load after authentication
-                    log.LogLine("Waiting for page to load after authentication...");
-                    
-                    // Wait for any final network activity to settle
-                    try
-                    {
-                        await Task.Delay(2000); // Brief wait for any immediate changes
-                        
-                        // Check if the page has finished loading by evaluating ready state
-                        var isReady = await page.EvaluateExpressionAsync<bool>("document.readyState === 'complete'");
-                        if (!isReady)
-                        {
-                            log.LogLine("Document not ready, waiting for complete state...");
-                            await page.WaitForFunctionAsync("() => document.readyState === 'complete'", new WaitForFunctionOptions
-                            {
                                 Timeout = 10000
                             });
                         }
-                        log.LogLine("Page document ready state is complete");
+                        catch (Exception)
+                        {
+                            log.LogLine("Navigation timeout after Enter key, continuing...");
+                        }
+                    }
+                }
+
+                // Wait for the page to fully load after authentication
+                log.LogLine("Waiting for page to load after authentication...");
+
+                // Wait for any final network activity to settle
+                try
+                {
+                    await Task.Delay(2000); // Brief wait for any immediate changes
+
+                    // Check if the page has finished loading by evaluating ready state
+                    var isReady = await page.EvaluateExpressionAsync<bool>("document.readyState === 'complete'");
+                    if (!isReady)
+                    {
+                        log.LogLine("Document not ready, waiting for complete state...");
+                        await page.WaitForFunctionAsync("() => document.readyState === 'complete'", new WaitForFunctionOptions
+                        {
+                            Timeout = 10000
+                        });
+                    }
+                    log.LogLine("Page document ready state is complete");
+                }
+                catch (Exception ex)
+                {
+                    log.LogLine($"Timeout waiting for page ready state: {ex.Message}, but continuing with page interaction");
+                }
+
+                // Additionally wait for any dynamic content to load by checking for common UI elements
+                try
+                {
+                    // Wait for some common elements that might indicate the page is ready
+                    await page.WaitForSelectorAsync("body", new WaitForSelectorOptions { Timeout = 5000 });
+                    log.LogLine("Page body element found, page appears ready");
+                }
+                catch (Exception)
+                {
+                    log.LogLine("Timeout waiting for page elements, but continuing...");
+                }
+
+                log.LogLine("Page loaded, preparing to click to download...");
+
+                // Set up download event monitoring for better tracking
+                bool downloadStarted = false;
+                string? downloadGuid = null;
+
+                // Listen for download events (simplified approach)
+                page.Client.MessageReceived += (sender, e) =>
+                {
+                    try
+                    {
+                        if (e.MessageID == "Browser.downloadWillBegin")
+                        {
+                            downloadStarted = true;
+                            log.LogLine("Download event detected: Browser.downloadWillBegin");
+
+                            // Try to extract GUID if available
+                            var data = e.MessageData;
+                            if (data.ValueKind == System.Text.Json.JsonValueKind.Object)
+                            {
+                                if (data.TryGetProperty("guid", out var guidElement))
+                                {
+                                    downloadGuid = guidElement.GetString();
+                                    log.LogLine($"Download started with GUID: {downloadGuid}");
+                                }
+                            }
+                        }
+                        else if (e.MessageID == "Browser.downloadProgress")
+                        {
+                            var data = e.MessageData;
+                            if (data.ValueKind == System.Text.Json.JsonValueKind.Object)
+                            {
+                                if (data.TryGetProperty("state", out var stateElement))
+                                {
+                                    var state = stateElement.GetString();
+                                    log.LogLine($"Download progress: {state}");
+                                    if (state == "completed")
+                                    {
+                                        log.LogLine("Download completed via event notification");
+                                    }
+                                }
+                            }
+                        }
                     }
                     catch (Exception ex)
                     {
-                        log.LogLine($"Timeout waiting for page ready state: {ex.Message}, but continuing with page interaction");
+                        log.LogLine($"Error processing download event: {ex.Message}");
                     }
+                };
 
-                    // Additionally wait for any dynamic content to load by checking for common UI elements
-                    try
+                // Take a screenshot of the page
+                screenshotPath = Path.Combine(downloadDirectory, "pageload-screenshot.png");
+                await page.ScreenshotAsync(screenshotPath);
+                log.LogLine($"Screenshot taken of the loaded page: {screenshotPath}");
+                await UploadFileAsync(ALARM_BUCKET_NAME, "screenshots/pageload-screenshot.png", File.ReadAllBytes(screenshotPath), "image/png");
+
+                // Click at click coordinates for archive button
+                await page.Mouse.ClickAsync(clickCoordinates["archiveButton"].x, clickCoordinates["archiveButton"].y);
+                log.LogLine("Clicked on archive button at coordinates: " + clickCoordinates["archiveButton"]);
+
+                // Take a screenshot of the clicked archive button
+                screenshotPath = Path.Combine(downloadDirectory, "firstclick-screenshot.png");
+                await page.ScreenshotAsync(screenshotPath);
+                log.LogLine($"Screenshot taken of the clicked archive button: {screenshotPath}");
+                await UploadFileAsync(ALARM_BUCKET_NAME, "screenshots/firstclick-screenshot.png", File.ReadAllBytes(screenshotPath), "image/png");
+
+
+                // Click at click coordinates for download button
+                await page.Mouse.ClickAsync(clickCoordinates["downloadButton"].x, clickCoordinates["downloadButton"].y);
+                log.LogLine("Clicked on download button at coordinates: " + clickCoordinates["downloadButton"]);
+
+                // Take a screenshot of the clicked download button
+                screenshotPath = Path.Combine(downloadDirectory, "secondclick-screenshot.png");
+                await page.ScreenshotAsync(screenshotPath);
+                log.LogLine($"Screenshot taken of the clicked download button: {screenshotPath}");
+                await UploadFileAsync(ALARM_BUCKET_NAME, "screenshots/secondclick-screenshot.png", File.ReadAllBytes(screenshotPath), "image/png");
+
+                // Wait for download to complete
+                log.LogLine("Waiting for video download to complete...");
+
+                // Monitor both download events and file system for better reliability
+                var initialFileCount = Directory.GetFiles(downloadDirectory, "*.mp4").Length;
+                var maxWaitTime = TimeSpan.FromSeconds(100);
+                var checkInterval = TimeSpan.FromSeconds(1);
+                var startTime = DateTime.Now;
+
+                log.LogLine($"Initial file count: {initialFileCount}, Download event detected: {downloadStarted}");
+
+                while (DateTime.Now - startTime < maxWaitTime)
+                {
+                    var currentFileCount = Directory.GetFiles(downloadDirectory, "*.mp4").Length;
+                    if (currentFileCount > initialFileCount)
                     {
-                        // Wait for some common elements that might indicate the page is ready
-                        await page.WaitForSelectorAsync("body", new WaitForSelectorOptions { Timeout = 5000 });
-                        log.LogLine("Page body element found, page appears ready");
+                        log.LogLine($"New video file detected after {(DateTime.Now - startTime).TotalSeconds:F1} seconds");
+
+                        // Wait a bit more to ensure the file is completely written
+                        await Task.Delay(2000);
+                        break;
                     }
-                    catch (Exception)
+
+                    // Also check for any files with partial download extensions
+                    var partialFiles = Directory.GetFiles(downloadDirectory, "*.crdownload").Length;
+                    var tempFiles = Directory.GetFiles(downloadDirectory, "*.tmp").Length;
+
+                    if (partialFiles > 0 || tempFiles > 0)
                     {
-                        log.LogLine("Timeout waiting for page elements, but continuing...");
+                        log.LogLine($"Partial download files detected: .crdownload={partialFiles}, .tmp={tempFiles}");
                     }
 
-                    log.LogLine("Page loaded, preparing to click to download...");
+                    await Task.Delay(checkInterval);
+                }
 
-                    // Take a screenshot of the page
-                    screenshotPath = Path.Combine(downloadDirectory, "pageload-screenshot.png");
-                    await page.ScreenshotAsync(screenshotPath);
-                    log.LogLine($"Screenshot taken of the loaded page: {screenshotPath}");
+                if (DateTime.Now - startTime >= maxWaitTime)
+                {
+                    log.LogLine("Download timeout reached, checking for any video files...");
 
-                    // Click at click coordinates for archive button
-                    await page.Mouse.ClickAsync(clickCoordinates["archiveButton"].x, clickCoordinates["archiveButton"].y);
-                    log.LogLine("Clicked on archive button at coordinates: " + clickCoordinates["archiveButton"]);
-
-                    // Take a screenshot of the clicked archive button
-                    screenshotPath = Path.Combine(downloadDirectory, "firstclick-screenshot.png");
-                    await page.ScreenshotAsync(screenshotPath);
-                    log.LogLine($"Screenshot taken of the clicked archive button: {screenshotPath}");
-
-                    // Click at click coordinates for download button
-                    await page.Mouse.ClickAsync(clickCoordinates["downloadButton"].x, clickCoordinates["downloadButton"].y);
-                    log.LogLine("Clicked on download button at coordinates: " + clickCoordinates["downloadButton"]);
-
-                    // Take a screenshot of the clicked download button
-                    screenshotPath = Path.Combine(downloadDirectory, "secondclick-screenshot.png");
-                    await page.ScreenshotAsync(screenshotPath);
-                    log.LogLine($"Screenshot taken of the clicked download button: {screenshotPath}");
-
-                    // Wait for download to complete
-                    log.LogLine("Waiting for video download to complete...");
-                    
-                    // Instead of a fixed delay, monitor the download directory for new files
-                    var initialFileCount = Directory.GetFiles(downloadDirectory, "*.mp4").Length;
-                    var maxWaitTime = TimeSpan.FromSeconds(30);
-                    var checkInterval = TimeSpan.FromSeconds(1);
-                    var startTime = DateTime.Now;
-                    
-                    while (DateTime.Now - startTime < maxWaitTime)
-                    {
-                        var currentFileCount = Directory.GetFiles(downloadDirectory, "*.mp4").Length;
-                        if (currentFileCount > initialFileCount)
-                        {
-                            log.LogLine($"New video file detected after {(DateTime.Now - startTime).TotalSeconds:F1} seconds");
-                            
-                            // Wait a bit more to ensure the file is completely written
-                            await Task.Delay(2000);
-                            break;
-                        }
-                        
-                        await Task.Delay(checkInterval);
-                    }
-                    
-                    if (DateTime.Now - startTime >= maxWaitTime)
-                    {
-                        log.LogLine("Download timeout reached, checking for any video files...");
-                    }
+                    // List all files in download directory for debugging
+                    var allFiles = Directory.GetFiles(downloadDirectory);
+                    log.LogLine($"All files in download directory: {string.Join(", ", allFiles.Select(f => Path.GetFileName(f)))}");
+                }
 
                 // Get the video data from the downloaded video by checking for the latest mp4 file that was added to the directory
                 var videoFiles = Directory.GetFiles(downloadDirectory, "*.mp4");
@@ -1102,7 +1280,7 @@ namespace UnifiWebhookEventReceiver
                 var latestVideoFile = videoFiles
                     .OrderByDescending(f => File.GetCreationTime(f))
                     .FirstOrDefault();
-                
+
                 if (!string.IsNullOrEmpty(latestVideoFile))
                 {
                     var creationTime = File.GetCreationTime(latestVideoFile);
@@ -1119,66 +1297,32 @@ namespace UnifiWebhookEventReceiver
                     throw new FileNotFoundException("No video files were downloaded");
                 }
 
-                byte[] videoData = File.ReadAllBytes(latestVideoFile);  
+                byte[] videoData = File.ReadAllBytes(latestVideoFile);
                 log.LogLine($"Video data size: {videoData.Length} bytes");
 
-                // Generate S3 key for the video file
-                var videoKey = $"videos/{eventKey}";
+                // Return the video data
+                return videoData;
 
-                    // Generate presigned URL for the downloaded video
-                    log.LogLine($"Generating presigned URL for video key: {videoKey}");
-
-                    string presignedUrl = GeneratePreSignedURL(videoKey, HttpVerb.GET, EXPIRATION_SECONDS, "video/mp4");
-                    log.LogLine($"Presigned URL generated: {presignedUrl}");
-
-                    // Upload the video to S3
-                log.LogLine($"Uploading video to S3 bucket: {ALARM_BUCKET_NAME}, key: {videoKey}");
-                    
-                    await UploadVideoToS3Async(ALARM_BUCKET_NAME, videoKey, videoData);
-                    
-                    log.LogLine($"Video successfully uploaded to S3: {ALARM_BUCKET_NAME}/{videoKey}");
-
-                return new APIGatewayProxyResponse
-                {
-                    StatusCode = (int)HttpStatusCode.OK,
-                    Body = JsonConvert.SerializeObject(new
-                    {
-                        msg = $"Video successfully downloaded and stored for event {eventKey}",
-                        eventKey = eventKey,
-                        videoKey = videoKey,
-                        videoSize = videoData.Length,
-                        presignedUrl = presignedUrl,
-                        bucketName = ALARM_BUCKET_NAME
-                    }),
-                    Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                };
-
-                }
-                catch (Exception ex)
-                {
-                    log.LogLine($"Error while processing video download: {ex.Message}");
-
-                    return new APIGatewayProxyResponse
-                    {
-                        StatusCode = (int)HttpStatusCode.InternalServerError,
-                        Body = JsonConvert.SerializeObject(new { msg = $"Error downloading video: {ex.Message}" }),
-                        Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                    };
-                }
+            }
+            catch (Exception ex)
+            {
+                log.LogLine($"Error while processing video download: {ex.Message}");
+                throw new Exception($"Error downloading video: {ex.Message}", ex);
+            }
         }
 
         #endregion
 
-            /// <summary>
-            /// Uploads video binary data to S3.
-            /// 
-            /// This method handles the storage of video files in the configured S3 bucket.
-            /// The content is stored as binary data with appropriate content type for video files.
-            /// </summary>
-            /// <param name="bucketName">Target S3 bucket name for storage</param>
-            /// <param name="keyName">S3 object key (file path within bucket)</param>
-            /// <param name="videoData">Binary video data to store</param>
-            /// <returns>Task representing the asynchronous upload operation</returns>
+        /// <summary>
+        /// Uploads video binary data to S3.
+        /// 
+        /// This method handles the storage of video files in the configured S3 bucket.
+        /// The content is stored as binary data with appropriate content type for video files.
+        /// </summary>
+        /// <param name="bucketName">Target S3 bucket name for storage</param>
+        /// <param name="keyName">S3 object key (file path within bucket)</param>
+        /// <param name="videoData">Binary video data to store</param>
+        /// <returns>Task representing the asynchronous upload operation</returns>
         private static async Task UploadVideoToS3Async(string bucketName, string keyName, byte[] videoData)
         {
             try

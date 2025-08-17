@@ -22,6 +22,7 @@ obj
 # Brent's Local Stuff
 SimpleTest
 test-video-download.sh
+test-layer-path.sh
 
 # content below from: https://github.com/github/gitignore/blob/master/Global/macOS.gitignore
 # General

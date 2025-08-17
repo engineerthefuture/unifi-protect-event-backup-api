@@ -1,5 +1,5 @@
 
-name: Build, Test, and Deploy CloudFormation Stack for Unifi Webhook Event Receiver
+name: Build, Test, and Deploy to AWS
 
 # This workflow builds the application, runs unit tests, and deploys to AWS
 # Deployment will only proceed if all unit tests pass
