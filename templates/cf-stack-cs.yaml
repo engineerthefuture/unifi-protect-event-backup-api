@@ -69,6 +69,22 @@ Parameters:
     Type: String
     Description: Directory path for temporary video downloads (defaults to /tmp for Lambda compatibility)
     Default: "/tmp"
+  ArchiveButtonX:
+    Type: Number
+    Description: X coordinate for archive button click in Unifi Protect UI
+    Default: 1274
+  ArchiveButtonY:
+    Type: Number
+    Description: Y coordinate for archive button click in Unifi Protect UI
+    Default: 257
+  DownloadButtonX:
+    Type: Number
+    Description: X coordinate for download button click in Unifi Protect UI
+    Default: 1095
+  DownloadButtonY:
+    Type: Number
+    Description: Y coordinate for download button click in Unifi Protect UI
+    Default: 275
 
 # Resources
 Resources: 
@@ -326,7 +342,7 @@ Resources:
               #AssemblyName::NameSpace.ClassName::FunctionHandlerName
       Handler: UnifiWebhookEventReceiver::UnifiWebhookEventReceiver.UnifiWebhookEventReceiver::FunctionHandler
       MemorySize: 2056
-      Timeout: 180
+      Timeout: 90
       Runtime: dotnet8
       Role: !GetAtt LambdaRole.Arn
       Environment:
@@ -345,6 +361,10 @@ Resources:
           UnifiUsername: !Ref UnifiUsername
           UnifiPassword: !Ref UnifiPassword
           DownloadDirectory: !Ref DownloadDirectory
+          ArchiveButtonX: !Ref ArchiveButtonX
+          ArchiveButtonY: !Ref ArchiveButtonY
+          DownloadButtonX: !Ref DownloadButtonX
+          DownloadButtonY: !Ref DownloadButtonY
       Tags: 
         - Key: "FunctionName"
           Value: !Sub "${FunctionName}"

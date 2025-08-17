@@ -54,6 +54,11 @@ namespace UnifiWebhookEventReceiver
     /// - UnifiHost: Hostname or IP of Unifi Protect system
     /// - UnifiUsername: Username for Unifi Protect authentication
     /// - UnifiPassword: Password for Unifi Protect authentication
+    /// - DownloadDirectory: Directory for temporary video files (defaults to /tmp)
+    /// - ArchiveButtonX: X coordinate for archive button click (defaults to 1274)
+    /// - ArchiveButtonY: Y coordinate for archive button click (defaults to 257)
+    /// - DownloadButtonX: X coordinate for download button click (defaults to 1095)
+    /// - DownloadButtonY: Y coordinate for download button click (defaults to 275)
     /// 
     /// Dependencies:
     /// - For local development, ensure PuppeteerSharp can download browser or provide custom path
@@ -122,6 +127,18 @@ namespace UnifiWebhookEventReceiver
 
         /// <summary>Download directory for temporary video files. Defaults to /tmp for Lambda compatibility.</summary>
         static string DOWNLOAD_DIRECTORY = Environment.GetEnvironmentVariable("DownloadDirectory") ?? "/tmp";
+
+        /// <summary>X coordinate for archive button click. Defaults to 1274.</summary>
+        static int ARCHIVE_BUTTON_X = int.TryParse(Environment.GetEnvironmentVariable("ArchiveButtonX"), out var archiveX) ? archiveX : 1274;
+
+        /// <summary>Y coordinate for archive button click. Defaults to 257.</summary>
+        static int ARCHIVE_BUTTON_Y = int.TryParse(Environment.GetEnvironmentVariable("ArchiveButtonY"), out var archiveY) ? archiveY : 257;
+
+        /// <summary>X coordinate for download button click. Defaults to 1095.</summary>
+        static int DOWNLOAD_BUTTON_X = int.TryParse(Environment.GetEnvironmentVariable("DownloadButtonX"), out var downloadX) ? downloadX : 1095;
+
+        /// <summary>Y coordinate for download button click. Defaults to 275.</summary>
+        static int DOWNLOAD_BUTTON_Y = int.TryParse(Environment.GetEnvironmentVariable("DownloadButtonY"), out var downloadY) ? downloadY : 275;
 
         /// <summary>AWS region for S3 operations</summary>
         static RegionEndpoint AWS_REGION = RegionEndpoint.USEast1;
@@ -929,15 +946,13 @@ namespace UnifiWebhookEventReceiver
             }
 
             //Create a dictionary of coordinates for clicks to download videos
-            int archiveButtonX = 1205;
-            int archiveButtonY = 245;
-            int downloadButtonX = 1095;
-            int downloadButtonY = 275;
             Dictionary<string, (int x, int y)> clickCoordinates = new Dictionary<string, (int x, int y)>
             {
-                { "archiveButton", (archiveButtonX, archiveButtonY) },
-                { "downloadButton", (downloadButtonX, downloadButtonY) }
+                { "archiveButton", (ARCHIVE_BUTTON_X, ARCHIVE_BUTTON_Y) },
+                { "downloadButton", (DOWNLOAD_BUTTON_X, DOWNLOAD_BUTTON_Y) }
             };
+
+            log.LogLine($"Using click coordinates - Archive: ({ARCHIVE_BUTTON_X}, {ARCHIVE_BUTTON_Y}), Download: ({DOWNLOAD_BUTTON_X}, {DOWNLOAD_BUTTON_Y})");
 
             try
             {
