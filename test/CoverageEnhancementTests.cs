@@ -42,7 +42,7 @@ namespace UnifiWebhookEventReceiver.Tests
     /// </summary>
     public class CoverageEnhancementTests
     {
-        private void SetupEnvironmentVariables()
+        private static void SetupEnvironmentVariables()
         {
             Environment.SetEnvironmentVariable("StorageBucket", "test-coverage-bucket");
             Environment.SetEnvironmentVariable("DevicePrefix", "TestDevice");
@@ -65,12 +65,11 @@ namespace UnifiWebhookEventReceiver.Tests
         {
             // Arrange
             SetupEnvironmentVariables();
-            var receiver = new UnifiWebhookEventReceiver();
             var context = new StubContext();
             var emptyStream = new MemoryStream();
 
             // Act
-            var response = await receiver.FunctionHandler(emptyStream, context);
+            var response = await UnifiWebhookEventReceiver.FunctionHandler(emptyStream, context);
 
             // Assert
             Assert.Equal((int)HttpStatusCode.BadRequest, response.StatusCode);
@@ -82,11 +81,10 @@ namespace UnifiWebhookEventReceiver.Tests
         {
             // Arrange
             SetupEnvironmentVariables();
-            var receiver = new UnifiWebhookEventReceiver();
             var context = new StubContext();
 
             // Act
-            var response = await receiver.FunctionHandler(null, context);
+            var response = await UnifiWebhookEventReceiver.FunctionHandler(null, context);
 
             // Assert
             Assert.Equal((int)HttpStatusCode.BadRequest, response.StatusCode);
@@ -98,13 +96,12 @@ namespace UnifiWebhookEventReceiver.Tests
         {
             // Arrange
             SetupEnvironmentVariables();
-            var receiver = new UnifiWebhookEventReceiver();
             var context = new StubContext();
             var corruptedJson = "{ \"incomplete\": \"json without closing brace";
             var stream = new MemoryStream(Encoding.UTF8.GetBytes(corruptedJson));
 
             // Act
-            var response = await receiver.FunctionHandler(stream, context);
+            var response = await UnifiWebhookEventReceiver.FunctionHandler(stream, context);
 
             // Assert
             Assert.Equal((int)HttpStatusCode.InternalServerError, response.StatusCode);
@@ -183,13 +180,12 @@ namespace UnifiWebhookEventReceiver.Tests
         {
             // Arrange
             SetupEnvironmentVariables();
-            var receiver = new UnifiWebhookEventReceiver();
             var malformedJson = "{ \"Records\": [ invalid json structure";
 
             var stream = new MemoryStream(Encoding.UTF8.GetBytes(malformedJson));
 
             // Act
-            var response = await receiver.FunctionHandler(stream, new StubContext());
+            var response = await UnifiWebhookEventReceiver.FunctionHandler(stream, new StubContext());
 
             // Assert
             Assert.Equal((int)HttpStatusCode.InternalServerError, response.StatusCode);
@@ -200,7 +196,6 @@ namespace UnifiWebhookEventReceiver.Tests
         {
             // Arrange
             SetupEnvironmentVariables();
-            var receiver = new UnifiWebhookEventReceiver();
             var context = new StubContext();
 
             var optionsRequest = new APIGatewayProxyRequest
@@ -221,7 +216,7 @@ namespace UnifiWebhookEventReceiver.Tests
             var stream = new MemoryStream(Encoding.UTF8.GetBytes(json));
 
             // Act
-            var response = await receiver.FunctionHandler(stream, context);
+            var response = await UnifiWebhookEventReceiver.FunctionHandler(stream, context);
 
             // Assert
             Assert.Equal((int)HttpStatusCode.OK, response.StatusCode);
@@ -239,7 +234,6 @@ namespace UnifiWebhookEventReceiver.Tests
         {
             // Arrange
             SetupEnvironmentVariables();
-            var receiver = new UnifiWebhookEventReceiver();
             var context = new StubContext();
 
             var getRequest = new APIGatewayProxyRequest
@@ -262,7 +256,7 @@ namespace UnifiWebhookEventReceiver.Tests
             var stream = new MemoryStream(Encoding.UTF8.GetBytes(json));
 
             // Act
-            var response = await receiver.FunctionHandler(stream, context);
+            var response = await UnifiWebhookEventReceiver.FunctionHandler(stream, context);
 
             // Assert
             // Should attempt to process the event ID (may fail due to AWS mocking, but should reach that code path)

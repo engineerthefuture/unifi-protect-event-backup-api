@@ -147,7 +147,7 @@ namespace UnifiWebhookEventReceiver.Tests
 
             // Act
             var maskedUsername = credentials.username.Length > 3 
-                ? credentials.username.Substring(0, 3) + new string('*', credentials.username.Length - 3) 
+                ? string.Concat(credentials.username.AsSpan(0, 3), new string('*', credentials.username.Length - 3)) 
                 : credentials.username;
             var maskedPassword = new string('*', credentials.password.Length);
 
@@ -169,7 +169,7 @@ namespace UnifiWebhookEventReceiver.Tests
 
             // Act
             var maskedUsername = credentials.username.Length > 3 
-                ? credentials.username.Substring(0, 3) + new string('*', credentials.username.Length - 3) 
+                ? string.Concat(credentials.username.AsSpan(0, 3), new string('*', credentials.username.Length - 3)) 
                 : credentials.username;
 
             // Assert

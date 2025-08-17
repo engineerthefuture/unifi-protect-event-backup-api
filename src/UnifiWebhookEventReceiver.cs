@@ -14,6 +14,7 @@
 // System includes
 using System.Collections;
 using System.Net;
+using System.Reflection;
 using System.Text;
 
 // Third-party includes
@@ -34,7 +35,8 @@ using Amazon.SQS.Model;
 using Amazon.SecretsManager;
 using Amazon.SecretsManager.Model;
 
-// Assembly attribute to enable the Lambda function's JSON input to be converted into a .NET class
+// Assembly attributes
+[assembly: AssemblyVersion("1.0.0.0")]
 [assembly: LambdaSerializer(typeof(Amazon.Lambda.Serialization.SystemTextJson.DefaultLambdaJsonSerializer))]
 
 namespace UnifiWebhookEventReceiver
@@ -104,9 +106,6 @@ namespace UnifiWebhookEventReceiver
         /// <summary>Error message for invalid API routes</summary>
         const string ERROR_INVALID_ROUTE = "please provide a valid route";
 
-        /// <summary>Presigned URL expiration time in seconds (24 hours)</summary>
-        const int EXPIRATION_SECONDS = 86400;
-
         /// <summary>API route for alarm event webhook processing</summary>
         const string ROUTE_ALARM = "alarmevent";
 
@@ -125,9 +124,6 @@ namespace UnifiWebhookEventReceiver
 
         /// <summary>Prefix for environment variables containing device MAC to name mappings</summary>
         static string? DEVICE_PREFIX = Environment.GetEnvironmentVariable("DevicePrefix");
-
-        /// <summary>Deployment environment identifier (dev, staging, prod)</summary>
-        static string? DEPLOYED_ENV = Environment.GetEnvironmentVariable("DeployedEnv");
 
         /// <summary>Lambda function name for logging and identification</summary>
         static string? FUNCTION_NAME = Environment.GetEnvironmentVariable("FunctionName");
@@ -160,13 +156,13 @@ namespace UnifiWebhookEventReceiver
         static RegionEndpoint AWS_REGION = RegionEndpoint.USEast1;
 
         /// <summary>S3 client instance for bucket operations</summary>
-        static IAmazonS3 s3Client = new AmazonS3Client(AWS_REGION);
+        static AmazonS3Client s3Client = new AmazonS3Client(AWS_REGION);
 
         /// <summary>SQS client instance for queue operations</summary>
-        static IAmazonSQS sqsClient = new AmazonSQSClient(AWS_REGION);
+        static AmazonSQSClient sqsClient = new AmazonSQSClient(AWS_REGION);
 
         /// <summary>Secrets Manager client instance for credential retrieval</summary>
-        static IAmazonSecretsManager secretsClient = new AmazonSecretsManagerClient(AWS_REGION);
+        static AmazonSecretsManagerClient secretsClient = new AmazonSecretsManagerClient(AWS_REGION);
 
         #endregion
 
@@ -181,7 +177,7 @@ namespace UnifiWebhookEventReceiver
         }
 
         /// <summary>Cache for Unifi credentials to avoid repeated Secrets Manager calls</summary>
-        private static UnifiCredentials? _cachedCredentials = null;
+        private static UnifiCredentials? _cachedCredentials;
 
         /// <summary>
         /// Retrieves Unifi Protect credentials from AWS Secrets Manager
@@ -235,7 +231,7 @@ namespace UnifiWebhookEventReceiver
         /// Null object pattern implementation for ILambdaLogger to prevent null reference exceptions
         /// when logger is not available during testing or initialization
         /// </summary>
-        private class NullLogger : ILambdaLogger
+        private sealed class NullLogger : ILambdaLogger
         {
             public void Log(string message) { }
             public void LogLine(string message) { }
@@ -260,7 +256,7 @@ namespace UnifiWebhookEventReceiver
         /// <param name="input">Raw request stream containing the event data</param>
         /// <param name="context">Lambda execution context providing logging and runtime information</param>
         /// <returns>API Gateway proxy response for HTTP events, or void response for SQS events</returns>
-        public async Task<APIGatewayProxyResponse> FunctionHandler(Stream input, ILambdaContext context)
+        public static async Task<APIGatewayProxyResponse> FunctionHandler(Stream input, ILambdaContext context)
         {
             try
             {
@@ -326,7 +322,7 @@ namespace UnifiWebhookEventReceiver
         /// </summary>
         /// <param name="requestBody">JSON string containing the SQS event</param>
         /// <returns>Task representing the asynchronous processing operation</returns>
-        private async Task ProcessSQSEvent(string requestBody)
+        private static async Task ProcessSQSEvent(string requestBody)
         {
             try
             {
@@ -380,276 +376,296 @@ namespace UnifiWebhookEventReceiver
         /// </summary>
         /// <param name="requestBody">JSON string containing the API Gateway request</param>
         /// <returns>API Gateway proxy response</returns>
-        private async Task<APIGatewayProxyResponse> ProcessAPIGatewayEvent(string requestBody)
+        private static async Task<APIGatewayProxyResponse> ProcessAPIGatewayEvent(string requestBody)
         {
             try
             {
-                // Ensure there is a payload
-                if (requestBody != null)
+                // Handle scheduled events
+                if (!string.IsNullOrEmpty(requestBody) && requestBody.Contains(SOURCE_EVENT_TRIGGER))
                 {
-                    // Event trigger
-                    if (requestBody.Contains(SOURCE_EVENT_TRIGGER) == true)
-                    {
-                        log.LogLine("Scheduled event trigger received.");
-
-                        var response = new APIGatewayProxyResponse
-                        {
-                            StatusCode = (int)HttpStatusCode.OK,
-                            Body = JsonConvert.SerializeObject(new { msg = (MESSAGE_202) }),
-                            Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                        };
-                        return response;
-                    }
-                    // API trigger
-                    else
-                    {
-                        // Process the request object
-                        APIGatewayProxyRequest? req = JsonConvert.DeserializeObject<APIGatewayProxyRequest>(requestBody);
-                        if (req == null)
-                        {
-                            log.LogLine("Failed to deserialize API Gateway request from: " + requestBody);
-                            return new APIGatewayProxyResponse
-                            {
-                                StatusCode = (int)HttpStatusCode.BadRequest,
-                                Body = JsonConvert.SerializeObject(new { msg = (ERROR_MESSAGE_400 + "malformed or invalid request format") }),
-                                Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                            };
-                        }
-
-                        // Determine the route
-                        string route;
-                        string method;
-                        string path;
-                        if (req != null && req.Path != null && req.Path != "" && req.HttpMethod != null)
-                        {
-                            // Parse the path
-                            path = req.Path;
-                            if (req.Path.Contains("/") == true)
-                            {
-                                path = req.Path.Substring(req.Path.IndexOf("/") + 1);
-                            }
-
-                            // Parse the route
-                            if (path.Contains("/") == true)
-                            {
-                                route = path.Substring(0, path.LastIndexOf("/"));
-                            }
-                            else
-                            {
-                                route = path;
-                            }
-
-                            log.LogLine("Path: " + path);
-                            log.LogLine("Route: " + route);
-
-                            // Get the method
-                            method = req.HttpMethod.ToUpper();
-                            log.LogLine("Method: " + method);
-
-                            // Preflight Options request
-                            if (method == HttpMethod.Options.ToString().ToUpper())
-                            {
-                                log.LogLine("Preflight Options request.");
-                                var response = new APIGatewayProxyResponse
-                                {
-                                    StatusCode = (int)HttpStatusCode.OK,
-                                    Body = null,
-                                    Headers = new Dictionary<string, string> {
-                                        { "Access-Control-Allow-Methods", "GET,POST,OPTIONS" },
-                                        { "Access-Control-Allow-Origin", "*" },
-                                        { "Access-Control-Allow-Headers", "Content-Type,X-Amz-Date,Authorization,x-api-key,X-Api-Key,X-Amz-Security-Token,Origin,Access-Control-Allow-Origin,Access-Control-Allow-Methods"}
-                                    }
-                                };
-                                return response;
-                            }
-
-                            // Determine the route
-                            if (route != null && (route != "" || (req.QueryStringParameters != null && req.QueryStringParameters.Count > 0)))
-                            {
-                                // New alarm event webhook route
-                                if (method == HttpMethod.Post.ToString().ToUpper() && route == ROUTE_ALARM)
-                                {
-                                    try
-                                    {
-                                        // Ensure there is a payload
-                                        if (req.Body != null && req.Body != "")
-                                        {
-                                            // Read the request
-                                            log.LogLine("Request: " + req.Body);
-
-                                            // Deserialize body
-                                            JObject jo = JObject.Parse(req.Body);
-                                            JObject? alarmObject = jo.SelectToken("alarm") as JObject;
-                                            long timestamp = (long)0;
-                                            String alarmObjectString = "";
-                                            if (jo.SelectToken("timestamp") != null)
-                                            {
-                                                timestamp = (long)Convert.ToDouble(jo.SelectToken("timestamp"));
-                                            }
-                                            if (alarmObject != null)
-                                            {
-                                                alarmObjectString = alarmObject.ToString();
-                                            }
-
-                                            if (string.IsNullOrEmpty(alarmObjectString))
-                                            {
-                                                log.LogLine("No alarm object found in request body");
-                                                APIGatewayProxyResponse errorResponse = new APIGatewayProxyResponse
-                                                {
-                                                    StatusCode = (int)HttpStatusCode.BadRequest,
-                                                    Body = JsonConvert.SerializeObject(new { msg = (ERROR_MESSAGE_400 + "No alarm object found in request") }),
-                                                    Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                                                };
-                                                return errorResponse;
-                                            }
-
-                                            // Process the webhook
-                                            Alarm? alarm = JsonConvert.DeserializeObject<Alarm>(alarmObjectString);
-                                            if (alarm == null)
-                                            {
-                                                log.LogLine("Failed to deserialize alarm object");
-                                                APIGatewayProxyResponse errorResponse = new APIGatewayProxyResponse
-                                                {
-                                                    StatusCode = (int)HttpStatusCode.BadRequest,
-                                                    Body = JsonConvert.SerializeObject(new { msg = (ERROR_MESSAGE_400 + "Invalid alarm object format") }),
-                                                    Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                                                };
-                                                return errorResponse;
-                                            }
-                                            alarm.timestamp = timestamp;
-                                            return await QueueAlarmForProcessing(alarm);
-                                        }
-                                        else
-                                        {
-                                            // Return response
-                                            log.LogLine(ERROR_MESSAGE_400 + ERROR_GENERAL);
-                                            var response = new APIGatewayProxyResponse
-                                            {
-                                                StatusCode = (int)HttpStatusCode.BadRequest,
-                                                Body = JsonConvert.SerializeObject(new { msg = (ERROR_MESSAGE_400 + ERROR_GENERAL) }),
-                                                Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                                            };
-                                            return response;
-                                        }
-                                    }
-                                    catch (Exception e)
-                                    {
-                                        // Return response
-                                        log.LogLine(e.ToString());
-                                        var response = new APIGatewayProxyResponse
-                                        {
-                                            StatusCode = (int)HttpStatusCode.InternalServerError,
-                                            Body = JsonConvert.SerializeObject(new { msg = (ERROR_MESSAGE_500 + e.Message) }),
-                                            Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                                        };
-                                        return response;
-                                    }
-                                }
-                                // Get request to download an event object received
-                                else if (method == HttpMethod.Get.ToString().ToUpper())
-                                {
-                                    // Check for latest video route
-                                    if (route == ROUTE_LATEST_VIDEO)
-                                    {
-                                        log.LogLine("Latest video request received");
-                                        return await GetLatestVideoFunction();
-                                    }
-                                    // Video download by eventId
-                                    else
-                                    {
-                                        // Check for eventId parameter (video download functionality)
-                                        string? eventId = req.QueryStringParameters?.ContainsKey("eventId") == true ? req.QueryStringParameters["eventId"] : null;
-                                        if (string.IsNullOrEmpty(eventId))
-                                        {
-                                            // Return response
-                                            log.LogLine("Error: Missing required parameter. Provide 'eventId' for video download.");
-                                            var response = new APIGatewayProxyResponse
-                                            {
-                                                StatusCode = (int)HttpStatusCode.BadRequest,
-                                                Body = JsonConvert.SerializeObject(new { msg = "Missing required parameter. Provide 'eventId' for video download." }),
-                                                Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                                            };
-                                            return response;
-                                        }
-                                        else
-                                        {
-                                            log.LogLine("eventId: " + eventId);
-                                            return await GetVideoByEventIdFunction(eventId);
-                                        }
-                                    }
-                                }
-                                // Invalid route
-                                else
-                                {
-                                    // Return response
-                                    log.LogLine(ERROR_MESSAGE_404 + ERROR_INVALID_ROUTE);
-                                    log.LogLine("Given route: " + route);
-                                    log.LogLine("Given method: " + method);
-                                    var response = new APIGatewayProxyResponse
-                                    {
-                                        StatusCode = (int)HttpStatusCode.NotFound,
-                                        Body = JsonConvert.SerializeObject(new { msg = (ERROR_MESSAGE_404 + ERROR_INVALID_ROUTE) }),
-                                        Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                                    };
-                                    return response;
-                                }
-                            }
-                            // Invalid route
-                            else
-                            {
-                                // Return response
-                                log.LogLine(ERROR_MESSAGE_404 + ERROR_INVALID_ROUTE);
-                                log.LogLine("Given route: " + route);
-                                log.LogLine("Given method: " + method);
-                                var response = new APIGatewayProxyResponse
-                                {
-                                    StatusCode = (int)HttpStatusCode.NotFound,
-                                    Body = JsonConvert.SerializeObject(new { msg = (ERROR_MESSAGE_404 + ERROR_INVALID_ROUTE) }),
-                                    Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                                };
-                                return response;
-                            }
-                        }
-                        else
-                        {
-                            // Return response
-                            log.LogLine(ERROR_MESSAGE_400 + ERROR_GENERAL);
-                            var response = new APIGatewayProxyResponse
-                            {
-                                StatusCode = (int)HttpStatusCode.BadRequest,
-                                Body = JsonConvert.SerializeObject(new { msg = (ERROR_MESSAGE_400 + ERROR_GENERAL) }),
-                                Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                            };
-                            return response;
-                        }
-                    }
+                    return HandleScheduledEvent();
                 }
-                else
+
+                // Handle empty request body as bad request
+                if (string.IsNullOrEmpty(requestBody))
                 {
-                    // Return response
                     log.LogLine(ERROR_MESSAGE_400 + ERROR_GENERAL);
-                    var response = new APIGatewayProxyResponse
-                    {
-                        StatusCode = (int)HttpStatusCode.BadRequest,
-                        Body = JsonConvert.SerializeObject(new { msg = (ERROR_MESSAGE_400 + ERROR_GENERAL) }),
-                        Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                    };
-                    return response;
+                    return CreateErrorResponse(HttpStatusCode.BadRequest, ERROR_MESSAGE_400 + ERROR_GENERAL);
                 }
+
+                // Parse the request
+                var request = ParseApiGatewayRequest(requestBody, log);
+                if (request == null)
+                {
+                    log.LogLine(ERROR_MESSAGE_400 + ERROR_GENERAL);
+                    return CreateErrorResponse(HttpStatusCode.BadRequest, ERROR_MESSAGE_400 + ERROR_GENERAL);
+                }
+
+                // Route the request
+                return await RouteRequest(request);
             }
             catch (Exception e)
             {
-                // Return response
                 log.LogLine(e.ToString());
-                var response = new APIGatewayProxyResponse
-                {
-                    StatusCode = (int)HttpStatusCode.InternalServerError,
-                    Body = JsonConvert.SerializeObject(new { msg = (ERROR_MESSAGE_500 + e.Message) }),
-                    Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                };
-                return response;
+                return CreateErrorResponse(HttpStatusCode.InternalServerError, ERROR_MESSAGE_500 + e.Message);
             }
         }
+
+        #region API Gateway Helper Methods
+
+        /// <summary>
+        /// Handles scheduled event triggers.
+        /// </summary>
+        private static APIGatewayProxyResponse HandleScheduledEvent()
+        {
+            log.LogLine("Scheduled event trigger received.");
+            return CreateSuccessResponse(new { msg = MESSAGE_202 });
+        }
+
+        /// <summary>
+        /// Parses the API Gateway request from JSON.
+        /// </summary>
+        private static APIGatewayProxyRequest? ParseApiGatewayRequest(string requestBody, ILambdaLogger logger)
+        {
+            try
+            {
+                return JsonConvert.DeserializeObject<APIGatewayProxyRequest>(requestBody);
+            }
+            catch (JsonException e)
+            {
+                logger.LogLine("Failed to deserialize API Gateway request from: " + requestBody + ". Error: " + e.Message);
+                // For JSON parsing errors, throw to trigger 500 error
+                throw;
+            }
+            catch (Exception e)
+            {
+                logger.LogLine("Failed to deserialize API Gateway request from: " + requestBody + ". Error: " + e.Message);
+                // For other errors, throw to trigger 500 error
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Routes the request to the appropriate handler based on method and path.
+        /// </summary>
+        private static async Task<APIGatewayProxyResponse> RouteRequest(APIGatewayProxyRequest request)
+        {
+            if (!IsValidRequest(request))
+            {
+                return CreateErrorResponse(HttpStatusCode.BadRequest, ERROR_MESSAGE_400 + ERROR_GENERAL);
+            }
+
+            var routeInfo = ExtractRouteInfo(request);
+            log.LogLine($"Method: {routeInfo.Method}, Path: {routeInfo.Path}, Route: {routeInfo.Route}");
+
+            // Handle OPTIONS preflight
+            if (routeInfo.Method == "OPTIONS")
+            {
+                return HandleOptionsRequest();
+            }
+
+            // Route to specific handlers
+            return await RouteToHandler(request, routeInfo);
+        }
+
+        /// <summary>
+        /// Validates the API Gateway request.
+        /// </summary>
+        private static bool IsValidRequest(APIGatewayProxyRequest request)
+        {
+            return request?.Path != null && 
+                   request.Path != "" && 
+                   request.HttpMethod != null;
+        }
+
+        /// <summary>
+        /// Extracts route information from the request.
+        /// </summary>
+        private static (string Method, string Path, string Route) ExtractRouteInfo(APIGatewayProxyRequest request)
+        {
+            var path = request.Path!;
+            if (path.Contains('/'))
+            {
+                path = path.Substring(path.IndexOf('/') + 1);
+            }
+
+            var route = path;
+            if (path.Contains('/'))
+            {
+                route = path.Substring(0, path.LastIndexOf('/'));
+            }
+
+            return (request.HttpMethod!.ToUpper(), path, route);
+        }
+
+        /// <summary>
+        /// Handles OPTIONS preflight requests.
+        /// </summary>
+        private static APIGatewayProxyResponse HandleOptionsRequest()
+        {
+            return new APIGatewayProxyResponse
+            {
+                StatusCode = (int)HttpStatusCode.OK,
+                Body = null,
+                Headers = new Dictionary<string, string> {
+                    { "Access-Control-Allow-Methods", "GET,POST,OPTIONS" },
+                    { "Access-Control-Allow-Origin", "*" },
+                    { "Access-Control-Allow-Headers", "Content-Type,X-Amz-Date,Authorization,x-api-key,X-Api-Key,X-Amz-Security-Token,Origin,Access-Control-Allow-Origin,Access-Control-Allow-Methods"}
+                }
+            };
+        }
+
+        /// <summary>
+        /// Routes to the appropriate handler based on method and route.
+        /// </summary>
+        private static async Task<APIGatewayProxyResponse> RouteToHandler(APIGatewayProxyRequest request, (string Method, string Path, string Route) routeInfo)
+        {
+            // Check if route is valid
+            if (string.IsNullOrEmpty(routeInfo.Route) && (request.QueryStringParameters?.Count ?? 0) == 0)
+            {
+                return CreateErrorResponse(HttpStatusCode.NotFound, ERROR_MESSAGE_404 + ERROR_INVALID_ROUTE);
+            }
+
+            return routeInfo.Method switch
+            {
+                "POST" when routeInfo.Route == ROUTE_ALARM => await HandleAlarmWebhook(request),
+                "GET" when routeInfo.Route == ROUTE_LATEST_VIDEO => await HandleLatestVideoRequest(),
+                "GET" => await HandleVideoDownloadRequest(request),
+                _ => CreateInvalidRouteResponse(routeInfo.Route, routeInfo.Method)
+            };
+        }
+
+        /// <summary>
+        /// Handles alarm webhook POST requests.
+        /// </summary>
+        private static async Task<APIGatewayProxyResponse> HandleAlarmWebhook(APIGatewayProxyRequest request)
+        {
+            if (string.IsNullOrEmpty(request.Body))
+            {
+                return CreateErrorResponse(HttpStatusCode.BadRequest, ERROR_MESSAGE_400 + ERROR_GENERAL);
+            }
+
+            log.LogLine("Request: " + request.Body);
+
+            var alarm = ParseAlarmFromRequest(request.Body);
+            if (alarm == null)
+            {
+                return CreateErrorResponse(HttpStatusCode.BadRequest, ERROR_MESSAGE_400 + "Invalid alarm object format");
+            }
+
+            return await QueueAlarmForProcessing(alarm);
+        }
+
+        /// <summary>
+        /// Parses alarm object from the request body.
+        /// </summary>
+        private static Alarm? ParseAlarmFromRequest(string requestBody)
+        {
+            try
+            {
+                var jo = JObject.Parse(requestBody);
+                var alarmObject = jo.SelectToken("alarm") as JObject;
+                var timestamp = jo.SelectToken("timestamp")?.Value<long>() ?? 0;
+
+                if (alarmObject == null)
+                {
+                    return null;
+                }
+
+                var alarm = JsonConvert.DeserializeObject<Alarm>(alarmObject.ToString());
+                if (alarm != null)
+                {
+                    alarm.timestamp = timestamp;
+                }
+
+                return alarm;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Handles latest video GET requests.
+        /// </summary>
+        private static async Task<APIGatewayProxyResponse> HandleLatestVideoRequest()
+        {
+            return await GetLatestVideoFunction();
+        }
+
+        /// <summary>
+        /// Handles video download GET requests.
+        /// </summary>
+        private static async Task<APIGatewayProxyResponse> HandleVideoDownloadRequest(APIGatewayProxyRequest request)
+        {
+            var eventId = request.QueryStringParameters?.TryGetValue("eventId", out var value) == true ? value : null;
+            
+            if (string.IsNullOrEmpty(eventId))
+            {
+                return new APIGatewayProxyResponse
+                {
+                    StatusCode = (int)HttpStatusCode.BadRequest,
+                    Body = JsonConvert.SerializeObject(new { msg = "Missing required parameter. Provide 'eventId' for video download." }),
+                    Headers = GetStandardHeaders()
+                };
+            }
+
+            return await GetVideoByEventIdFunction(eventId);
+        }
+
+        /// <summary>
+        /// Creates an invalid route response.
+        /// </summary>
+        private static APIGatewayProxyResponse CreateInvalidRouteResponse(string route, string method)
+        {
+            return new APIGatewayProxyResponse
+            {
+                StatusCode = (int)HttpStatusCode.NotFound,
+                Body = JsonConvert.SerializeObject(new { msg = $"{ERROR_MESSAGE_404} {ERROR_INVALID_ROUTE}. Route: {route}, Method: {method}" }),
+                Headers = GetStandardHeaders()
+            };
+        }
+
+        /// <summary>
+        /// Creates a standard error response.
+        /// </summary>
+        private static APIGatewayProxyResponse CreateErrorResponse(HttpStatusCode statusCode, string message)
+        {
+            return new APIGatewayProxyResponse
+            {
+                StatusCode = (int)statusCode,
+                Body = JsonConvert.SerializeObject(new { msg = message }),
+                Headers = GetStandardHeaders()
+            };
+        }
+
+        /// <summary>
+        /// Creates a standard success response.
+        /// </summary>
+        private static APIGatewayProxyResponse CreateSuccessResponse(object body)
+        {
+            return new APIGatewayProxyResponse
+            {
+                StatusCode = (int)HttpStatusCode.OK,
+                Body = JsonConvert.SerializeObject(body),
+                Headers = GetStandardHeaders()
+            };
+        }
+
+        /// <summary>
+        /// Gets standard CORS headers for responses.
+        /// </summary>
+        private static Dictionary<string, string> GetStandardHeaders()
+        {
+            return new Dictionary<string, string> 
+            { 
+                { "Content-Type", "application/json" }, 
+                { "Access-Control-Allow-Origin", "*" } 
+            };
+        }
+
+        #endregion
 
 
         #endregion
@@ -799,13 +815,10 @@ namespace UnifiWebhookEventReceiver
                     }
 
                     // Event details
-                    Trigger trigger = alarm.triggers.ElementAt(0);
+                    Trigger trigger = alarm.triggers[0];
                     String device = trigger.device;
                     long timestamp = alarm.timestamp;
-                    String triggerType = trigger.key;
                     String eventId = trigger.eventId;
-                    String eventPath = alarm.eventPath ?? "";
-                    String eventLocalLink = alarm.eventLocalLink ?? "";
                     String deviceName = "";
 
                     // Set date from timestamp
@@ -850,7 +863,7 @@ namespace UnifiWebhookEventReceiver
                     await UploadFileAsync(ALARM_BUCKET_NAME, eventFileKey, JsonConvert.SerializeObject(alarm));
 
                     // Get the video file byte array
-                    eventLocalLink = credentials.hostname + alarm.eventPath;
+                    string eventLocalLink = credentials.hostname + alarm.eventPath;
                     byte[] videoData = await GetVideoFromLocalUnifiProtectViaHeadlessClient(eventLocalLink, deviceName, credentials);
 
                     // Upload the video file to S3
@@ -858,8 +871,7 @@ namespace UnifiWebhookEventReceiver
 
                     // Return success response
                     String bodyContent = FUNCTION_NAME + "has successfully processed the Unifi alarm event webhook with key " + eventKey +
-                    " for " + deviceName + " that occurred at " + date + "."; //The corresponding video file can now be uploaded to the " + ALARM_BUCKET_NAME +
-                    //" S3 bucket using the presigned URL for " + videoKey + " within the next " + EXPIRATION_SECONDS + " seconds.";
+                    " for " + deviceName + " that occurred at " + date + ".";
                     log.LogLine("Returning response: " + bodyContent);
                     response = new APIGatewayProxyResponse
                     {
@@ -995,48 +1007,6 @@ namespace UnifiWebhookEventReceiver
         }
 
 
-        /// <summary>
-        /// Generates presigned URLs for S3 object access.
-        /// 
-        /// This method creates time-limited URLs that allow direct access to S3 objects without
-        /// requiring AWS credentials. Supports both upload (PUT) and download (GET) operations
-        /// with configurable expiration times.
-        /// 
-        /// Note: Currently used for future video upload functionality but not actively used
-        /// in the current alarm event processing workflow.
-        /// </summary>
-        /// <param name="keyName">S3 object key for the target file</param>
-        /// <param name="method">HTTP method (GET for download, PUT for upload)</param>
-        /// <param name="validDuration">URL validity duration in seconds</param>
-        /// <param name="contentType">MIME type for upload operations</param>
-        /// <returns>Presigned URL string valid for the specified duration</returns>
-        private static string GeneratePreSignedURL(string keyName, HttpVerb method, double validDuration, string contentType)
-        {
-            // Upload
-            var request = new GetPreSignedUrlRequest
-            {
-                BucketName = ALARM_BUCKET_NAME,
-                Key = keyName,
-                Verb = method,
-                Expires = DateTime.UtcNow.AddSeconds(validDuration),
-                ContentType = contentType
-            };
-
-            // Download
-            if (method == HttpVerb.GET)
-            {
-                request = new GetPreSignedUrlRequest
-                {
-                    BucketName = ALARM_BUCKET_NAME,
-                    Key = keyName,
-                    Expires = DateTime.UtcNow.AddSeconds(validDuration)
-                };
-            }
-
-            string url = s3Client.GetPreSignedURL(request);
-            return url;
-        }
-
         #endregion
 
         #region Event Retrieval Operations
@@ -1074,7 +1044,7 @@ namespace UnifiWebhookEventReceiver
                 MemoryStream ms = new MemoryStream();
                 using (GetObjectResponse response = await s3Client.GetObjectAsync(getObjectRequest))
                 using (Stream responseStream = response.ResponseStream)
-                    responseStream.CopyTo(ms);
+                    await responseStream.CopyToAsync(ms);
                 fileBytes = ms.ToArray();
 
                 // Return the file byte array
@@ -1092,16 +1062,37 @@ namespace UnifiWebhookEventReceiver
                 else
                 {
                     log.LogLine("Error encountered while reading object from S3: " + e.Message);
-                    throw new Exception("Error encountered while getting file from S3.");
+                    throw new InvalidOperationException("Error encountered while getting file from S3.", e);
                 }
             }
             catch (Exception e)
             {
                 log.LogLine("Unknown encountered on server. Message:'{0}' when reading an object" + e.Message);
-                throw new Exception("Error encountered while getting file from S3.");
+                throw new InvalidOperationException("Error encountered while getting file from S3.", e);
             }
         }
 
+        /// <summary>
+        /// Retrieves the latest video from S3 and returns a presigned URL for download along with event details.
+        /// 
+        /// This method efficiently searches through date-organized folders in S3 to find the most recent
+        /// video file (.mp4) based on the timestamp in the filename. It starts from today's date folder
+        /// and works backwards day by day until a video is found, making it much more efficient than
+        /// scanning all objects in the bucket.
+        /// 
+        /// Instead of returning the video data directly (which would exceed API Gateway's 6MB limit),
+        /// this method returns a presigned URL that allows direct download from S3. The URL expires
+        /// after 1 hour for security purposes.
+        /// 
+        /// Additionally, this method retrieves the corresponding event JSON data (alarm details, device
+        /// information, trigger types, etc.) by looking up the matching .json file and includes it in
+        /// the response to provide complete context about the video.
+        /// 
+        /// The search looks through folders in YYYY-MM-DD format and finds files matching
+        /// the pattern {deviceMac}_{timestamp}.mp4, returning metadata, download URL, and event details 
+        /// for the one with the highest timestamp from the most recent date that contains videos.
+        /// </summary>
+        /// <returns>API Gateway response containing download URL, metadata, and event details, or error message</returns>
         /// <summary>
         /// Retrieves the latest video from S3 and returns a presigned URL for download along with event details.
         /// 
@@ -1129,208 +1120,250 @@ namespace UnifiWebhookEventReceiver
 
             try
             {
-                if (string.IsNullOrEmpty(ALARM_BUCKET_NAME))
-                {
-                    log.LogLine("StorageBucket environment variable is not configured");
-                    return new APIGatewayProxyResponse
-                    {
-                        StatusCode = (int)HttpStatusCode.InternalServerError,
-                        Body = JsonConvert.SerializeObject(new { msg = "Server configuration error: StorageBucket not configured" }),
-                        Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                    };
-                }
+                // Validate configuration
+                var configError = ValidateLatestVideoConfiguration();
+                if (configError != null) return configError;
 
-                // Search for latest video using date-organized folder structure
-                log.LogLine("Searching for latest video file in S3 bucket using date-organized approach: " + ALARM_BUCKET_NAME);
+                // Search for the latest video
+                var searchResult = await SearchForLatestVideoAsync();
+                if (searchResult.ErrorResponse != null) return searchResult.ErrorResponse;
 
-                string? latestVideoKey = null;
-                long latestTimestamp = 0;
+                // Verify video exists
+                var verificationError = await VerifyVideoExistsAsync(searchResult.VideoKey!);
+                if (verificationError != null) return verificationError;
 
-                // Start from today and work backwards day by day
-                DateTime searchDate = DateTime.UtcNow.Date;
-                int maxDaysToSearch = 30; // Limit search to avoid infinite loops
-                int daysSearched = 0;
+                // Get event data
+                var eventData = await RetrieveEventDataAsync(searchResult.VideoKey!);
 
-                while (latestVideoKey == null && daysSearched < maxDaysToSearch)
-                {
-                    string dateFolder = searchDate.ToString("yyyy-MM-dd");
-                    log.LogLine($"Searching for videos in date folder: {dateFolder}");
-
-                    var listRequest = new ListObjectsV2Request
-                    {
-                        BucketName = ALARM_BUCKET_NAME,
-                        Prefix = dateFolder + "/",
-                        MaxKeys = 1000 // Should be plenty for a single day
-                    };
-
-                    string? dayLatestVideoKey = null;
-                    long dayLatestTimestamp = 0;
-
-                    // Search through all objects in this date folder
-                    do
-                    {
-                        var response = await s3Client.ListObjectsV2Async(listRequest);
-
-                        foreach (var obj in response.S3Objects)
-                        {
-                            // Look for .mp4 files
-                            if (obj.Key.EndsWith(".mp4"))
-                            {
-                                // Extract timestamp from filename: {dateFolder}/{deviceMac}_{timestamp}.mp4
-                                var fileName = Path.GetFileName(obj.Key);
-                                var underscoreIndex = fileName.LastIndexOf('_');
-                                var dotIndex = fileName.LastIndexOf('.');
-
-                                if (underscoreIndex > 0 && dotIndex > underscoreIndex)
-                                {
-                                    var timestampStr = fileName.Substring(underscoreIndex + 1, dotIndex - underscoreIndex - 1);
-                                    if (long.TryParse(timestampStr, out var timestamp))
-                                    {
-                                        if (timestamp > dayLatestTimestamp)
-                                        {
-                                            dayLatestTimestamp = timestamp;
-                                            dayLatestVideoKey = obj.Key;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        listRequest.ContinuationToken = response.NextContinuationToken;
-                    } while (listRequest.ContinuationToken != null);
-
-                    // If we found a video in this day, it's the latest overall
-                    if (dayLatestVideoKey != null)
-                    {
-                        latestVideoKey = dayLatestVideoKey;
-                        latestTimestamp = dayLatestTimestamp;
-                        log.LogLine($"Found latest video in {dateFolder}: {latestVideoKey} with timestamp {latestTimestamp}");
-                        break;
-                    }
-
-                    // Move to previous day
-                    searchDate = searchDate.AddDays(-1);
-                    daysSearched++;
-                    log.LogLine($"No videos found in {dateFolder}, moving to previous day: {searchDate:yyyy-MM-dd}");
-                }
-
-                if (string.IsNullOrEmpty(latestVideoKey))
-                {
-                    log.LogLine("No video files found in S3 bucket");
-                    return new APIGatewayProxyResponse
-                    {
-                        StatusCode = (int)HttpStatusCode.NotFound,
-                        Body = JsonConvert.SerializeObject(new { msg = "No video files found" }),
-                        Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                    };
-                }
-
-                log.LogLine($"Latest video found: {latestVideoKey} with timestamp: {latestTimestamp}");
-
-                // Verify the video file exists in S3 without downloading it
-                try
-                {
-                    var headRequest = new GetObjectMetadataRequest
-                    {
-                        BucketName = ALARM_BUCKET_NAME,
-                        Key = latestVideoKey
-                    };
-                    var metadata = await s3Client.GetObjectMetadataAsync(headRequest);
-                    log.LogLine($"Video file confirmed in S3: {latestVideoKey} ({metadata.ContentLength} bytes)");
-                }
-                catch (AmazonS3Exception e) when (e.ErrorCode == "NoSuchKey")
-                {
-                    log.LogLine($"Video file {latestVideoKey} not found in S3");
-                    return new APIGatewayProxyResponse
-                    {
-                        StatusCode = (int)HttpStatusCode.NotFound,
-                        Body = JsonConvert.SerializeObject(new { msg = "Video file not found" }),
-                        Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                    };
-                }
-
-                // Get the corresponding event JSON data
-                // Convert video key to event key: replace .mp4 with .json
-                string eventKey = latestVideoKey.Replace(".mp4", ".json");
-                log.LogLine($"Looking for corresponding event data: {eventKey}");
-                
-                string? eventJsonData = null;
-                object? eventData = null;
-                
-                try
-                {
-                    eventJsonData = await GetJsonFileFromS3BlobAsync(eventKey);
-                    if (eventJsonData != null)
-                    {
-                        // Parse the JSON to include as an object in the response
-                        eventData = JsonConvert.DeserializeObject(eventJsonData);
-                        log.LogLine($"Successfully retrieved event data for {eventKey}");
-                    }
-                    else
-                    {
-                        log.LogLine($"No event data found for {eventKey}");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    log.LogLine($"Error retrieving event data for {eventKey}: {ex.Message}");
-                    // Continue without event data rather than failing the entire request
-                }
-
-                // Generate a presigned URL for direct download from S3
-                DateTime dt = DateTimeOffset.FromUnixTimeMilliseconds(latestTimestamp).DateTime;
-                string suggestedFilename = $"latest_video_{dt:yyyy-MM-dd_HH-mm-ss}.mp4";
-                
-                // Generate presigned URL with 1 hour expiration and suggested filename
-                var presignedRequest = new GetPreSignedUrlRequest
-                {
-                    BucketName = ALARM_BUCKET_NAME,
-                    Key = latestVideoKey,
-                    Verb = HttpVerb.GET,
-                    Expires = DateTime.UtcNow.AddHours(1),
-                    ResponseHeaderOverrides = new ResponseHeaderOverrides
-                    {
-                        ContentDisposition = $"attachment; filename=\"{suggestedFilename}\""
-                    }
-                };
-
-                string presignedUrl = s3Client.GetPreSignedURL(presignedRequest);
-                log.LogLine($"Generated presigned URL for {latestVideoKey}, expires in 1 hour");
-
-                // Return the presigned URL, metadata, and event data
-                var responseData = new
-                {
-                    downloadUrl = presignedUrl,
-                    filename = suggestedFilename,
-                    videoKey = latestVideoKey,
-                    eventKey = eventKey,
-                    timestamp = latestTimestamp,
-                    eventDate = dt.ToString("yyyy-MM-dd HH:mm:ss"),
-                    expiresAt = DateTime.UtcNow.AddHours(1).ToString("yyyy-MM-dd HH:mm:ss UTC"),
-                    eventData = eventData,
-                    message = "Use the downloadUrl to download the video file directly. URL expires in 1 hour."
-                };
-
-                return new APIGatewayProxyResponse
-                {
-                    StatusCode = (int)HttpStatusCode.OK,
-                    Body = JsonConvert.SerializeObject(responseData, Formatting.Indented),
-                    Headers = new Dictionary<string, string> 
-                    { 
-                        { "Content-Type", "application/json" },
-                        { "Access-Control-Allow-Origin", "*" }
-                    }
-                };
+                // Build and return response
+                return await BuildLatestVideoResponse(searchResult.VideoKey!, searchResult.Timestamp, eventData);
             }
             catch (Exception e)
             {
                 log.LogLine($"Error retrieving latest video: {e.Message}");
-                return new APIGatewayProxyResponse
-                {
-                    StatusCode = (int)HttpStatusCode.InternalServerError,
-                    Body = JsonConvert.SerializeObject(new { msg = $"Error retrieving latest video: {e.Message}" }),
-                };
+                return CreateErrorResponse(HttpStatusCode.InternalServerError, $"Error retrieving latest video: {e.Message}");
             }
+        }
+
+        /// <summary>
+        /// Validates the configuration required for latest video retrieval.
+        /// </summary>
+        /// <returns>Error response if configuration is invalid, null if valid</returns>
+        internal static APIGatewayProxyResponse? ValidateLatestVideoConfiguration()
+        {
+            var storageBucket = Environment.GetEnvironmentVariable("StorageBucket");
+            if (string.IsNullOrWhiteSpace(storageBucket))
+            {
+                log.LogLine("StorageBucket environment variable is not configured");
+                return CreateErrorResponse(HttpStatusCode.InternalServerError, "Server configuration error: StorageBucket not configured");
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Searches for the latest video file in S3 using date-organized folder structure.
+        /// </summary>
+        /// <returns>Search result containing video key and timestamp, or error response</returns>
+        internal static async Task<(string? VideoKey, long Timestamp, APIGatewayProxyResponse? ErrorResponse)> SearchForLatestVideoAsync()
+        {
+            log.LogLine("Searching for latest video file in S3 bucket using date-organized approach: " + ALARM_BUCKET_NAME);
+
+            DateTime searchDate = DateTime.UtcNow.Date;
+            const int maxDaysToSearch = 30;
+            int daysSearched = 0;
+
+            while (daysSearched < maxDaysToSearch)
+            {
+                string dateFolder = searchDate.ToString("yyyy-MM-dd");
+                log.LogLine($"Searching for videos in date folder: {dateFolder}");
+
+                var dayResult = await SearchDateFolderForLatestVideoAsync(dateFolder);
+                if (dayResult.VideoKey != null)
+                {
+                    log.LogLine($"Found latest video in {dateFolder}: {dayResult.VideoKey} with timestamp {dayResult.Timestamp}");
+                    return (dayResult.VideoKey, dayResult.Timestamp, null);
+                }
+
+                // Move to previous day
+                searchDate = searchDate.AddDays(-1);
+                daysSearched++;
+                log.LogLine($"No videos found in {dateFolder}, moving to previous day: {searchDate:yyyy-MM-dd}");
+            }
+
+            log.LogLine("No video files found in S3 bucket");
+            return (null, 0, CreateErrorResponse(HttpStatusCode.NotFound, "No video files found"));
+        }
+
+        /// <summary>
+        /// Searches a specific date folder for the latest video file.
+        /// </summary>
+        /// <param name="dateFolder">The date folder to search (YYYY-MM-DD format)</param>
+        /// <returns>Video key and timestamp if found, null otherwise</returns>
+        internal static async Task<(string? VideoKey, long Timestamp)> SearchDateFolderForLatestVideoAsync(string dateFolder)
+        {
+            var listRequest = new ListObjectsV2Request
+            {
+                BucketName = ALARM_BUCKET_NAME!,
+                Prefix = dateFolder + "/",
+                MaxKeys = 1000 // Should be plenty for a single day
+            };
+
+            string? latestVideoKey = null;
+            long latestTimestamp = 0;
+
+            do
+            {
+                var response = await s3Client.ListObjectsV2Async(listRequest);
+
+                var videoTimestamps = response.S3Objects
+                    .Where(obj => obj.Key.EndsWith(".mp4"))
+                    .Select(obj => obj.Key)
+                    .Select(key => new { Key = key, Timestamp = ExtractTimestampFromFileName(key) })
+                    .Where(item => item.Timestamp > 0);
+
+                foreach (var item in videoTimestamps)
+                {
+                    if (item.Timestamp > latestTimestamp)
+                    {
+                        latestTimestamp = item.Timestamp;
+                        latestVideoKey = item.Key;
+                    }
+                }
+
+                listRequest.ContinuationToken = response.NextContinuationToken;
+            } while (listRequest.ContinuationToken != null);
+
+            return (latestVideoKey, latestTimestamp);
+        }
+
+        /// <summary>
+        /// Extracts timestamp from a video file name.
+        /// </summary>
+        /// <param name="s3Key">The S3 key containing the filename</param>
+        /// <returns>Timestamp if successfully extracted, 0 otherwise</returns>
+        internal static long ExtractTimestampFromFileName(string s3Key)
+        {
+            var fileName = Path.GetFileName(s3Key);
+            var underscoreIndex = fileName.LastIndexOf('_');
+            var dotIndex = fileName.LastIndexOf('.');
+
+            if (underscoreIndex > 0 && dotIndex > underscoreIndex)
+            {
+                var timestampStr = fileName.Substring(underscoreIndex + 1, dotIndex - underscoreIndex - 1);
+                if (long.TryParse(timestampStr, out var timestamp) && timestamp >= 0)
+                {
+                    return timestamp;
+                }
+            }
+            return 0;
+        }
+
+        /// <summary>
+        /// Verifies that a video file exists in S3.
+        /// </summary>
+        /// <param name="videoKey">The S3 key of the video file</param>
+        /// <returns>Error response if video doesn't exist, null if it exists</returns>
+        internal static async Task<APIGatewayProxyResponse?> VerifyVideoExistsAsync(string videoKey)
+        {
+            try
+            {
+                var headRequest = new GetObjectMetadataRequest
+                {
+                    BucketName = ALARM_BUCKET_NAME!,
+                    Key = videoKey
+                };
+                var metadata = await s3Client.GetObjectMetadataAsync(headRequest);
+                log.LogLine($"Video file confirmed in S3: {videoKey} ({metadata.ContentLength} bytes)");
+                return null;
+            }
+            catch (AmazonS3Exception e) when (e.ErrorCode == "NoSuchKey")
+            {
+                log.LogLine($"Video file {videoKey} not found in S3");
+                return CreateErrorResponse(HttpStatusCode.NotFound, "Video file not found");
+            }
+        }
+
+        /// <summary>
+        /// Retrieves event data associated with a video file.
+        /// </summary>
+        /// <param name="videoKey">The S3 key of the video file</param>
+        /// <returns>Parsed event data object, or null if not found</returns>
+        internal static async Task<object?> RetrieveEventDataAsync(string videoKey)
+        {
+            string eventKey = videoKey.Replace(".mp4", ".json");
+            log.LogLine($"Looking for corresponding event data: {eventKey}");
+
+            try
+            {
+                string? eventJsonData = await GetJsonFileFromS3BlobAsync(eventKey);
+                if (eventJsonData != null)
+                {
+                    var eventData = JsonConvert.DeserializeObject(eventJsonData);
+                    log.LogLine($"Successfully retrieved event data for {eventKey}");
+                    return eventData;
+                }
+                else
+                {
+                    log.LogLine($"No event data found for {eventKey}");
+                }
+            }
+            catch (Exception ex)
+            {
+                log.LogLine($"Error retrieving event data for {eventKey}: {ex.Message}");
+                // Continue without event data rather than failing the entire request
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Builds the API Gateway response for latest video request.
+        /// </summary>
+        /// <param name="videoKey">The S3 key of the video file</param>
+        /// <param name="timestamp">The timestamp of the video</param>
+        /// <param name="eventData">Associated event data</param>
+        /// <returns>API Gateway response with video download information</returns>
+        internal static async Task<APIGatewayProxyResponse> BuildLatestVideoResponse(string videoKey, long timestamp, object? eventData)
+        {
+            DateTime dt = DateTimeOffset.FromUnixTimeMilliseconds(timestamp).DateTime;
+            string suggestedFilename = $"latest_video_{dt:yyyy-MM-dd_HH-mm-ss}.mp4";
+            string eventKey = videoKey.Replace(".mp4", ".json");
+
+            // Generate presigned URL with 1 hour expiration and suggested filename
+            var presignedRequest = new GetPreSignedUrlRequest
+            {
+                BucketName = ALARM_BUCKET_NAME!,
+                Key = videoKey,
+                Verb = HttpVerb.GET,
+                Expires = DateTime.UtcNow.AddHours(1),
+                ResponseHeaderOverrides = new ResponseHeaderOverrides
+                {
+                    ContentDisposition = $"attachment; filename=\"{suggestedFilename}\""
+                }
+            };
+
+            string presignedUrl = await s3Client.GetPreSignedURLAsync(presignedRequest);
+            log.LogLine($"Generated presigned URL for {videoKey}, expires in 1 hour");
+
+            var responseData = new
+            {
+                downloadUrl = presignedUrl,
+                filename = suggestedFilename,
+                videoKey = videoKey,
+                eventKey = eventKey,
+                timestamp = timestamp,
+                eventDate = dt.ToString("yyyy-MM-dd HH:mm:ss"),
+                expiresAt = DateTime.UtcNow.AddHours(1).ToString("yyyy-MM-dd HH:mm:ss UTC"),
+                eventData = eventData,
+                message = "Use the downloadUrl to download the video file directly. URL expires in 1 hour."
+            };
+
+            return new APIGatewayProxyResponse
+            {
+                StatusCode = (int)HttpStatusCode.OK,
+                Body = JsonConvert.SerializeObject(responseData, Formatting.Indented),
+                Headers = GetStandardHeaders()
+            };
         }
 
         /// <summary>
@@ -1352,251 +1385,198 @@ namespace UnifiWebhookEventReceiver
 
             try
             {
-                if (string.IsNullOrEmpty(ALARM_BUCKET_NAME))
-                {
-                    log.LogLine("StorageBucket environment variable is not configured");
-                    return new APIGatewayProxyResponse
-                    {
-                        StatusCode = (int)HttpStatusCode.InternalServerError,
-                        Body = JsonConvert.SerializeObject(new { msg = "Server configuration error: StorageBucket not configured" }),
-                        Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                    };
-                }
+                // Validate configuration and parameters
+                var configValidation = ValidateEventIdConfiguration(eventId);
+                if (configValidation != null) return configValidation;
 
-                if (string.IsNullOrEmpty(eventId))
-                {
-                    log.LogLine("EventId parameter is required");
-                    return new APIGatewayProxyResponse
-                    {
-                        StatusCode = (int)HttpStatusCode.BadRequest,
-                        Body = JsonConvert.SerializeObject(new { msg = "EventId parameter is required" }),
-                        Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                    };
-                }
+                // Search for the event
+                var searchResult = await SearchEventByIdAsync(eventId);
+                if (searchResult.ErrorResponse != null) return searchResult.ErrorResponse;
 
-                // Search for event file by eventId prefix using the new naming convention
-                log.LogLine($"Searching for event file with eventId prefix: {eventId}");
+                // Verify video file exists
+                var verificationResult = await VerifyVideoFileExistsAsync(searchResult.VideoKey!, eventId);
+                if (verificationResult != null) return verificationResult;
 
-                string? foundEventKey = null;
-                string? foundVideoKey = null;
-                long foundTimestamp = 0;
-                object? eventData = null;
+                // Retrieve event data (optional, don't fail if missing)
+                var eventData = await RetrieveEventDataAsync(searchResult.EventKey!);
 
-                // Start from today and work backwards day by day to find the event
-                DateTime searchDate = DateTime.UtcNow.Date;
-                int maxDaysToSearch = 90; // Search up to 90 days back
-                int daysSearched = 0;
-
-                while (foundEventKey == null && daysSearched < maxDaysToSearch)
-                {
-                    string dateFolder = searchDate.ToString("yyyy-MM-dd");
-                    log.LogLine($"Searching for eventId {eventId} in date folder: {dateFolder}");
-
-                    // Search for files with eventId prefix in this date folder
-                    var listRequest = new ListObjectsV2Request
-                    {
-                        BucketName = ALARM_BUCKET_NAME,
-                        Prefix = $"{dateFolder}/{eventId}_", // Look for files that start with eventId_
-                        MaxKeys = 10 // Should only be 1-2 files (JSON + MP4) per event
-                    };
-
-                    var response = await s3Client.ListObjectsV2Async(listRequest);
-
-                    foreach (var obj in response.S3Objects)
-                    {
-                        if (obj.Key.EndsWith(".json"))
-                        {
-                            foundEventKey = obj.Key;
-                            
-                            // Extract the video key by replacing .json with .mp4
-                            foundVideoKey = obj.Key.Replace(".json", ".mp4");
-                            
-                            // Extract timestamp from filename: {dateFolder}/{eventId}_{device}_{timestamp}.json
-                            var fileName = Path.GetFileName(obj.Key);
-                            var parts = fileName.Split('_');
-                            if (parts.Length >= 3 && long.TryParse(parts[parts.Length - 1].Replace(".json", ""), out long timestamp))
-                            {
-                                foundTimestamp = timestamp;
-                            }
-
-                            log.LogLine($"Found event file: {foundEventKey}, corresponding video: {foundVideoKey}");
-                            break;
-                        }
-                    }
-
-                    if (foundEventKey != null) break;
-
-                    // Move to previous day
-                    searchDate = searchDate.AddDays(-1);
-                    daysSearched++;
-                }
-
-                if (foundEventKey == null || foundVideoKey == null)
-                {
-                    log.LogLine($"Event with eventId {eventId} not found in S3 bucket");
-                    return new APIGatewayProxyResponse
-                    {
-                        StatusCode = (int)HttpStatusCode.NotFound,
-                        Body = JsonConvert.SerializeObject(new { msg = $"Event with eventId {eventId} not found" }),
-                        Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                    };
-                }
-
-                // Get the event JSON data
-                try
-                {
-                    string? eventJsonData = await GetJsonFileFromS3BlobAsync(foundEventKey);
-                    if (eventJsonData != null)
-                    {
-                        eventData = JsonConvert.DeserializeObject(eventJsonData);
-                        log.LogLine($"Successfully retrieved event data for {foundEventKey}");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    log.LogLine($"Error retrieving event data for {foundEventKey}: {ex.Message}");
-                    // Continue without event data rather than failing the entire request
-                }
-
-                // Verify the video file exists in S3
-                try
-                {
-                    var headRequest = new GetObjectMetadataRequest
-                    {
-                        BucketName = ALARM_BUCKET_NAME,
-                        Key = foundVideoKey
-                    };
-                    var metadata = await s3Client.GetObjectMetadataAsync(headRequest);
-                    log.LogLine($"Video file confirmed in S3: {foundVideoKey} ({metadata.ContentLength} bytes)");
-                }
-                catch (AmazonS3Exception e) when (e.ErrorCode == "NoSuchKey")
-                {
-                    log.LogLine($"Video file {foundVideoKey} not found in S3");
-                    return new APIGatewayProxyResponse
-                    {
-                        StatusCode = (int)HttpStatusCode.NotFound,
-                        Body = JsonConvert.SerializeObject(new { msg = $"Video file for event {eventId} not found" }),
-                        Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                    };
-                }
-
-                // Generate a presigned URL for direct download from S3
-                DateTime dt = foundTimestamp > 0 ? DateTimeOffset.FromUnixTimeMilliseconds(foundTimestamp).DateTime : DateTime.UtcNow;
-                string suggestedFilename = $"event_{eventId}_{dt:yyyy-MM-dd_HH-mm-ss}.mp4";
-                
-                // Generate presigned URL with 1 hour expiration and suggested filename
-                var presignedRequest = new GetPreSignedUrlRequest
-                {
-                    BucketName = ALARM_BUCKET_NAME,
-                    Key = foundVideoKey,
-                    Verb = HttpVerb.GET,
-                    Expires = DateTime.UtcNow.AddHours(1),
-                    ResponseHeaderOverrides = new ResponseHeaderOverrides
-                    {
-                        ContentDisposition = $"attachment; filename=\"{suggestedFilename}\""
-                    }
-                };
-
-                string presignedUrl = s3Client.GetPreSignedURL(presignedRequest);
-                log.LogLine($"Generated presigned URL for {foundVideoKey}, expires in 1 hour");
-
-                // Return the presigned URL, metadata, and event data
-                var responseData = new
-                {
-                    downloadUrl = presignedUrl,
-                    filename = suggestedFilename,
-                    videoKey = foundVideoKey,
-                    eventKey = foundEventKey,
-                    eventId = eventId,
-                    timestamp = foundTimestamp,
-                    eventDate = dt.ToString("yyyy-MM-dd HH:mm:ss"),
-                    expiresAt = DateTime.UtcNow.AddHours(1).ToString("yyyy-MM-dd HH:mm:ss UTC"),
-                    eventData = eventData,
-                    message = "Use the downloadUrl to download the video file directly. URL expires in 1 hour."
-                };
-
-                return new APIGatewayProxyResponse
-                {
-                    StatusCode = (int)HttpStatusCode.OK,
-                    Body = JsonConvert.SerializeObject(responseData, Formatting.Indented),
-                    Headers = new Dictionary<string, string> 
-                    { 
-                        { "Content-Type", "application/json" },
-                        { "Access-Control-Allow-Origin", "*" }
-                    }
-                };
+                // Generate presigned URL and build response
+                return await BuildEventVideoResponse(searchResult.EventKey!, searchResult.VideoKey!, 
+                    eventId, searchResult.Timestamp, eventData);
             }
             catch (Exception e)
             {
                 log.LogLine($"Error retrieving video by eventId {eventId}: {e.Message}");
-                return new APIGatewayProxyResponse
-                {
-                    StatusCode = (int)HttpStatusCode.InternalServerError,
-                    Body = JsonConvert.SerializeObject(new { msg = $"Error retrieving video by eventId: {e.Message}" }),
-                    Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                };
+                return CreateErrorResponse(HttpStatusCode.InternalServerError, $"Error retrieving video by eventId: {e.Message}");
             }
         }
 
         /// <summary>
-        /// Retrieves video binary data from S3 and returns it as a byte array.
-        /// 
-        /// This method handles the low-level S3 operations for fetching stored video data.
-        /// It performs the S3 GetObject operation, reads the response stream, and returns
-        /// the binary content as a byte array for video processing.
-        /// 
-        /// Handles common S3 exceptions including missing objects (NoSuchKey) and access errors.
+        /// Validates configuration and parameters for event ID video retrieval.
         /// </summary>
-        /// <param name="keyName">S3 object key to retrieve</param>
-        /// <returns>Byte array containing the video data, or null if object doesn't exist</returns>
-        private static async Task<byte[]?> GetVideoFileFromS3BlobAsync(string keyName)
+        internal static APIGatewayProxyResponse? ValidateEventIdConfiguration(string eventId)
+        {
+            if (string.IsNullOrEmpty(ALARM_BUCKET_NAME))
+            {
+                log.LogLine("StorageBucket environment variable is not configured");
+                return CreateErrorResponse(HttpStatusCode.InternalServerError, "Server configuration error: StorageBucket not configured");
+            }
+
+            if (string.IsNullOrEmpty(eventId))
+            {
+                log.LogLine("EventId parameter is required");
+                return CreateErrorResponse(HttpStatusCode.BadRequest, "EventId parameter is required");
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Searches for an event by ID across date-organized folders.
+        /// </summary>
+        internal static async Task<(string? EventKey, string? VideoKey, long Timestamp, APIGatewayProxyResponse? ErrorResponse)> SearchEventByIdAsync(string eventId)
+        {
+            log.LogLine($"Searching for event file with eventId prefix: {eventId}");
+
+            // Start from today and work backwards day by day to find the event
+            DateTime searchDate = DateTime.UtcNow.Date;
+            const int maxDaysToSearch = 90; // Search up to 90 days back
+            int daysSearched = 0;
+
+            while (daysSearched < maxDaysToSearch)
+            {
+                string dateFolder = searchDate.ToString("yyyy-MM-dd");
+                log.LogLine($"Searching for eventId {eventId} in date folder: {dateFolder}");
+
+                var result = await SearchEventInDateFolderAsync(eventId, dateFolder);
+                if (result.EventKey != null)
+                {
+                    return (result.EventKey, result.VideoKey, result.Timestamp, null);
+                }
+
+                // Move to previous day
+                searchDate = searchDate.AddDays(-1);
+                daysSearched++;
+            }
+
+            log.LogLine($"Event with eventId {eventId} not found in S3 bucket");
+            return (null, null, 0, CreateErrorResponse(HttpStatusCode.NotFound, $"Event with eventId {eventId} not found"));
+        }
+
+        /// <summary>
+        /// Searches for an event within a specific date folder.
+        /// </summary>
+        internal static async Task<(string? EventKey, string? VideoKey, long Timestamp)> SearchEventInDateFolderAsync(string eventId, string dateFolder)
+        {
+            var listRequest = new ListObjectsV2Request
+            {
+                BucketName = ALARM_BUCKET_NAME!,
+                Prefix = $"{dateFolder}/{eventId}_", // Look for files that start with eventId_
+                MaxKeys = 10 // Should only be 1-2 files (JSON + MP4) per event
+            };
+
+            var response = await s3Client.ListObjectsV2Async(listRequest);
+
+            var eventFile = response.S3Objects
+                .Where(o => o.Key.EndsWith(".json"))
+                .Select(obj => obj.Key)
+                .FirstOrDefault();
+
+            if (eventFile != null)
+            {
+                string eventKey = eventFile;
+                string videoKey = eventFile.Replace(".json", ".mp4");
+                long timestamp = ExtractTimestampFromEventFileName(eventFile);
+
+                log.LogLine($"Found event file: {eventKey}, corresponding video: {videoKey}");
+                return (eventKey, videoKey, timestamp);
+            }
+
+            return (null, null, 0);
+        }
+
+        /// <summary>
+        /// Extracts timestamp from an event filename.
+        /// Expected format: {dateFolder}/{eventId}_{device}_{timestamp}.json
+        /// </summary>
+        internal static long ExtractTimestampFromEventFileName(string eventKey)
+        {
+            var fileName = Path.GetFileName(eventKey);
+            var parts = fileName.Split('_');
+            
+            if (parts.Length >= 3 && long.TryParse(parts[parts.Length - 1].Replace(".json", ""), out long timestamp) && timestamp >= 0)
+            {
+                return timestamp;
+            }
+            
+            return 0;
+        }
+
+        /// <summary>
+        /// Verifies that a video file exists in S3.
+        /// </summary>
+        internal static async Task<APIGatewayProxyResponse?> VerifyVideoFileExistsAsync(string videoKey, string eventId)
         {
             try
             {
-                if (string.IsNullOrEmpty(ALARM_BUCKET_NAME))
+                var headRequest = new GetObjectMetadataRequest
                 {
-                    throw new InvalidOperationException("StorageBucket environment variable is not configured");
-                }
-
-                log.LogLine("Attempting to get video object: " + keyName + " from " + ALARM_BUCKET_NAME + ".");
-
-                // Prepare request
-                var getObjectRequest = new GetObjectRequest
-                {
-                    BucketName = ALARM_BUCKET_NAME,
-                    Key = keyName,
+                    BucketName = ALARM_BUCKET_NAME!,
+                    Key = videoKey
                 };
-
-                // Get the object
-                MemoryStream ms = new MemoryStream();
-                using (GetObjectResponse response = await s3Client.GetObjectAsync(getObjectRequest))
-                using (Stream responseStream = response.ResponseStream)
-                    responseStream.CopyTo(ms);
-                
-                byte[] fileBytes = ms.ToArray();
-
-                // Return the file byte array
-                log.LogLine("Successfully retrieved the video from S3: " + ALARM_BUCKET_NAME + "/" + keyName + " with a size of: " + fileBytes.Length + " bytes");
-                return fileBytes;
+                var metadata = await s3Client.GetObjectMetadataAsync(headRequest);
+                log.LogLine($"Video file confirmed in S3: {videoKey} ({metadata.ContentLength} bytes)");
+                return null;
             }
-            catch (AmazonS3Exception e)
+            catch (AmazonS3Exception e) when (e.ErrorCode == "NoSuchKey")
             {
-                if (e.ErrorCode == "NoSuchKey")
-                {
-                    log.LogLine("Video object doesn't exist.");
-                    return null;
-                }
-                else
-                {
-                    log.LogLine("Error encountered while reading video object from S3: " + e.Message);
-                    throw new Exception("Error encountered while getting video file from S3.");
-                }
+                log.LogLine($"Video file {videoKey} not found in S3");
+                return CreateErrorResponse(HttpStatusCode.NotFound, $"Video file for event {eventId} not found");
             }
-            catch (Exception e)
+        }
+
+        /// <summary>
+        /// Builds the response for event video retrieval with presigned URL.
+        /// </summary>
+        internal static async Task<APIGatewayProxyResponse> BuildEventVideoResponse(string eventKey, string videoKey, 
+            string eventId, long timestamp, object? eventData)
+        {
+            // Generate a presigned URL for direct download from S3
+            DateTime dt = timestamp > 0 ? DateTimeOffset.FromUnixTimeMilliseconds(timestamp).DateTime : DateTime.UtcNow;
+            string suggestedFilename = $"event_{eventId}_{dt:yyyy-MM-dd_HH-mm-ss}.mp4";
+            
+            // Generate presigned URL with 1 hour expiration and suggested filename
+            var presignedRequest = new GetPreSignedUrlRequest
             {
-                log.LogLine("Unknown error encountered when reading video object: " + e.Message);
-                throw new Exception("Error encountered while getting video file from S3.");
-            }
+                BucketName = ALARM_BUCKET_NAME!,
+                Key = videoKey,
+                Verb = HttpVerb.GET,
+                Expires = DateTime.UtcNow.AddHours(1),
+                ResponseHeaderOverrides = new ResponseHeaderOverrides
+                {
+                    ContentDisposition = $"attachment; filename=\"{suggestedFilename}\""
+                }
+            };
+
+            string presignedUrl = await s3Client.GetPreSignedURLAsync(presignedRequest);
+            log.LogLine($"Generated presigned URL for {videoKey}, expires in 1 hour");
+
+            // Return the presigned URL, metadata, and event data
+            var responseData = new
+            {
+                downloadUrl = presignedUrl,
+                filename = suggestedFilename,
+                videoKey = videoKey,
+                eventKey = eventKey,
+                eventId = eventId,
+                timestamp = timestamp,
+                eventDate = dt.ToString("yyyy-MM-dd HH:mm:ss"),
+                expiresAt = DateTime.UtcNow.AddHours(1).ToString("yyyy-MM-dd HH:mm:ss UTC"),
+                eventData = eventData,
+                message = "Use the downloadUrl to download the video file directly. URL expires in 1 hour."
+            };
+
+            return CreateSuccessResponse(responseData);
         }
 
         #endregion
@@ -1748,7 +1728,6 @@ namespace UnifiWebhookEventReceiver
                     if (Environment.OSVersion.Platform == PlatformID.Unix)
                     {
                         // Set permissions for Lambda environment
-                        var directoryInfo = new DirectoryInfo(downloadDirectory);
                         // This is a simplified permission setting - Lambda handles most of this automatically
                         log.LogLine($"Setting permissions for directory: {downloadDirectory}");
                     }
@@ -1802,7 +1781,7 @@ namespace UnifiWebhookEventReceiver
                 var screenshotPath = Path.Combine(downloadDirectory, "login-screenshot.png");
                 await page.ScreenshotAsync(screenshotPath);
                 log.LogLine($"Screenshot taken: {screenshotPath}");
-                await UploadFileAsync(ALARM_BUCKET_NAME, "screenshots/login-screenshot.png", File.ReadAllBytes(screenshotPath), "image/png");
+                await UploadFileAsync(ALARM_BUCKET_NAME, "screenshots/login-screenshot.png", await File.ReadAllBytesAsync(screenshotPath), "image/png");
 
                 // Check if username and password fields are present
                 if (usernameField != null && passwordField != null)
@@ -1811,7 +1790,7 @@ namespace UnifiWebhookEventReceiver
 
                     // Take the username and password and * out all but the first 3 characters of the username and all of the characters of the password
                     log.LogLine("Filling in credentials for login...");
-                    var maskedUsername = credentials.username.Length > 3 ? credentials.username.Substring(0, 3) + new string('*', credentials.username.Length - 3) : credentials.username;
+                    var maskedUsername = credentials.username.Length > 3 ? string.Concat(credentials.username.AsSpan(0, 3), new string('*', credentials.username.Length - 3)) : credentials.username;
                     var maskedPassword = new string('*', credentials.password.Length);
 
                     log.LogLine($"Using credentials - Username: {maskedUsername}, Password: {maskedPassword}");
@@ -1912,28 +1891,22 @@ namespace UnifiWebhookEventReceiver
 
                             // Try to extract GUID if available
                             var data = e.MessageData;
-                            if (data.ValueKind == System.Text.Json.JsonValueKind.Object)
+                            if (data.ValueKind == System.Text.Json.JsonValueKind.Object && data.TryGetProperty("guid", out var guidElement))
                             {
-                                if (data.TryGetProperty("guid", out var guidElement))
-                                {
-                                    downloadGuid = guidElement.GetString();
-                                    log.LogLine($"Download started with GUID: {downloadGuid}");
-                                }
+                                downloadGuid = guidElement.GetString();
+                                log.LogLine($"Download started with GUID: {downloadGuid}");
                             }
                         }
                         else if (e.MessageID == "Browser.downloadProgress")
                         {
                             var data = e.MessageData;
-                            if (data.ValueKind == System.Text.Json.JsonValueKind.Object)
+                            if (data.ValueKind == System.Text.Json.JsonValueKind.Object && data.TryGetProperty("state", out var stateElement))
                             {
-                                if (data.TryGetProperty("state", out var stateElement))
+                                var state = stateElement.GetString();
+                                log.LogLine($"Download progress: {state}");
+                                if (state == "completed")
                                 {
-                                    var state = stateElement.GetString();
-                                    log.LogLine($"Download progress: {state}");
-                                    if (state == "completed")
-                                    {
-                                        log.LogLine("Download completed via event notification");
-                                    }
+                                    log.LogLine("Download completed via event notification");
                                 }
                             }
                         }
@@ -1949,7 +1922,7 @@ namespace UnifiWebhookEventReceiver
                 screenshotPath = Path.Combine(downloadDirectory, "pageload-screenshot.png");
                 await page.ScreenshotAsync(screenshotPath);
                 log.LogLine($"Screenshot taken of the loaded page: {screenshotPath}");
-                await UploadFileAsync(ALARM_BUCKET_NAME, "screenshots/pageload-screenshot.png", File.ReadAllBytes(screenshotPath), "image/png");
+                await UploadFileAsync(ALARM_BUCKET_NAME, "screenshots/pageload-screenshot.png", await File.ReadAllBytesAsync(screenshotPath), "image/png");
 
                 // Click at click coordinates for archive button
                 await page.Mouse.ClickAsync(clickCoordinates["archiveButton"].x, clickCoordinates["archiveButton"].y);
@@ -1959,7 +1932,7 @@ namespace UnifiWebhookEventReceiver
                 screenshotPath = Path.Combine(downloadDirectory, "firstclick-screenshot.png");
                 await page.ScreenshotAsync(screenshotPath);
                 log.LogLine($"Screenshot taken of the clicked archive button: {screenshotPath}");
-                await UploadFileAsync(ALARM_BUCKET_NAME, "screenshots/firstclick-screenshot.png", File.ReadAllBytes(screenshotPath), "image/png");
+                await UploadFileAsync(ALARM_BUCKET_NAME, "screenshots/firstclick-screenshot.png", await File.ReadAllBytesAsync(screenshotPath), "image/png");
 
 
                 // Click at click coordinates for download button
@@ -1970,7 +1943,7 @@ namespace UnifiWebhookEventReceiver
                 screenshotPath = Path.Combine(downloadDirectory, "secondclick-screenshot.png");
                 await page.ScreenshotAsync(screenshotPath);
                 log.LogLine($"Screenshot taken of the clicked download button: {screenshotPath}");
-                await UploadFileAsync(ALARM_BUCKET_NAME, "screenshots/secondclick-screenshot.png", File.ReadAllBytes(screenshotPath), "image/png");
+                await UploadFileAsync(ALARM_BUCKET_NAME, "screenshots/secondclick-screenshot.png", await File.ReadAllBytesAsync(screenshotPath), "image/png");
 
                 // Wait for download to complete
                 log.LogLine("Waiting for video download to complete...");
@@ -1979,16 +1952,16 @@ namespace UnifiWebhookEventReceiver
                 var initialFileCount = Directory.GetFiles(downloadDirectory, "*.mp4").Length;
                 var maxWaitTime = TimeSpan.FromSeconds(100);
                 var checkInterval = TimeSpan.FromSeconds(1);
-                var startTime = DateTime.Now;
+                var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
                 log.LogLine($"Initial file count: {initialFileCount}, Download event detected: {downloadStarted}");
 
-                while (DateTime.Now - startTime < maxWaitTime)
+                while (stopwatch.Elapsed < maxWaitTime)
                 {
                     var currentFileCount = Directory.GetFiles(downloadDirectory, "*.mp4").Length;
                     if (currentFileCount > initialFileCount)
                     {
-                        log.LogLine($"New video file detected after {(DateTime.Now - startTime).TotalSeconds:F1} seconds");
+                        log.LogLine($"New video file detected after {stopwatch.Elapsed.TotalSeconds:F1} seconds");
 
                         // Wait a bit more to ensure the file is completely written
                         await Task.Delay(2000);
@@ -2007,7 +1980,7 @@ namespace UnifiWebhookEventReceiver
                     await Task.Delay(checkInterval);
                 }
 
-                if (DateTime.Now - startTime >= maxWaitTime)
+                if (stopwatch.Elapsed >= maxWaitTime)
                 {
                     log.LogLine("Download timeout reached, checking for any video files...");
 
@@ -2042,7 +2015,7 @@ namespace UnifiWebhookEventReceiver
                     throw new FileNotFoundException("No video files were downloaded");
                 }
 
-                byte[] videoData = File.ReadAllBytes(latestVideoFile);
+                byte[] videoData = await File.ReadAllBytesAsync(latestVideoFile);
                 log.LogLine($"Video data size: {videoData.Length} bytes");
 
                 // Return the video data
@@ -2052,50 +2025,10 @@ namespace UnifiWebhookEventReceiver
             catch (Exception ex)
             {
                 log.LogLine($"Error while processing video download: {ex.Message}");
-                throw new Exception($"Error downloading video: {ex.Message}", ex);
+                throw new InvalidOperationException($"Error downloading video: {ex.Message}", ex);
             }
         }
 
         #endregion
-
-        /// <summary>
-        /// Uploads video binary data to S3.
-        /// 
-        /// This method handles the storage of video files in the configured S3 bucket.
-        /// The content is stored as binary data with appropriate content type for video files.
-        /// </summary>
-        /// <param name="bucketName">Target S3 bucket name for storage</param>
-        /// <param name="keyName">S3 object key (file path within bucket)</param>
-        /// <param name="videoData">Binary video data to store</param>
-        /// <returns>Task representing the asynchronous upload operation</returns>
-        private static async Task UploadVideoToS3Async(string bucketName, string keyName, byte[] videoData)
-        {
-            try
-            {
-                using var stream = new MemoryStream(videoData);
-
-                var putObjectRequest = new PutObjectRequest
-                {
-                    BucketName = bucketName,
-                    Key = keyName,
-                    InputStream = stream,
-                    ContentType = "video/mp4",
-                    StorageClass = S3StorageClass.StandardInfrequentAccess // Optimize for infrequent access
-                };
-
-                await s3Client.PutObjectAsync(putObjectRequest);
-                log.LogLine($"Successfully uploaded video to S3: {bucketName}/{keyName} ({videoData.Length} bytes)");
-            }
-            catch (AmazonS3Exception e)
-            {
-                log.LogLine($"S3 error uploading video: {e.Message}");
-                throw;
-            }
-            catch (Exception e)
-            {
-                log.LogLine($"Error uploading video to S3: {e.Message}");
-                throw;
-            }
-        }
     }
 }
