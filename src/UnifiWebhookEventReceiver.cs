@@ -50,6 +50,13 @@ namespace UnifiWebhookEventReceiver
     /// - DevicePrefix: Prefix for environment variables containing device name mappings
     /// - DeployedEnv: Environment identifier (dev, prod, etc.)
     /// - FunctionName: Lambda function name for logging
+    /// - UnifiHost: Hostname or IP of Unifi Protect system
+    /// - UnifiUsername: Username for Unifi Protect authentication
+    /// - UnifiPassword: Password for Unifi Protect authentication
+    /// 
+    /// Dependencies:
+    /// - Chromium browser binary expected at: /var/task/chromium/chrome (packaged during deployment)
+    /// - For local development, ensure PuppeteerSharp can download browser or provide custom path
     /// </summary>
     public class UnifiWebhookEventReceiver
     {
@@ -953,41 +960,90 @@ namespace UnifiWebhookEventReceiver
 
                 try
                 {
-                // Download Chromium if not already available
-                log.LogLine("Ensuring Chromium browser is available...");
-                var browserFetcher = new BrowserFetcher();
-                await browserFetcher.DownloadAsync();
-                log.LogLine("Chromium download completed successfully");
+                // Use pre-packaged Chromium browser from deployment
+                log.LogLine("Looking for pre-packaged Chromium browser...");
+                var chromeExecutablePath = Path.Combine(
+                    AppDomain.CurrentDomain.BaseDirectory, 
+                    "chromium", 
+                    "chrome"
+                );
+                
+                LaunchOptions launchOptions;
+                
+                if (File.Exists(chromeExecutablePath))
+                {
+                    log.LogLine($"Using pre-packaged Chrome at: {chromeExecutablePath}");
+                    launchOptions = new LaunchOptions
+                    {
+                        Headless = true,
+                        ExecutablePath = chromeExecutablePath,
+                        Args = new[]
+                        {
+                            "--no-sandbox",
+                            "--disable-setuid-sandbox",
+                            "--disable-dev-shm-usage",
+                            "--disable-gpu",
+                            "--disable-web-security",
+                            "--ignore-certificate-errors",
+                            "--ignore-ssl-errors",
+                            "--ignore-certificate-errors-spki-list",
+                            "--no-first-run",
+                            "--no-zygote",
+                            "--disable-background-timer-throttling",
+                            "--disable-backgrounding-occluded-windows",
+                            "--disable-renderer-backgrounding",
+                            "--disable-features=VizDisplayCompositor"
+                        },
+                        DefaultViewport = new ViewPortOptions
+                        {
+                            Width = 1920,
+                            Height = 1080
+                        },
+                        Timeout = 20000 // 20 second timeout for browser launch
+                    };
+                }
+                else
+                {
+                    log.LogLine($"Pre-packaged Chrome not found at: {chromeExecutablePath}");
+                    log.LogLine("Falling back to PuppeteerSharp browser download for local development...");
+                    
+                    // Fallback for local development - download Chromium
+                    var browserFetcher = new BrowserFetcher();
+                    await browserFetcher.DownloadAsync();
+                    log.LogLine("Chromium download completed successfully");
+                    
+                    launchOptions = new LaunchOptions
+                    {
+                        Headless = true,
+                        Args = new[]
+                        {
+                            "--no-sandbox",
+                            "--disable-setuid-sandbox",
+                            "--disable-dev-shm-usage",
+                            "--disable-gpu",
+                            "--disable-web-security",
+                            "--ignore-certificate-errors",
+                            "--ignore-ssl-errors",
+                            "--ignore-certificate-errors-spki-list",
+                            "--no-first-run",
+                            "--no-zygote",
+                            "--disable-background-timer-throttling",
+                            "--disable-backgrounding-occluded-windows",
+                            "--disable-renderer-backgrounding",
+                            "--disable-features=VizDisplayCompositor"
+                        },
+                        DefaultViewport = new ViewPortOptions
+                        {
+                            Width = 1920,
+                            Height = 1080
+                        },
+                        Timeout = 20000 // 20 second timeout for browser launch
+                    };
+                }
 
                 // Launch headless browser
                 log.LogLine("Launching headless browser...");
-                using var browser = await Puppeteer.LaunchAsync(new LaunchOptions
-                {
-                    Headless = true, 
-                    Args = new[]
-                    {
-                        "--no-sandbox",
-                        "--disable-setuid-sandbox",
-                        "--disable-dev-shm-usage",
-                        "--disable-gpu",
-                        "--disable-web-security",
-                        "--ignore-certificate-errors",
-                        "--ignore-ssl-errors",
-                        "--ignore-certificate-errors-spki-list",
-                        "--no-first-run",
-                        "--no-zygote",
-                        "--disable-background-timer-throttling",
-                        "--disable-backgrounding-occluded-windows",
-                        "--disable-renderer-backgrounding",
-                        "--disable-features=VizDisplayCompositor"
-                    },
-                    DefaultViewport = new ViewPortOptions
-                    {
-                        Width = 1920,
-                        Height = 1080
-                    },
-                    Timeout = 20000 // 20 second timeout for browser launch
-                });
+                using var browser = await Puppeteer.LaunchAsync(launchOptions);
 
                 // Create a new page
                 using var page = await browser.NewPageAsync();

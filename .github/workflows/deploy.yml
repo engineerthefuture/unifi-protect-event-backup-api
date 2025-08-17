@@ -1,5 +1,5 @@
 
-name: Build, Test, and Deploy CloudFormation Stack for Unifi Webhook Event Receiver
+name: Build, Test, and Deploy to AWS
 
 # This workflow builds the application, runs unit tests, and deploys to AWS
 # Deployment will only proceed if all unit tests pass
@@ -135,9 +135,33 @@ jobs:
             echo "TEST_STATUS=failed" >> $GITHUB_ENV
           fi
 
+      - name: Download Chromium for Lambda
+        if: steps.test.outcome == 'success'
+        run: |
+          echo "Downloading Chromium browser for Lambda..."
+          mkdir -p chromium
+          cd chromium
+          wget -q https://storage.googleapis.com/chrome-for-testing-public/127.0.6533.88/linux64/chrome-linux64.zip
+          unzip -q chrome-linux64.zip
+          ls -la chrome-linux64/
+          echo "Chromium download completed successfully"
+
       - name: Publish
         if: steps.test.outcome == 'success'
         run: dotnet publish UnifiWebhookEventReceiver.csproj --configuration Release --output ./publish
+
+      - name: Package Chromium with Lambda
+        if: steps.test.outcome == 'success'
+        run: |
+          echo "Packaging Chromium with Lambda function..."
+          # Create chromium directory in publish folder
+          mkdir -p ./publish/chromium
+          # Copy the chrome executable and dependencies
+          cp -r ./chromium/chrome-linux64/* ./publish/chromium/
+          # Verify the chrome executable exists and is executable
+          ls -la ./publish/chromium/chrome
+          chmod +x ./publish/chromium/chrome
+          echo "Chromium packaging completed successfully"
 
       - name: Upload published files
         if: steps.test.outcome == 'success'
