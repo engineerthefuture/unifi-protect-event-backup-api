@@ -325,8 +325,8 @@ Resources:
       Description: !Sub "${EnvPrefix} - ${AppName}"
               #AssemblyName::NameSpace.ClassName::FunctionHandlerName
       Handler: UnifiWebhookEventReceiver::UnifiWebhookEventReceiver.UnifiWebhookEventReceiver::FunctionHandler
-      MemorySize: 128
-      Timeout: 30
+      MemorySize: 1024
+      Timeout: 90
       Runtime: dotnet8
       Role: !GetAtt LambdaRole.Arn
       Environment:
