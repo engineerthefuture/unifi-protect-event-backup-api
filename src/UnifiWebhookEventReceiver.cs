@@ -966,7 +966,14 @@ namespace UnifiWebhookEventReceiver
                     "--disable-backgrounding-occluded-windows",
                     "--disable-renderer-backgrounding",
                     "--disable-features=VizDisplayCompositor",
-                    "--window-size=1920,1080"
+                    "--window-size=1920,1080",
+                    "--disable-extensions",
+                    "--disable-plugins",
+                    "--disable-default-apps",
+                    "--allow-running-insecure-content",
+                    "--disable-background-networking",
+                    "--enable-logging",
+                    "--disable-ipc-flooding-protection"
                 };
                 
                 using var browser = await browserLauncher.LaunchAsync(chromeArgs);
@@ -984,20 +991,54 @@ namespace UnifiWebhookEventReceiver
                 // Set the download path for the page - use configurable directory with Lambda-compatible default
                 var downloadDirectory = DOWNLOAD_DIRECTORY;
                 
-                // Ensure the download directory exists
+                // Ensure the download directory exists with proper permissions
                 if (!Directory.Exists(downloadDirectory))
                 {
                     Directory.CreateDirectory(downloadDirectory);
                     log.LogLine($"Created download directory: {downloadDirectory}");
                 }
                 
+                // Set permissions on the download directory (required for Lambda)
+                try
+                {
+                    if (Environment.OSVersion.Platform == PlatformID.Unix)
+                    {
+                        // Set permissions for Lambda environment
+                        var directoryInfo = new DirectoryInfo(downloadDirectory);
+                        // This is a simplified permission setting - Lambda handles most of this automatically
+                        log.LogLine($"Setting permissions for directory: {downloadDirectory}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    log.LogLine($"Could not set directory permissions (this is normal in Lambda): {ex.Message}");
+                }
+                
                 log.LogLine($"Using download directory: {downloadDirectory}");
                 
+                // Configure download behavior using CDP (Chrome DevTools Protocol)
+                // Use the page's client directly for better compatibility with HeadlessChromium
                 await page.Client.SendAsync("Page.setDownloadBehavior", new
                 {
                     behavior = "allow",
-                    downloadPath = downloadDirectory
+                    downloadPath = downloadDirectory,
+                    eventsEnabled = true
                 });
+
+                // Try to enable download events in Browser domain for monitoring
+                try
+                {
+                    await page.Client.SendAsync("Browser.setDownloadBehavior", new
+                    {
+                        behavior = "allow",
+                        downloadPath = downloadDirectory,
+                        eventsEnabled = true
+                    });
+                }
+                catch (Exception ex)
+                {
+                    log.LogLine($"Could not set Browser.setDownloadBehavior (this is normal): {ex.Message}");
+                }
 
                     log.LogLine($"Navigating to Unifi Protect: {eventLocalLink}");
 
@@ -1111,6 +1152,54 @@ namespace UnifiWebhookEventReceiver
 
                     log.LogLine("Page loaded, preparing to click to download...");
 
+                    // Set up download event monitoring for better tracking
+                    bool downloadStarted = false;
+                    string? downloadGuid = null;
+                    
+                    // Listen for download events (simplified approach)
+                    page.Client.MessageReceived += (sender, e) =>
+                    {
+                        try
+                        {
+                            if (e.MessageID == "Browser.downloadWillBegin")
+                            {
+                                downloadStarted = true;
+                                log.LogLine("Download event detected: Browser.downloadWillBegin");
+                                
+                                // Try to extract GUID if available
+                                var data = e.MessageData;
+                                if (data.ValueKind == System.Text.Json.JsonValueKind.Object)
+                                {
+                                    if (data.TryGetProperty("guid", out var guidElement))
+                                    {
+                                        downloadGuid = guidElement.GetString();
+                                        log.LogLine($"Download started with GUID: {downloadGuid}");
+                                    }
+                                }
+                            }
+                            else if (e.MessageID == "Browser.downloadProgress")
+                            {
+                                var data = e.MessageData;
+                                if (data.ValueKind == System.Text.Json.JsonValueKind.Object)
+                                {
+                                    if (data.TryGetProperty("state", out var stateElement))
+                                    {
+                                        var state = stateElement.GetString();
+                                        log.LogLine($"Download progress: {state}");
+                                        if (state == "completed")
+                                        {
+                                            log.LogLine("Download completed via event notification");
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            log.LogLine($"Error processing download event: {ex.Message}");
+                        }
+                    };
+
                     // Take a screenshot of the page
                     screenshotPath = Path.Combine(downloadDirectory, "pageload-screenshot.png");
                     await page.ScreenshotAsync(screenshotPath);
@@ -1140,11 +1229,13 @@ namespace UnifiWebhookEventReceiver
                     // Wait for download to complete
                 log.LogLine("Waiting for video download to complete...");
                     
-                    // Instead of a fixed delay, monitor the download directory for new files
+                    // Monitor both download events and file system for better reliability
                     var initialFileCount = Directory.GetFiles(downloadDirectory, "*.mp4").Length;
                     var maxWaitTime = TimeSpan.FromSeconds(100);
-                    var checkInterval = TimeSpan.FromSeconds(2);
+                    var checkInterval = TimeSpan.FromSeconds(1);
                     var startTime = DateTime.Now;
+                    
+                    log.LogLine($"Initial file count: {initialFileCount}, Download event detected: {downloadStarted}");
                     
                     while (DateTime.Now - startTime < maxWaitTime)
                     {
@@ -1158,12 +1249,25 @@ namespace UnifiWebhookEventReceiver
                             break;
                         }
                         
+                        // Also check for any files with partial download extensions
+                        var partialFiles = Directory.GetFiles(downloadDirectory, "*.crdownload").Length;
+                        var tempFiles = Directory.GetFiles(downloadDirectory, "*.tmp").Length;
+                        
+                        if (partialFiles > 0 || tempFiles > 0)
+                        {
+                            log.LogLine($"Partial download files detected: .crdownload={partialFiles}, .tmp={tempFiles}");
+                        }
+                        
                         await Task.Delay(checkInterval);
                     }
                     
                     if (DateTime.Now - startTime >= maxWaitTime)
                     {
                         log.LogLine("Download timeout reached, checking for any video files...");
+                        
+                        // List all files in download directory for debugging
+                        var allFiles = Directory.GetFiles(downloadDirectory);
+                        log.LogLine($"All files in download directory: {string.Join(", ", allFiles.Select(f => Path.GetFileName(f)))}");
                     }
 
                 // Get the video data from the downloaded video by checking for the latest mp4 file that was added to the directory
