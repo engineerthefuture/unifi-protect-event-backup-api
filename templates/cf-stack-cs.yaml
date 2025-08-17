@@ -72,11 +72,11 @@ Parameters:
   ArchiveButtonX:
     Type: Number
     Description: X coordinate for archive button click in Unifi Protect UI
-    Default: 1205
+    Default: 1274
   ArchiveButtonY:
     Type: Number
     Description: Y coordinate for archive button click in Unifi Protect UI
-    Default: 242
+    Default: 257
   DownloadButtonX:
     Type: Number
     Description: X coordinate for download button click in Unifi Protect UI
@@ -85,6 +85,12 @@ Parameters:
     Type: Number
     Description: Y coordinate for download button click in Unifi Protect UI
     Default: 275
+  ProcessingDelaySeconds:
+    Type: Number
+    Description: Delay in seconds before processing alarm events (default 2 minutes)
+    Default: 120
+    MinValue: 0
+    MaxValue: 900
 
 # Resources
 Resources: 
@@ -136,6 +142,7 @@ Resources:
         - arn:aws:iam::aws:policy/SecretsManagerReadWrite
         - arn:aws:iam::aws:policy/AmazonAPIGatewayInvokeFullAccess
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole
       Path: /
       Tags: 
         - Key: "Name"
@@ -159,6 +166,45 @@ Resources:
             Tags: 
               - Key: "Name"
                 Value: !Sub "${BucketName}"
+
+  # SQS Queue for delayed alarm processing
+  AlarmProcessingQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${FunctionName}-alarm-processing-queue"
+      # DelaySeconds: 0  # Delay is configured per message, not per queue
+      MessageRetentionPeriod: 1209600  # 14 days
+      ReceiveMessageWaitTimeSeconds: 20  # Long polling
+      VisibilityTimeoutSeconds: 300  # 5 minutes (should exceed Lambda timeout)
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt AlarmProcessingDeadLetterQueue.Arn
+        maxReceiveCount: 3
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${FunctionName}-alarm-processing-queue"
+        - Key: "Purpose"
+          Value: "Delayed alarm event processing"
+
+  # Dead Letter Queue for failed alarm processing
+  AlarmProcessingDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${FunctionName}-alarm-processing-dlq"
+      MessageRetentionPeriod: 1209600  # 14 days
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${FunctionName}-alarm-processing-dlq"
+        - Key: "Purpose"
+          Value: "Dead letter queue for failed alarm processing"
+
+  # SQS Event Source Mapping for Lambda
+  AlarmProcessingSQSEventSourceMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !GetAtt AlarmProcessingQueue.Arn
+      FunctionName: !Ref LambdaFunction
+      BatchSize: 1  # Process one message at a time
+      MaximumBatchingWindowInSeconds: 0  # Process immediately when available
 
   # API gateway instance
   ApiGateway:
@@ -365,6 +411,8 @@ Resources:
           ArchiveButtonY: !Ref ArchiveButtonY
           DownloadButtonX: !Ref DownloadButtonX
           DownloadButtonY: !Ref DownloadButtonY
+          AlarmProcessingQueueUrl: !Ref AlarmProcessingQueue
+          ProcessingDelaySeconds: !Ref ProcessingDelaySeconds
       Tags: 
         - Key: "FunctionName"
           Value: !Sub "${FunctionName}"

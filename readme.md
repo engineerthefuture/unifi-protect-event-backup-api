@@ -18,6 +18,7 @@ This serverless application provides a comprehensive backup and retrieval system
 
 ### Core Functionality
 - **Webhook Processing**: Receives real-time alarm events from Unifi Dream Machine
+- **Asynchronous Processing**: SQS-based delayed processing for improved reliability
 - **Automated Video Download**: Browser automation for video retrieval using HeadlessChromium optimized for AWS Lambda
 - **Data Storage**: Stores event data and videos in S3 with organized folder structure
 - **Device Mapping**: Maps device MAC addresses to human-readable names via environment variables
@@ -34,14 +35,24 @@ This serverless application provides a comprehensive backup and retrieval system
 
 ### Automated Video Retrieval Process
 
-The system includes browser automation to download video content directly from Unifi Protect:
+The system includes asynchronous browser automation to download video content directly from Unifi Protect:
 
-1. **Browser Launch**: HeadlessChromium launches optimized for AWS Lambda environment
-2. **Authentication**: Automated login to Unifi Protect using stored credentials  
-3. **Navigation**: Programmatic navigation to specific event pages using configurable coordinates
-4. **Video Extraction**: Direct blob URL access and video content download
-5. **Format Conversion**: Conversion to MP4 format for standardized storage
-6. **S3 Storage**: Organized storage in S3 with date-based folder structure
+1. **Webhook Receipt**: API Gateway receives alarm event and immediately returns success
+2. **Event Queueing**: Lambda queues event for delayed processing (default: 2 minutes)
+3. **Delayed Processing**: SQS triggers Lambda after delay to ensure video availability
+4. **Browser Launch**: HeadlessChromium launches optimized for AWS Lambda environment
+5. **Authentication**: Automated login to Unifi Protect using stored credentials  
+6. **Navigation**: Programmatic navigation to specific event pages using configurable coordinates
+7. **Video Extraction**: Direct blob URL access and video content download
+8. **Format Conversion**: Conversion to MP4 format for standardized storage
+9. **S3 Storage**: Organized storage in S3 with date-based folder structure
+
+### Benefits of Delayed Processing
+
+- **Improved Success Rate**: 2-minute delay ensures videos are fully processed in Unifi Protect
+- **Better Performance**: Immediate webhook response prevents timeouts and client retries
+- **Enhanced Reliability**: Reduces failed downloads due to video availability timing
+- **Scalable Processing**: SQS handles traffic spikes and provides automatic retries
 
 ### Technical Implementation
 
@@ -76,7 +87,11 @@ S3 Bucket Structure:
 #### Configurable UI Automation
 - **Environment Variable Configuration**: Browser automation coordinates now configurable via CloudFormation parameters
 - **Flexible Deployment**: Different environments can use different UI coordinates without code changes
-- **Default Value Support**: Maintains backward compatibility with sensible defaults for all coordinate values
+#### SQS Delayed Processing Architecture
+- **Asynchronous Processing**: Webhook events are queued for delayed processing, ensuring videos are available before download attempts
+- **Configurable Delay**: Processing delay configurable via CloudFormation (default: 2 minutes) to allow Unifi Protect video generation
+- **Improved Reliability**: SQS integration with dead letter queue for failed processing and automatic retries
+- **Enhanced Performance**: EventId-based file naming enables O(1) S3 prefix searches instead of JSON parsing loops
 
 ## Architecture
 
@@ -97,8 +112,15 @@ graph TB
             CORS[CORS Support]
         end
         
+        subgraph "SQS Processing"
+            QUEUE[Alarm Processing Queue<br/>2-minute delay]
+            DLQ[Dead Letter Queue<br/>Failed messages]
+        end
+        
         subgraph "Lambda Function"
-            HANDLER[Function Handler]
+            HANDLER[Dual Event Handler<br/>API Gateway + SQS]
+            WEBHOOK[Webhook Processor<br/>Immediate Response]
+            DELAYED[Delayed Processor<br/>Video Download]
             PARSER[JSON Parser]
             MAPPER[Device Mapper]
             VALIDATOR[Input Validator]
@@ -108,8 +130,8 @@ graph TB
         
         subgraph "Storage"
             S3[(S3 Bucket)]
-            EVENTS[Event JSON Files<br/>YYYY-MM-DD/]
-            VIDEOS["Video Files<br/>videos/YYYY-MM-DD//"]
+            EVENTS["Event JSON Files<br/>{eventId}_{deviceMac}_{timestamp}"]
+            VIDEOS["Video Files<br/>videos/{eventId}_{deviceMac}_{timestamp}"]
         end
         
         subgraph "Monitoring"
@@ -131,7 +153,7 @@ graph TB
         PROD_DEPLOY[Prod Environment<br/>Main Branch]
     end
     
-    %% Main data flow
+    %% Main webhook flow
     CAM1 --> UDM
     CAM2 --> UDM
     CAM3 --> UDM
@@ -140,22 +162,32 @@ graph TB
     API --> AUTH
     AUTH --> CORS
     CORS --> HANDLER
-    HANDLER --> PARSER
+    HANDLER --> WEBHOOK
+    WEBHOOK -->|Queue Message| QUEUE
+    WEBHOOK -->|Immediate Response| API
+    
+    %% Delayed processing flow
+    QUEUE -->|Delayed Trigger| DELAYED
+    DELAYED --> PARSER
     PARSER --> VALIDATOR
     VALIDATOR --> MAPPER
     MAPPER --> S3
     S3 --> EVENTS
     
     %% Video download flow
-    HANDLER --> BROWSER
+    DELAYED --> BROWSER
     BROWSER -->|Authenticate & Navigate| VIDEO
     VIDEO -->|Extract Blob URL| BROWSER
     BROWSER --> DOWNLOADER
     DOWNLOADER -->|MP4 Files| S3
     S3 --> VIDEOS
     
+    %% Error handling
+    QUEUE -->|Failed Messages| DLQ
+    
     %% Monitoring flows
     HANDLER --> CW
+    DELAYED --> CW
     API --> METRICS
     HANDLER --> METRICS
     BROWSER --> CW
@@ -202,26 +234,30 @@ graph TB
 1. **Event Detection**: Unifi cameras detect motion/intrusion events
 2. **Webhook Trigger**: Unifi Dream Machine sends webhook to API Gateway
 3. **Authentication**: API Gateway validates API key
-4. **Event Processing**: Lambda function parses JSON, maps device names, validates data
-5. **Event Storage**: Events stored in S3 with date-organized folder structure
-6. **Video Download**: For video requests, HeadlessChromium launches optimized browser
-7. **Browser Automation**: Authenticates with Unifi Protect and navigates to event using configurable coordinates
-8. **Video Extraction**: Extracts blob URL and downloads video content as MP4
-9. **Video Storage**: MP4 files stored in S3 under organized date-based folders
-10. **Screenshot Capture**: Diagnostic screenshots captured at key automation stages for debugging
-11. **Monitoring**: All operations logged to CloudWatch for observability
-12. **Retrieval**: GET endpoints allow querying events and generating video presigned URLs
+4. **Event Queueing**: Lambda function validates JSON and queues event in SQS with delay
+5. **Immediate Response**: API returns success immediately without blocking
+6. **Delayed Processing**: After 2-minute delay, SQS triggers Lambda for processing
+7. **Device Mapping**: Lambda maps device MAC addresses to human-readable names
+8. **Event Storage**: Events stored in S3 with date-organized folder structure
+9. **Video Download**: HeadlessChromium launches optimized browser for video retrieval
+10. **Browser Automation**: Authenticates with Unifi Protect and navigates to event using configurable coordinates
+11. **Video Extraction**: Extracts blob URL and downloads video content as MP4
+12. **Video Storage**: MP4 files stored in S3 under organized date-based folders
+13. **Screenshot Capture**: Diagnostic screenshots captured at key automation stages for debugging
+14. **Monitoring**: All operations logged to CloudWatch for observability
+15. **Retrieval**: GET endpoints allow querying events and generating video presigned URLs
 
 ## API Endpoints
 
 ### Core Endpoints
 
 #### 1. Webhook Receiver - `POST /{stage}/alarmevent`
-Receives alarm events from Unifi Protect systems
-- **Purpose**: Process and store alarm event data
+Receives and queues alarm events from Unifi Protect systems for delayed processing
+- **Purpose**: Validate webhook data and queue for processing after configurable delay
 - **Authentication**: API Key required
 - **Request**: JSON webhook payload from Unifi Dream Machine
-- **Response**: Success confirmation with event key
+- **Response**: Immediate success with queue information (eventId, processing delay, estimated completion time)
+- **Processing**: Events queued in SQS with 2-minute delay for improved video download reliability
 
 #### 2. Event Retrieval - `GET /{stage}/?eventId={eventId}`
 Retrieves stored alarm event data and video by event ID

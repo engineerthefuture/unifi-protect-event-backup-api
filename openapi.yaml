@@ -7,6 +7,7 @@ info:
     
     ## Features
     - Real-time webhook processing from Unifi Protect systems
+    - Asynchronous video processing with SQS delay queues
     - Secure S3 storage with date-organized folder structure
     - Device MAC address to human-readable name mapping
     - RESTful event retrieval API
@@ -14,10 +15,18 @@ info:
     - Comprehensive CORS support for web clients
     
     ## Architecture
-    This serverless application uses AWS Lambda, API Gateway, and S3 to provide a scalable, 
-    cost-effective solution for backing up Unifi Protect alarm events and video files. Events are automatically 
-    organized by date and enriched with device names for easy identification. Video files are downloaded
-    directly from Unifi Protect and stored alongside event metadata.
+    This serverless application uses AWS Lambda, API Gateway, SQS, and S3 to provide a scalable, 
+    cost-effective solution for backing up Unifi Protect alarm events and video files. 
+    
+    ### Event Processing Flow:
+    1. **Webhook Receipt**: API Gateway receives Unifi Protect webhook
+    2. **Immediate Response**: Lambda returns 200 OK and queues event for processing
+    3. **Delayed Processing**: SQS delivers message after 2-minute delay
+    4. **Video Download**: Lambda processes event and downloads video from Unifi Protect
+    5. **Storage**: Event data and video files stored in S3 with date organization
+    
+    The delay ensures video files are fully available in Unifi Protect before download attempts,
+    significantly improving reliability and reducing failed downloads.
     
     ## Video Download Optimization
     The latest video endpoint uses an efficient search algorithm that leverages the date-organized
@@ -62,15 +71,24 @@ paths:
     post:
       summary: Process Unifi Protect alarm webhook
       description: |
-        Receives and processes webhook events from Unifi Dream Machine Protect systems.
+        Receives webhook events from Unifi Dream Machine Protect systems and queues them for delayed processing.
         
         **Processing Steps:**
         1. Validates incoming JSON payload structure
         2. Extracts alarm triggers and device information
-        3. Maps device MAC addresses to human-readable names
-        4. Generates unique event keys and timestamps
-        5. Stores enriched event data in S3 with date-based organization
-        6. Returns success confirmation with event details
+        3. Queues event for processing with configurable delay (default: 2 minutes)
+        4. Returns immediate success response with queue information
+        
+        **Delayed Processing Benefits:**
+        - Ensures video files are fully available before download attempts
+        - Improves reliability and reduces failed downloads
+        - Provides immediate webhook response for better system performance
+        
+        **Asynchronous Processing:**
+        After the delay period, the system:
+        1. Maps device MAC addresses to human-readable names
+        2. Downloads video files from Unifi Protect
+        3. Stores enriched event data and videos in S3 with date-based organization
         
         **Storage Format:**
         Events are stored as JSON files in S3 with the path structure:
@@ -79,7 +97,7 @@ paths:
         **Error Handling:**
         - Malformed JSON returns 400 Bad Request
         - Missing required fields return 400 Bad Request
-        - Server errors return 500 Internal Server Error
+        - SQS configuration errors return 500 Internal Server Error
         - All errors include descriptive error messages
       operationId: processAlarmEvent
       tags:
@@ -159,20 +177,30 @@ paths:
                   timestamp: 1739819600000
       responses:
         '200':
-          description: Event successfully processed and stored
+          description: Event successfully queued for processing
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SuccessResponse'
+                $ref: '#/components/schemas/QueuedEventResponse'
               examples:
-                motionSuccess:
-                  summary: Motion event processed
+                motionQueued:
+                  summary: Motion event queued
                   value:
-                    message: "bf-prod-lambda-unifi-protect-event-backup-api has successfully processed the Unifi alarm event webhook with key 28704E113F33_1739819436108.json for Backyard West that occurred at 2025-01-17T20:43:56."
-                personSuccess:
-                  summary: Person detection processed
+                    msg: "Alarm event has been queued for processing"
+                    eventId: "67b389ab005ec703e40075a5"
+                    device: "28704E113F33"
+                    processingDelay: 120
+                    messageId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                    estimatedProcessingTime: "2025-01-17T20:47:56 UTC"
+                personQueued:
+                  summary: Person detection queued
                   value:
-                    message: "bf-prod-lambda-unifi-protect-event-backup-api has successfully processed the Unifi alarm event webhook with key F4E2C67A2FE8_1739819500000.json for Front that occurred at 2025-01-17T20:45:00."
+                    msg: "Alarm event has been queued for processing"
+                    eventId: "67b389ab005ec703e40075a7"
+                    device: "F4E2C67A2FE8"
+                    processingDelay: 120
+                    messageId: "b2c3d4e5-f6g7-8901-bcde-f23456789012"
+                    estimatedProcessingTime: "2025-01-17T20:47:00 UTC"
         '400':
           description: Bad request - Invalid or malformed data
           content:
@@ -975,6 +1003,41 @@ components:
             Detailed success message with event processing information.
             Includes event key, device name, and formatted timestamp for reference.
           example: "bf-prod-lambda-unifi-protect-event-backup-api has successfully processed the Unifi alarm event webhook with key 28704E113F33_1739819436108.json for Backyard West that occurred at 2025-01-17T20:43:56."
+
+    QueuedEventResponse:
+      type: object
+      required:
+        - msg
+        - eventId
+        - device
+        - processingDelay
+        - messageId
+        - estimatedProcessingTime
+      properties:
+        msg:
+          type: string
+          description: Confirmation message that the event has been queued
+          example: "Alarm event has been queued for processing"
+        eventId:
+          type: string
+          description: Unifi Protect event identifier
+          example: "67b389ab005ec703e40075a5"
+        device:
+          type: string
+          description: Device MAC address that triggered the event
+          example: "28704E113F33"
+        processingDelay:
+          type: integer
+          description: Delay in seconds before processing begins
+          example: 120
+        messageId:
+          type: string
+          description: SQS message identifier for tracking
+          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        estimatedProcessingTime:
+          type: string
+          description: Estimated time when processing will begin (UTC)
+          example: "2025-01-17T20:47:56 UTC"
 
     ErrorResponse:
       type: object
