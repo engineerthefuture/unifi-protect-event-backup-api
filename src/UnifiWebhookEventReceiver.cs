@@ -561,13 +561,6 @@ namespace UnifiWebhookEventReceiver
                         trigger.deviceName = deviceName;
                     }
 
-                    // Generate presigned URL 
-                    /*
-                    string presignedUrl = GeneratePreSignedURL(videoKey, HttpVerb.PUT, EXPIRATION_SECONDS, "video/mp4");
-                    trigger.presignedUrl = presignedUrl;
-                    log.LogLine("Presigned URL generated for " + videoKey + ": " + presignedUrl);
-                    */
-
                     // Set event key and update alarm object
                     String videoKey = device + "_" + timestamp.ToString() + ".mp4";
                     String eventKey = device + "_" + timestamp.ToString() + ".json";
@@ -1188,7 +1181,7 @@ namespace UnifiWebhookEventReceiver
 
                                                     eventData = eventObject;
                                                     log.LogLine($"Found event {eventId} in {foundEventKey} with video {foundVideoKey}");
-                                                    break;
+                                                    break; // Break out of triggers loop
                                                 }
                                             }
                                         }
@@ -1200,8 +1193,12 @@ namespace UnifiWebhookEventReceiver
                                     // Continue searching other files
                                 }
 
+                                // Break out of the S3Objects loop if we found the event
                                 if (foundEventKey != null) break;
                             }
+                            
+                            // Break out of the S3Objects loop if we found the event
+                            if (foundEventKey != null) break;
                         }
 
                         listRequest.ContinuationToken = response.NextContinuationToken;

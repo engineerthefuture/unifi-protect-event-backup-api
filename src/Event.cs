@@ -1,6 +1,6 @@
-﻿/************************
+/************************
  * Unifi Webhook Event Receiver
- * Alarm.cs
+ * Event.cs
  * 
  * Data models for Unifi Protect alarm webhook events.
  * These classes represent the JSON structure of webhook payloads
@@ -106,8 +106,5 @@ namespace UnifiWebhookEventReceiver
 
         /// <summary>S3 storage key for associated video file (for future video upload functionality)</summary>
         public string? videoKey { get; set; }
-
-        /// <summary>Presigned URL for video upload (for future video upload functionality)</summary>
-        public string? presignedUrl { get; set; }
     }
 }
