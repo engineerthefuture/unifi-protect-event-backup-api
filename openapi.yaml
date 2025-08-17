@@ -280,156 +280,159 @@ paths:
 
   /:
     get:
-      summary: Retrieve stored alarm event
+      summary: Download video by event ID
       description: |
-        Retrieves a previously stored alarm event by its unique event key.
+        Downloads a video file by searching for the specified Unifi Protect event ID and returning a presigned URL for direct download.
         
-        **Event Key Format:**
-        Event keys follow the pattern: `{deviceMac}_{timestamp}.json`
-        - **deviceMac**: 12-character hexadecimal MAC address (no separators)
-        - **timestamp**: Unix timestamp in milliseconds when the event occurred
-        - **.json**: File extension indicating JSON format
+        **How it works:**
+        1. Searches through date-organized S3 folders (YYYY-MM-DD) for JSON event files
+        2. Parses each event file to find the matching eventId in trigger data
+        3. Locates the corresponding video file (.mp4)
+        4. Generates a secure, time-limited presigned URL for direct S3 download
+        5. Returns complete event context and metadata along with download URL
         
-        **Storage Location:**
-        Events are stored in S3 with date-based organization:
-        `s3://{bucket}/{YYYY-MM-DD}/{eventKey}`
+        **Event ID Source:**
+        Event IDs are Unifi Protect's internal identifiers found in the `trigger.eventId` field of stored alarm events.
+        These are typically 24-character hexadecimal strings (e.g., `67b389ab005ec703e40075a5`).
+        
+        **Why Presigned URL?**
+        Video files typically exceed API Gateway's 6MB payload limit, so this endpoint returns a secure, 
+        time-limited URL that allows direct download from S3. This approach is more efficient and can handle videos of any size.
+        
+        **Search Efficiency:**
+        Uses backwards chronological search starting from today, examining up to 90 days of date folders.
+        The search stops as soon as the matching event is found, making it efficient even with large datasets.
         
         **Response Data:**
-        Returns the complete event data including:
-        - Original alarm information from Unifi Protect
-        - Enriched data (device names, formatted timestamps)
-        - Event metadata (storage location, retrieval links)
-        
-        **Use Cases:**
-        - Event lookup by timestamp and device
-        - Integration with monitoring dashboards
-        - Historical event analysis
-        - Audit trail reconstruction
-      operationId: getAlarmEvent
+        Returns comprehensive information including download URL, event metadata, device details, 
+        trigger information, and complete alarm context from the original event.
+      operationId: getVideoByEventId
       tags:
-        - Event Retrieval
+        - Video Retrieval
       parameters:
-        - name: eventKey
+        - name: eventId
           in: query
           required: true
           schema:
             type: string
-            pattern: '^[A-Fa-f0-9]{12}_\d+\.json$'
-            minLength: 20
-            maxLength: 50
+            pattern: '^[a-fA-F0-9]{24}$'
+            minLength: 24
+            maxLength: 24
           description: |
-            Unique event identifier in format: {deviceMac}_{timestamp}.json
+            Unifi Protect event identifier for video download.
             
             **Format Requirements:**
-            - **deviceMac**: Exactly 12 hexadecimal characters (A-F, a-f, 0-9)
-            - **timestamp**: Unix timestamp in milliseconds (10+ digits)
-            - **extension**: Must end with `.json`
+            - **Length**: Exactly 24 hexadecimal characters
+            - **Source**: Found in the trigger.eventId field of stored alarm events
+            - **Purpose**: Used to locate and download the corresponding video file
             
             **Examples:**
-            - `28704E113F33_1739819436108.json` (Motion from Backyard West)
-            - `F4E2C67A2FE8_1739819500000.json` (Person from Front Camera)
+            - `67b389ab005ec703e40075a5` (Motion detection video)
+            - `67b389ab005ec703e40075a6` (Person detection video)
+            
+            **How to obtain:**
+            Event IDs are included in webhook payloads from Unifi Protect and stored in the alarm event JSON files.
           examples:
-            motionEvent:
-              summary: Motion detection event key
-              value: "28704E113F33_1739819436108.json"
-            personEvent:
-              summary: Person detection event key
-              value: "F4E2C67A2FE8_1739819500000.json"
-            vehicleEvent:
-              summary: Vehicle detection event key
-              value: "28704E113C44_1739819600000.json"
+            motionVideo:
+              summary: Motion detection video
+              value: "67b389ab005ec703e40075a5"
+            personVideo:
+              summary: Person detection video
+              value: "67b389ab005ec703e40075a6"
       responses:
         '200':
-          description: Event successfully retrieved
+          description: Video download URL successfully generated
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/StoredAlarmEvent'
+                $ref: '#/components/schemas/VideoDownloadResponse'
               examples:
-                motionEvent:
-                  summary: Motion detection event
+                motionVideoResponse:
+                  summary: Motion detection video download
                   value:
-                    name: "Motion Detection Alert"
+                    downloadUrl: "https://s3.amazonaws.com/bucket/2025-01-17/28704E113F33_1739819436108.mp4?X-Amz-Signature=..."
+                    filename: "event_67b389ab005ec703e40075a5_2025-01-17_20-43-56.mp4"
+                    videoKey: "2025-01-17/28704E113F33_1739819436108.mp4"
+                    eventKey: "2025-01-17/28704E113F33_1739819436108.json"
+                    eventId: "67b389ab005ec703e40075a5"
                     timestamp: 1739819436108
-                    triggers:
-                      - key: "motion"
-                        device: "28704E113F33"
-                        eventId: "67b389ab005ec703e40075a5"
-                        deviceName: "Backyard West"
-                        date: "2025-01-17T20:43:56"
-                        eventKey: "28704E113F33_1739819436108.json"
-                        zones:
-                          zone: []
-                          line: []
-                          loiter: []
-                    sources:
-                      - device: "28704E113F64"
-                        type: "include"
-                    conditions:
-                      - condition:
-                          type: "is"
-                          source: "motion"
-                    eventPath: "/protect/events/67b389ab005ec703e40075a5"
-                    eventLocalLink: "https://udm.local/protect/events/67b389ab005ec703e40075a5"
-                personEvent:
-                  summary: Person detection event
+                    eventDate: "2025-01-17 20:43:56"
+                    expiresAt: "2025-01-17 21:43:56 UTC"
+                    eventData:
+                      name: "Motion Detection Alert"
+                      timestamp: 1739819436108
+                      triggers:
+                        - key: "motion"
+                          device: "28704E113F33"
+                          eventId: "67b389ab005ec703e40075a5"
+                          deviceName: "Backyard West"
+                          zones:
+                            zone: []
+                            line: []
+                            loiter: []
+                    message: "Use the downloadUrl to download the video file directly. URL expires in 1 hour."
+                personVideoResponse:
+                  summary: Person detection video download
                   value:
-                    name: "Person Detection Alert"
+                    downloadUrl: "https://s3.amazonaws.com/bucket/2025-01-17/F4E2C67A2FE8_1739819500000.mp4?X-Amz-Signature=..."
+                    filename: "event_67b389ab005ec703e40075a6_2025-01-17_20-45-00.mp4"
+                    videoKey: "2025-01-17/F4E2C67A2FE8_1739819500000.mp4"
+                    eventKey: "2025-01-17/F4E2C67A2FE8_1739819500000.json"
+                    eventId: "67b389ab005ec703e40075a6"
                     timestamp: 1739819500000
-                    triggers:
-                      - key: "person"
-                        device: "F4E2C67A2FE8"
-                        eventId: "67b389ab005ec703e40075a6"
-                        deviceName: "Front"
-                        date: "2025-01-17T20:45:00"
-                        eventKey: "F4E2C67A2FE8_1739819500000.json"
-                        zones:
-                          zone: ["entrance", "driveway"]
-                          line: []
-                          loiter: []
-                    sources:
-                      - device: "F4E2C67A2FE8"
-                        type: "include"
-                    conditions:
-                      - condition:
-                          type: "is"
-                          source: "person"
-                    eventPath: "/protect/events/67b389ab005ec703e40075a6"
-                    eventLocalLink: "https://udm.local/protect/events/67b389ab005ec703e40075a6"
+                    eventDate: "2025-01-17 20:45:00"
+                    expiresAt: "2025-01-17 21:45:00 UTC"
+                    eventData:
+                      name: "Person Detection Alert"
+                      timestamp: 1739819500000
+                      triggers:
+                        - key: "person"
+                          device: "F4E2C67A2FE8"
+                          eventId: "67b389ab005ec703e40075a6"
+                          deviceName: "Front Camera"
+                          zones:
+                            zone: ["entrance", "driveway"]
+                            line: []
+                            loiter: []
+                    message: "Use the downloadUrl to download the video file directly. URL expires in 1 hour."
         '400':
-          description: Bad request - Missing or invalid event key
+          description: Bad request - Missing or invalid eventId parameter
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               examples:
-                missingKey:
-                  summary: Missing event key parameter
+                missingEventId:
+                  summary: Missing eventId parameter
                   value:
-                    msg: "ERROR 400: you must provide an eventKey in the query parameters"
-                invalidFormat:
-                  summary: Invalid event key format
+                    msg: "Missing required parameter. Provide 'eventId' for video download."
+                invalidEventId:
+                  summary: Invalid event ID format
                   value:
-                    msg: "ERROR 400: eventKey must follow format {deviceMac}_{timestamp}.json"
-                invalidMac:
-                  summary: Invalid MAC address format
+                    msg: "EventId parameter is required"
+                malformedEventId:
+                  summary: Malformed event ID
                   value:
-                    msg: "ERROR 400: device MAC address must be 12 hexadecimal characters"
+                    msg: "ERROR 400: eventId must be a 24-character hexadecimal string"
         '404':
-          description: Event not found
+          description: Event or video not found
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               examples:
-                notFound:
-                  summary: Event not found in storage
+                eventNotFound:
+                  summary: Event with specified eventId not found
                   value:
-                    msg: "Event not found: 28704E113F33_1739819436108.json"
-                bucketNotFound:
-                  summary: Storage bucket not accessible
+                    msg: "Event with eventId 67b389ab005ec703e40075a5 not found"
+                videoFileNotFound:
+                  summary: Event found but video file missing
                   value:
-                    msg: "Storage bucket not found or not accessible"
+                    msg: "Video file for event 67b389ab005ec703e40075a5 not found"
+                searchTimeout:
+                  summary: Event not found within search timeframe
+                  value:
+                    msg: "Event with eventId 67b389ab005ec703e40075a5 not found"
         '500':
           description: Internal server error
           content:
@@ -984,6 +987,103 @@ components:
             Descriptive error message explaining what went wrong.
             Includes error code (400, 500, etc.) and specific details for troubleshooting.
           example: "ERROR 400: malformed or invalid request format"
+
+    VideoDownloadResponse:
+      type: object
+      required:
+        - downloadUrl
+        - filename
+        - videoKey
+        - eventKey
+        - eventId
+        - timestamp
+        - eventDate
+        - expiresAt
+        - message
+      properties:
+        downloadUrl:
+          type: string
+          format: uri
+          description: |
+            Presigned S3 URL for direct video download. Valid for 1 hour.
+            Use this URL to download the video file directly from S3.
+          example: "https://s3.amazonaws.com/bucket/2025-01-17/28704E113F33_1739819436108.mp4?X-Amz-Signature=..."
+        filename:
+          type: string
+          description: |
+            Suggested filename for the downloaded video file.
+            Format: event_{eventId}_{YYYY-MM-DD_HH-mm-ss}.mp4
+          example: "event_67b389ab005ec703e40075a5_2025-01-17_20-43-56.mp4"
+        videoKey:
+          type: string
+          description: |
+            S3 object key for the video file.
+            Format: {YYYY-MM-DD}/{deviceMac}_{timestamp}.mp4
+          example: "2025-01-17/28704E113F33_1739819436108.mp4"
+        eventKey:
+          type: string
+          description: |
+            S3 object key for the corresponding event JSON data.
+            Format: {YYYY-MM-DD}/{deviceMac}_{timestamp}.json
+          example: "2025-01-17/28704E113F33_1739819436108.json"
+        eventId:
+          type: string
+          description: |
+            Unifi Protect event identifier that was searched for.
+          example: "67b389ab005ec703e40075a5"
+        timestamp:
+          type: integer
+          format: int64
+          description: |
+            Unix timestamp (milliseconds) when the event occurred.
+          example: 1739819436108
+        eventDate:
+          type: string
+          description: |
+            Human-readable event date and time in format: YYYY-MM-DD HH:mm:ss
+          example: "2025-01-17 20:43:56"
+        expiresAt:
+          type: string
+          description: |
+            When the download URL expires in format: YYYY-MM-DD HH:mm:ss UTC
+          example: "2025-01-17 21:43:56 UTC"
+        eventData:
+          type: object
+          description: |
+            Complete alarm event details from the corresponding JSON file.
+            Includes device information, trigger details, zones, and all metadata.
+          properties:
+            name:
+              type: string
+              example: "Motion Detection Alert"
+            timestamp:
+              type: integer
+              format: int64
+              example: 1739819436108
+            triggers:
+              type: array
+              items:
+                type: object
+                properties:
+                  key:
+                    type: string
+                    example: "motion"
+                  device:
+                    type: string
+                    example: "28704E113F33"
+                  eventId:
+                    type: string
+                    example: "67b389ab005ec703e40075a5"
+                  deviceName:
+                    type: string
+                    example: "Backyard West"
+                  zones:
+                    type: object
+        message:
+          type: string
+          description: |
+            Instructions for using the download URL and expiration information.
+          example: "Use the downloadUrl to download the video file directly. URL expires in 1 hour."
 
 tags:
   - name: Alarm Events

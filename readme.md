@@ -301,13 +301,57 @@ Processes incoming alarm webhook events from Unifi Protect.
 **Request Body**: JSON alarm event from Unifi Protect
 **Response**: Success confirmation with event details
 
-#### GET /?eventKey={key}
-Retrieves a stored alarm event by its unique key.
+#### GET /?eventId={id}
+Downloads a video file by searching for the specified Unifi Protect event ID and returning a presigned URL.
 
-**Parameters**: 
-- `eventKey`: Unique event identifier (format: `{deviceMac}_{timestamp}.json`)
+**Parameters:**
+- `eventId`: Unifi Protect event identifier (24-character hexadecimal string)
 
-**Response**: JSON alarm event data
+**Response**: JSON object containing:
+- `downloadUrl`: Presigned S3 URL for direct video download (expires in 1 hour)
+- `filename`: Suggested filename (`event_{eventId}_{YYYY-MM-DD_HH-mm-ss}.mp4`)
+- `videoKey`: S3 object key for the video file
+- `eventKey`: S3 object key for the corresponding event JSON data
+- `eventId`: The searched Unifi Protect event identifier
+- `timestamp`: Unix timestamp when the event occurred
+- `eventDate`: Human-readable event date and time
+- `expiresAt`: When the download URL expires
+- `eventData`: Complete alarm event details including device name, trigger type, zones, and timestamps
+- `message`: Instructions for using the download URL
+
+**How it works:**
+1. Searches through date-organized S3 folders (YYYY-MM-DD) for JSON event files
+2. Parses each event file to find the matching eventId in trigger data
+3. Locates the corresponding video file (.mp4)
+4. Generates a secure, time-limited presigned URL for direct S3 download
+5. Returns complete event context and metadata along with download URL
+
+**Example Response for eventId**:
+```json
+{
+  "downloadUrl": "https://s3.amazonaws.com/bucket/2025-01-17/28704E113F33_1739819436108.mp4?X-Amz-Signature=...",
+  "filename": "event_67b389ab005ec703e40075a5_2025-01-17_20-43-56.mp4",
+  "videoKey": "2025-01-17/28704E113F33_1739819436108.mp4",
+  "eventKey": "2025-01-17/28704E113F33_1739819436108.json",
+  "eventId": "67b389ab005ec703e40075a5",
+  "timestamp": 1739819436108,
+  "eventDate": "2025-01-17 20:43:56",
+  "expiresAt": "2025-01-17 21:43:56 UTC",
+  "eventData": {
+    "name": "Motion Detection Alert",
+    "timestamp": 1739819436108,
+    "triggers": [
+      {
+        "key": "motion",
+        "device": "28704E113F33",
+        "eventId": "67b389ab005ec703e40075a5",
+        "deviceName": "Backyard West"
+      }
+    ]
+  },
+  "message": "Use the downloadUrl to download the video file directly. URL expires in 1 hour."
+}
+```
 
 #### GET /latestvideo
 Returns a presigned URL for downloading the most recent video file from all stored events.
