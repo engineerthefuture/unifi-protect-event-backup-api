@@ -927,18 +927,22 @@ namespace UnifiWebhookEventReceiver
         }
 
         /// <summary>
-        /// Retrieves the latest video from S3 and returns it as an MP4 file.
+        /// Retrieves the latest video from S3 and returns a presigned URL for download.
         /// 
         /// This method efficiently searches through date-organized folders in S3 to find the most recent
         /// video file (.mp4) based on the timestamp in the filename. It starts from today's date folder
         /// and works backwards day by day until a video is found, making it much more efficient than
         /// scanning all objects in the bucket.
         /// 
+        /// Instead of returning the video data directly (which would exceed API Gateway's 6MB limit),
+        /// this method returns a presigned URL that allows direct download from S3. The URL expires
+        /// after 1 hour for security purposes.
+        /// 
         /// The search looks through folders in YYYY-MM-DD format and finds files matching
-        /// the pattern {deviceMac}_{timestamp}.mp4, returning the one with the highest timestamp
-        /// from the most recent date that contains videos.
+        /// the pattern {deviceMac}_{timestamp}.mp4, returning metadata and download URL for the one 
+        /// with the highest timestamp from the most recent date that contains videos.
         /// </summary>
-        /// <returns>API Gateway response containing the video MP4 data or error message</returns>
+        /// <returns>API Gateway response containing download URL and metadata, or error message</returns>
         public static async Task<APIGatewayProxyResponse> GetLatestVideoFunction()
         {
             log.LogLine("Executing Get latest video function");
@@ -1043,12 +1047,20 @@ namespace UnifiWebhookEventReceiver
 
                 log.LogLine($"Latest video found: {latestVideoKey} with timestamp: {latestTimestamp}");
 
-                // Get the video file from S3
-                byte[]? videoData = await GetVideoFileFromS3BlobAsync(latestVideoKey);
-
-                if (videoData == null)
+                // Verify the video file exists in S3 without downloading it
+                try
                 {
-                    log.LogLine($"Video file {latestVideoKey} not found or could not be retrieved");
+                    var headRequest = new GetObjectMetadataRequest
+                    {
+                        BucketName = ALARM_BUCKET_NAME,
+                        Key = latestVideoKey
+                    };
+                    var metadata = await s3Client.GetObjectMetadataAsync(headRequest);
+                    log.LogLine($"Video file confirmed in S3: {latestVideoKey} ({metadata.ContentLength} bytes)");
+                }
+                catch (AmazonS3Exception e) when (e.ErrorCode == "NoSuchKey")
+                {
+                    log.LogLine($"Video file {latestVideoKey} not found in S3");
                     return new APIGatewayProxyResponse
                     {
                         StatusCode = (int)HttpStatusCode.NotFound,
@@ -1057,24 +1069,46 @@ namespace UnifiWebhookEventReceiver
                     };
                 }
 
-                // Convert the timestamp to a readable date for the filename
+                // Generate a presigned URL for direct download from S3
                 DateTime dt = DateTimeOffset.FromUnixTimeMilliseconds(latestTimestamp).DateTime;
                 string suggestedFilename = $"latest_video_{dt:yyyy-MM-dd_HH-mm-ss}.mp4";
+                
+                // Generate presigned URL with 1 hour expiration and suggested filename
+                var presignedRequest = new GetPreSignedUrlRequest
+                {
+                    BucketName = ALARM_BUCKET_NAME,
+                    Key = latestVideoKey,
+                    Verb = HttpVerb.GET,
+                    Expires = DateTime.UtcNow.AddHours(1),
+                    ResponseHeaderOverrides = new ResponseHeaderOverrides
+                    {
+                        ContentDisposition = $"attachment; filename=\"{suggestedFilename}\""
+                    }
+                };
 
-                log.LogLine($"Returning latest video: {latestVideoKey} ({videoData.Length} bytes) as {suggestedFilename}");
+                string presignedUrl = s3Client.GetPreSignedURL(presignedRequest);
+                log.LogLine($"Generated presigned URL for {latestVideoKey}, expires in 1 hour");
 
-                // Return the video data with appropriate headers for MP4 download
+                // Return the presigned URL and metadata instead of the video data
+                var responseData = new
+                {
+                    downloadUrl = presignedUrl,
+                    filename = suggestedFilename,
+                    videoKey = latestVideoKey,
+                    timestamp = latestTimestamp,
+                    eventDate = dt.ToString("yyyy-MM-dd HH:mm:ss"),
+                    expiresAt = DateTime.UtcNow.AddHours(1).ToString("yyyy-MM-dd HH:mm:ss UTC"),
+                    message = "Use the downloadUrl to download the video file directly. URL expires in 1 hour."
+                };
+
                 return new APIGatewayProxyResponse
                 {
                     StatusCode = (int)HttpStatusCode.OK,
-                    Body = Convert.ToBase64String(videoData),
-                    IsBase64Encoded = true,
+                    Body = JsonConvert.SerializeObject(responseData, Formatting.Indented),
                     Headers = new Dictionary<string, string> 
                     { 
-                        { "Content-Type", "video/mp4" },
-                        { "Content-Disposition", $"attachment; filename=\"{suggestedFilename}\"" },
-                        { "Access-Control-Allow-Origin", "*" },
-                        { "Access-Control-Expose-Headers", "Content-Disposition" }
+                        { "Content-Type", "application/json" },
+                        { "Access-Control-Allow-Origin", "*" }
                     }
                 };
             }
