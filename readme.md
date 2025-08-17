@@ -537,6 +537,10 @@ Before deploying this system, ensure your Unifi Protect environment meets these 
 - **Internet Accessibility**: Your Protect system must be internet accessible over TCP and UDP on port 443 for HTTPS communication
 - **Firewall Rules**: Ensure appropriate firewall rules allow inbound HTTPS traffic to your Unifi Protect system
 
+#### Alarm Configuration
+- **Objects Trigger Alarm**: You must configure an alarm with an Object trigger with Scope that includes all preferred cameras and a Webhook action configured to post to the implemented alarmevent endpoint (published as an output in the CloudFormation Stack)
+- **Activity Trigger Alarm**: You must configure an alarm with an Activity trigger with Scope that includes all preferred cameras and a Webhook action configured to post to the implemented alarmevent endpoint (published as an output in the CloudFormation Stack)
+
 #### Security Considerations
 - **Minimal Privileges**: Use a dedicated account with only Camera Viewing permissions to minimize security exposure
 - **Secrets Management**: Consider migrating credentials from GitHub repository secrets to AWS Secrets Manager for enhanced security, especially in multi-user AWS environments
