@@ -174,9 +174,9 @@ graph TB
     
     %% GET endpoints
     API -->|GET /?eventKey=xxx| HANDLER
-    API -->|GET /video?eventKey=xxx| HANDLER
+    API -->|GET /latestvideo| HANDLER
     HANDLER -->|Retrieve Event| S3
-    HANDLER -->|Download Video| BROWSER
+    HANDLER -->|Download Latest Video| S3
     S3 -->|JSON/Video Response| API
     
     %% Environment separation
@@ -229,6 +229,15 @@ Retrieves stored alarm event data
 - **Authentication**: API Key required
 - **Parameters**: `eventKey` - Event identifier (format: `{deviceMac}_{timestamp}.json`)
 - **Response**: Complete alarm event JSON object
+
+#### 3. Latest Video Download - `GET /{stage}/latestvideo`
+Downloads the most recent video file from all stored events
+- **Purpose**: Retrieve the latest MP4 video file for quick access
+- **Authentication**: API Key required
+- **Parameters**: None required
+- **Response**: MP4 video file download with appropriate Content-Disposition headers
+- **File Naming**: `latest_video_{YYYY-MM-DD_HH-mm-ss}.mp4`
+- **Optimization**: Efficiently searches from today's date folder backwards, day by day
 
 ### OpenAPI 3.0 Specification
 
@@ -298,6 +307,13 @@ Retrieves a stored alarm event by its unique key.
 - `eventKey`: Unique event identifier (format: `{deviceMac}_{timestamp}.json`)
 
 **Response**: JSON alarm event data
+
+#### GET /latestvideo
+Downloads the most recent video file from all stored events.
+
+**Parameters**: None required
+
+**Response**: MP4 video file download with filename `latest_video_{YYYY-MM-DD_HH-mm-ss}.mp4`
 
 #### OPTIONS /alarmevent
 Handles CORS preflight requests for web client support.
