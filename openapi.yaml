@@ -484,6 +484,7 @@ paths:
         - **downloadUrl**: Presigned S3 URL for direct download (expires in 1 hour)
         - **filename**: Suggested filename for download
         - **metadata**: Event timestamp, date, and video key information
+        - **eventData**: Complete alarm event details including device name, trigger type, zones, and timestamps
         
         **Security:**
         - Presigned URLs expire after 1 hour for security
@@ -509,6 +510,7 @@ paths:
                   - downloadUrl
                   - filename
                   - videoKey
+                  - eventKey
                   - timestamp
                   - eventDate
                   - expiresAt
@@ -533,6 +535,12 @@ paths:
                       S3 object key for the video file, useful for logging and tracking.
                       Format: {YYYY-MM-DD}/{deviceMac}_{timestamp}.mp4
                     example: "2025-01-17/28704E113F33_1739819436108.mp4"
+                  eventKey:
+                    type: string
+                    description: |
+                      S3 object key for the corresponding event JSON data.
+                      Format: {YYYY-MM-DD}/{deviceMac}_{timestamp}.json
+                    example: "2025-01-17/28704E113F33_1739819436108.json"
                   timestamp:
                     type: integer
                     format: int64
@@ -551,6 +559,68 @@ paths:
                       When the download URL expires in UTC.
                       Format: YYYY-MM-DD HH:mm:ss UTC
                     example: "2025-01-17 21:43:56 UTC"
+                  eventData:
+                    type: object
+                    nullable: true
+                    description: |
+                      Complete alarm event details from the corresponding JSON file, including device name,
+                      trigger type, zones, timestamps, and other event metadata. May be null if the
+                      corresponding event file is not found.
+                    properties:
+                      name:
+                        type: string
+                        description: "Name of the alarm configuration"
+                        example: "Motion Detection Alert"
+                      timestamp:
+                        type: integer
+                        format: int64
+                        description: "Unix timestamp when the event occurred"
+                        example: 1739819436108
+                      triggers:
+                        type: array
+                        description: "List of trigger events that activated this alarm"
+                        items:
+                          type: object
+                          properties:
+                            key:
+                              type: string
+                              description: "Type of detection (motion, person, vehicle, etc.)"
+                              example: "motion"
+                            device:
+                              type: string
+                              description: "MAC address of the device that detected the event"
+                              example: "28704E113F33"
+                            deviceName:
+                              type: string
+                              description: "Human-readable device name"
+                              example: "Backyard West"
+                            eventId:
+                              type: string
+                              description: "Unique event identifier in Unifi Protect"
+                              example: "67b389ab005ec703e40075a5"
+                            date:
+                              type: string
+                              description: "ISO formatted event timestamp"
+                              example: "2025-01-17T20:43:56"
+                            zones:
+                              type: object
+                              description: "Detection zones that were triggered"
+                              properties:
+                                zone:
+                                  type: array
+                                  items:
+                                    type: string
+                                  example: ["entrance", "driveway"]
+                                line:
+                                  type: array
+                                  items:
+                                    type: string
+                                  example: ["property_line"]
+                                loiter:
+                                  type: array
+                                  items:
+                                    type: string
+                                  example: []
                   message:
                     type: string
                     description: |
@@ -558,15 +628,38 @@ paths:
                     example: "Use the downloadUrl to download the video file directly. URL expires in 1 hour."
               examples:
                 motionVideo:
-                  summary: Motion detection video URL
-                  description: "Download URL for motion detection event from Backyard West camera"
+                  summary: Motion detection video URL with event data
+                  description: "Download URL and complete event details for motion detection event from Backyard West camera"
                   value:
                     downloadUrl: "https://s3.amazonaws.com/unifi-events/2025-01-17/28704E113F33_1739819436108.mp4?AWSAccessKeyId=AKIAIOSFODNN7EXAMPLE&Expires=1739823036&Signature=example..."
                     filename: "latest_video_2025-01-17_20-43-56.mp4"
                     videoKey: "2025-01-17/28704E113F33_1739819436108.mp4"
+                    eventKey: "2025-01-17/28704E113F33_1739819436108.json"
                     timestamp: 1739819436108
                     eventDate: "2025-01-17 20:43:56"
                     expiresAt: "2025-01-17 21:43:56 UTC"
+                    eventData:
+                      name: "Motion Detection Alert"
+                      timestamp: 1739819436108
+                      triggers:
+                        - key: "motion"
+                          device: "28704E113F33"
+                          deviceName: "Backyard West"
+                          eventId: "67b389ab005ec703e40075a5"
+                          date: "2025-01-17T20:43:56"
+                          zones:
+                            zone: []
+                            line: []
+                            loiter: []
+                      sources:
+                        - device: "28704E113F64"
+                          type: "include"
+                      conditions:
+                        - condition:
+                            type: "is"
+                            source: "motion"
+                      eventPath: "/protect/events/67b389ab005ec703e40075a5"
+                      eventLocalLink: "https://udm.local/protect/events/67b389ab005ec703e40075a5"
                     message: "Use the downloadUrl to download the video file directly. URL expires in 1 hour."
         '404':
           description: No video files found

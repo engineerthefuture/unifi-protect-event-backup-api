@@ -318,12 +318,35 @@ Returns a presigned URL for downloading the most recent video file from all stor
 - `downloadUrl`: Presigned S3 URL for direct video download (expires in 1 hour)
 - `filename`: Suggested filename (`latest_video_{YYYY-MM-DD_HH-mm-ss}.mp4`)
 - `videoKey`: S3 object key for the video file
+- `eventKey`: S3 object key for the corresponding event JSON data
 - `timestamp`: Unix timestamp when the event occurred
 - `eventDate`: Human-readable event date and time
 - `expiresAt`: When the download URL expires
+- `eventData`: Complete alarm event details including device name, trigger type, zones, and timestamps
 - `message`: Instructions for using the download URL
 
 **Why Presigned URL?**: Video files typically exceed API Gateway's 6MB payload limit, so this endpoint returns a secure, time-limited URL for direct S3 download instead of the video data itself.
+
+**Example Response**:
+```json
+{
+  "downloadUrl": "https://s3.amazonaws.com/bucket/2024-01-15/video_1705316234.mp4?X-Amz-Signature=...",
+  "filename": "latest_video_2024-01-15_10-30-34.mp4",
+  "videoKey": "2024-01-15/video_1705316234.mp4",
+  "eventKey": "2024-01-15/event_1705316234.json",
+  "timestamp": 1705316234,
+  "eventDate": "2024-01-15 10:30:34 UTC",
+  "expiresAt": "2024-01-15 11:30:34 UTC",
+  "eventData": {
+    "deviceName": "Front Door Camera",
+    "triggers": ["MOTION", "PERSON"],
+    "zones": ["Driveway", "Walkway"],
+    "score": 95,
+    "recordingStartTime": 1705316234
+  },
+  "message": "Use the downloadUrl to download the video file directly"
+}
+```
 
 #### OPTIONS /alarmevent
 Handles CORS preflight requests for web client support.

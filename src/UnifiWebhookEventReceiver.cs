@@ -927,7 +927,7 @@ namespace UnifiWebhookEventReceiver
         }
 
         /// <summary>
-        /// Retrieves the latest video from S3 and returns a presigned URL for download.
+        /// Retrieves the latest video from S3 and returns a presigned URL for download along with event details.
         /// 
         /// This method efficiently searches through date-organized folders in S3 to find the most recent
         /// video file (.mp4) based on the timestamp in the filename. It starts from today's date folder
@@ -938,11 +938,15 @@ namespace UnifiWebhookEventReceiver
         /// this method returns a presigned URL that allows direct download from S3. The URL expires
         /// after 1 hour for security purposes.
         /// 
+        /// Additionally, this method retrieves the corresponding event JSON data (alarm details, device
+        /// information, trigger types, etc.) by looking up the matching .json file and includes it in
+        /// the response to provide complete context about the video.
+        /// 
         /// The search looks through folders in YYYY-MM-DD format and finds files matching
-        /// the pattern {deviceMac}_{timestamp}.mp4, returning metadata and download URL for the one 
-        /// with the highest timestamp from the most recent date that contains videos.
+        /// the pattern {deviceMac}_{timestamp}.mp4, returning metadata, download URL, and event details 
+        /// for the one with the highest timestamp from the most recent date that contains videos.
         /// </summary>
-        /// <returns>API Gateway response containing download URL and metadata, or error message</returns>
+        /// <returns>API Gateway response containing download URL, metadata, and event details, or error message</returns>
         public static async Task<APIGatewayProxyResponse> GetLatestVideoFunction()
         {
             log.LogLine("Executing Get latest video function");
@@ -1069,6 +1073,34 @@ namespace UnifiWebhookEventReceiver
                     };
                 }
 
+                // Get the corresponding event JSON data
+                // Convert video key to event key: replace .mp4 with .json
+                string eventKey = latestVideoKey.Replace(".mp4", ".json");
+                log.LogLine($"Looking for corresponding event data: {eventKey}");
+                
+                string? eventJsonData = null;
+                object? eventData = null;
+                
+                try
+                {
+                    eventJsonData = await GetJsonFileFromS3BlobAsync(eventKey);
+                    if (eventJsonData != null)
+                    {
+                        // Parse the JSON to include as an object in the response
+                        eventData = JsonConvert.DeserializeObject(eventJsonData);
+                        log.LogLine($"Successfully retrieved event data for {eventKey}");
+                    }
+                    else
+                    {
+                        log.LogLine($"No event data found for {eventKey}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    log.LogLine($"Error retrieving event data for {eventKey}: {ex.Message}");
+                    // Continue without event data rather than failing the entire request
+                }
+
                 // Generate a presigned URL for direct download from S3
                 DateTime dt = DateTimeOffset.FromUnixTimeMilliseconds(latestTimestamp).DateTime;
                 string suggestedFilename = $"latest_video_{dt:yyyy-MM-dd_HH-mm-ss}.mp4";
@@ -1089,15 +1121,17 @@ namespace UnifiWebhookEventReceiver
                 string presignedUrl = s3Client.GetPreSignedURL(presignedRequest);
                 log.LogLine($"Generated presigned URL for {latestVideoKey}, expires in 1 hour");
 
-                // Return the presigned URL and metadata instead of the video data
+                // Return the presigned URL, metadata, and event data
                 var responseData = new
                 {
                     downloadUrl = presignedUrl,
                     filename = suggestedFilename,
                     videoKey = latestVideoKey,
+                    eventKey = eventKey,
                     timestamp = latestTimestamp,
                     eventDate = dt.ToString("yyyy-MM-dd HH:mm:ss"),
                     expiresAt = DateTime.UtcNow.AddHours(1).ToString("yyyy-MM-dd HH:mm:ss UTC"),
+                    eventData = eventData,
                     message = "Use the downloadUrl to download the video file directly. URL expires in 1 hour."
                 };
 
