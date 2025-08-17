@@ -104,9 +104,6 @@ namespace UnifiWebhookEventReceiver
         /// <summary>Error message for invalid API routes</summary>
         const string ERROR_INVALID_ROUTE = "please provide a valid route";
 
-        /// <summary>Presigned URL expiration time in seconds (24 hours)</summary>
-        const int EXPIRATION_SECONDS = 86400;
-
         /// <summary>API route for alarm event webhook processing</summary>
         const string ROUTE_ALARM = "alarmevent";
 
@@ -125,9 +122,6 @@ namespace UnifiWebhookEventReceiver
 
         /// <summary>Prefix for environment variables containing device MAC to name mappings</summary>
         static string? DEVICE_PREFIX = Environment.GetEnvironmentVariable("DevicePrefix");
-
-        /// <summary>Deployment environment identifier (dev, staging, prod)</summary>
-        static string? DEPLOYED_ENV = Environment.GetEnvironmentVariable("DeployedEnv");
 
         /// <summary>Lambda function name for logging and identification</summary>
         static string? FUNCTION_NAME = Environment.GetEnvironmentVariable("FunctionName");
@@ -181,7 +175,7 @@ namespace UnifiWebhookEventReceiver
         }
 
         /// <summary>Cache for Unifi credentials to avoid repeated Secrets Manager calls</summary>
-        private static UnifiCredentials? _cachedCredentials = null;
+        private static UnifiCredentials? _cachedCredentials;
 
         /// <summary>
         /// Retrieves Unifi Protect credentials from AWS Secrets Manager
@@ -235,7 +229,7 @@ namespace UnifiWebhookEventReceiver
         /// Null object pattern implementation for ILambdaLogger to prevent null reference exceptions
         /// when logger is not available during testing or initialization
         /// </summary>
-        private class NullLogger : ILambdaLogger
+        private sealed class NullLogger : ILambdaLogger
         {
             public void Log(string message) { }
             public void LogLine(string message) { }
@@ -384,272 +378,278 @@ namespace UnifiWebhookEventReceiver
         {
             try
             {
-                // Ensure there is a payload
-                if (requestBody != null)
+                // Handle scheduled events
+                if (string.IsNullOrEmpty(requestBody) || requestBody.Contains(SOURCE_EVENT_TRIGGER))
                 {
-                    // Event trigger
-                    if (requestBody.Contains(SOURCE_EVENT_TRIGGER) == true)
-                    {
-                        log.LogLine("Scheduled event trigger received.");
-
-                        var response = new APIGatewayProxyResponse
-                        {
-                            StatusCode = (int)HttpStatusCode.OK,
-                            Body = JsonConvert.SerializeObject(new { msg = (MESSAGE_202) }),
-                            Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                        };
-                        return response;
-                    }
-                    // API trigger
-                    else
-                    {
-                        // Process the request object
-                        APIGatewayProxyRequest? req = JsonConvert.DeserializeObject<APIGatewayProxyRequest>(requestBody);
-                        if (req == null)
-                        {
-                            log.LogLine("Failed to deserialize API Gateway request from: " + requestBody);
-                            return new APIGatewayProxyResponse
-                            {
-                                StatusCode = (int)HttpStatusCode.BadRequest,
-                                Body = JsonConvert.SerializeObject(new { msg = (ERROR_MESSAGE_400 + "malformed or invalid request format") }),
-                                Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                            };
-                        }
-
-                        // Determine the route
-                        string route;
-                        string method;
-                        string path;
-                        if (req != null && req.Path != null && req.Path != "" && req.HttpMethod != null)
-                        {
-                            // Parse the path
-                            path = req.Path;
-                            if (req.Path.Contains("/") == true)
-                            {
-                                path = req.Path.Substring(req.Path.IndexOf("/") + 1);
-                            }
-
-                            // Parse the route
-                            if (path.Contains("/") == true)
-                            {
-                                route = path.Substring(0, path.LastIndexOf("/"));
-                            }
-                            else
-                            {
-                                route = path;
-                            }
-
-                            log.LogLine("Path: " + path);
-                            log.LogLine("Route: " + route);
-
-                            // Get the method
-                            method = req.HttpMethod.ToUpper();
-                            log.LogLine("Method: " + method);
-
-                            // Preflight Options request
-                            if (method == HttpMethod.Options.ToString().ToUpper())
-                            {
-                                log.LogLine("Preflight Options request.");
-                                var response = new APIGatewayProxyResponse
-                                {
-                                    StatusCode = (int)HttpStatusCode.OK,
-                                    Body = null,
-                                    Headers = new Dictionary<string, string> {
-                                        { "Access-Control-Allow-Methods", "GET,POST,OPTIONS" },
-                                        { "Access-Control-Allow-Origin", "*" },
-                                        { "Access-Control-Allow-Headers", "Content-Type,X-Amz-Date,Authorization,x-api-key,X-Api-Key,X-Amz-Security-Token,Origin,Access-Control-Allow-Origin,Access-Control-Allow-Methods"}
-                                    }
-                                };
-                                return response;
-                            }
-
-                            // Determine the route
-                            if (route != null && (route != "" || (req.QueryStringParameters != null && req.QueryStringParameters.Count > 0)))
-                            {
-                                // New alarm event webhook route
-                                if (method == HttpMethod.Post.ToString().ToUpper() && route == ROUTE_ALARM)
-                                {
-                                    try
-                                    {
-                                        // Ensure there is a payload
-                                        if (req.Body != null && req.Body != "")
-                                        {
-                                            // Read the request
-                                            log.LogLine("Request: " + req.Body);
-
-                                            // Deserialize body
-                                            JObject jo = JObject.Parse(req.Body);
-                                            JObject? alarmObject = jo.SelectToken("alarm") as JObject;
-                                            long timestamp = (long)0;
-                                            String alarmObjectString = "";
-                                            if (jo.SelectToken("timestamp") != null)
-                                            {
-                                                timestamp = (long)Convert.ToDouble(jo.SelectToken("timestamp"));
-                                            }
-                                            if (alarmObject != null)
-                                            {
-                                                alarmObjectString = alarmObject.ToString();
-                                            }
-
-                                            if (string.IsNullOrEmpty(alarmObjectString))
-                                            {
-                                                log.LogLine("No alarm object found in request body");
-                                                APIGatewayProxyResponse errorResponse = new APIGatewayProxyResponse
-                                                {
-                                                    StatusCode = (int)HttpStatusCode.BadRequest,
-                                                    Body = JsonConvert.SerializeObject(new { msg = (ERROR_MESSAGE_400 + "No alarm object found in request") }),
-                                                    Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                                                };
-                                                return errorResponse;
-                                            }
-
-                                            // Process the webhook
-                                            Alarm? alarm = JsonConvert.DeserializeObject<Alarm>(alarmObjectString);
-                                            if (alarm == null)
-                                            {
-                                                log.LogLine("Failed to deserialize alarm object");
-                                                APIGatewayProxyResponse errorResponse = new APIGatewayProxyResponse
-                                                {
-                                                    StatusCode = (int)HttpStatusCode.BadRequest,
-                                                    Body = JsonConvert.SerializeObject(new { msg = (ERROR_MESSAGE_400 + "Invalid alarm object format") }),
-                                                    Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                                                };
-                                                return errorResponse;
-                                            }
-                                            alarm.timestamp = timestamp;
-                                            return await QueueAlarmForProcessing(alarm);
-                                        }
-                                        else
-                                        {
-                                            // Return response
-                                            log.LogLine(ERROR_MESSAGE_400 + ERROR_GENERAL);
-                                            var response = new APIGatewayProxyResponse
-                                            {
-                                                StatusCode = (int)HttpStatusCode.BadRequest,
-                                                Body = JsonConvert.SerializeObject(new { msg = (ERROR_MESSAGE_400 + ERROR_GENERAL) }),
-                                                Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                                            };
-                                            return response;
-                                        }
-                                    }
-                                    catch (Exception e)
-                                    {
-                                        // Return response
-                                        log.LogLine(e.ToString());
-                                        var response = new APIGatewayProxyResponse
-                                        {
-                                            StatusCode = (int)HttpStatusCode.InternalServerError,
-                                            Body = JsonConvert.SerializeObject(new { msg = (ERROR_MESSAGE_500 + e.Message) }),
-                                            Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                                        };
-                                        return response;
-                                    }
-                                }
-                                // Get request to download an event object received
-                                else if (method == HttpMethod.Get.ToString().ToUpper())
-                                {
-                                    // Check for latest video route
-                                    if (route == ROUTE_LATEST_VIDEO)
-                                    {
-                                        log.LogLine("Latest video request received");
-                                        return await GetLatestVideoFunction();
-                                    }
-                                    // Video download by eventId
-                                    else
-                                    {
-                                        // Check for eventId parameter (video download functionality)
-                                        string? eventId = req.QueryStringParameters?.ContainsKey("eventId") == true ? req.QueryStringParameters["eventId"] : null;
-                                        if (string.IsNullOrEmpty(eventId))
-                                        {
-                                            // Return response
-                                            log.LogLine("Error: Missing required parameter. Provide 'eventId' for video download.");
-                                            var response = new APIGatewayProxyResponse
-                                            {
-                                                StatusCode = (int)HttpStatusCode.BadRequest,
-                                                Body = JsonConvert.SerializeObject(new { msg = "Missing required parameter. Provide 'eventId' for video download." }),
-                                                Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                                            };
-                                            return response;
-                                        }
-                                        else
-                                        {
-                                            log.LogLine("eventId: " + eventId);
-                                            return await GetVideoByEventIdFunction(eventId);
-                                        }
-                                    }
-                                }
-                                // Invalid route
-                                else
-                                {
-                                    // Return response
-                                    log.LogLine(ERROR_MESSAGE_404 + ERROR_INVALID_ROUTE);
-                                    log.LogLine("Given route: " + route);
-                                    log.LogLine("Given method: " + method);
-                                    var response = new APIGatewayProxyResponse
-                                    {
-                                        StatusCode = (int)HttpStatusCode.NotFound,
-                                        Body = JsonConvert.SerializeObject(new { msg = (ERROR_MESSAGE_404 + ERROR_INVALID_ROUTE) }),
-                                        Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                                    };
-                                    return response;
-                                }
-                            }
-                            // Invalid route
-                            else
-                            {
-                                // Return response
-                                log.LogLine(ERROR_MESSAGE_404 + ERROR_INVALID_ROUTE);
-                                log.LogLine("Given route: " + route);
-                                log.LogLine("Given method: " + method);
-                                var response = new APIGatewayProxyResponse
-                                {
-                                    StatusCode = (int)HttpStatusCode.NotFound,
-                                    Body = JsonConvert.SerializeObject(new { msg = (ERROR_MESSAGE_404 + ERROR_INVALID_ROUTE) }),
-                                    Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                                };
-                                return response;
-                            }
-                        }
-                        else
-                        {
-                            // Return response
-                            log.LogLine(ERROR_MESSAGE_400 + ERROR_GENERAL);
-                            var response = new APIGatewayProxyResponse
-                            {
-                                StatusCode = (int)HttpStatusCode.BadRequest,
-                                Body = JsonConvert.SerializeObject(new { msg = (ERROR_MESSAGE_400 + ERROR_GENERAL) }),
-                                Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                            };
-                            return response;
-                        }
-                    }
+                    return HandleScheduledEvent();
                 }
-                else
+
+                // Parse the request
+                var request = ParseApiGatewayRequest(requestBody, log);
+                if (request == null)
                 {
-                    // Return response
                     log.LogLine(ERROR_MESSAGE_400 + ERROR_GENERAL);
-                    var response = new APIGatewayProxyResponse
-                    {
-                        StatusCode = (int)HttpStatusCode.BadRequest,
-                        Body = JsonConvert.SerializeObject(new { msg = (ERROR_MESSAGE_400 + ERROR_GENERAL) }),
-                        Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                    };
-                    return response;
+                    return CreateErrorResponse(HttpStatusCode.BadRequest, ERROR_MESSAGE_400 + ERROR_GENERAL);
                 }
+
+                // Route the request
+                return await RouteRequest(request);
             }
             catch (Exception e)
             {
-                // Return response
                 log.LogLine(e.ToString());
-                var response = new APIGatewayProxyResponse
-                {
-                    StatusCode = (int)HttpStatusCode.InternalServerError,
-                    Body = JsonConvert.SerializeObject(new { msg = (ERROR_MESSAGE_500 + e.Message) }),
-                    Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                };
-                return response;
+                return CreateErrorResponse(HttpStatusCode.InternalServerError, ERROR_MESSAGE_500 + e.Message);
             }
         }
+
+        #region API Gateway Helper Methods
+
+        /// <summary>
+        /// Handles scheduled event triggers.
+        /// </summary>
+        private APIGatewayProxyResponse HandleScheduledEvent()
+        {
+            log.LogLine("Scheduled event trigger received.");
+            return CreateSuccessResponse(new { msg = MESSAGE_202 });
+        }
+
+        /// <summary>
+        /// Parses the API Gateway request from JSON.
+        /// </summary>
+        private static APIGatewayProxyRequest? ParseApiGatewayRequest(string requestBody, ILambdaLogger logger)
+        {
+            try
+            {
+                return JsonConvert.DeserializeObject<APIGatewayProxyRequest>(requestBody);
+            }
+            catch (Exception e)
+            {
+                logger.LogLine("Failed to deserialize API Gateway request from: " + requestBody + ". Error: " + e.Message);
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Routes the request to the appropriate handler based on method and path.
+        /// </summary>
+        private async Task<APIGatewayProxyResponse> RouteRequest(APIGatewayProxyRequest request)
+        {
+            if (!IsValidRequest(request))
+            {
+                return CreateErrorResponse(HttpStatusCode.BadRequest, ERROR_MESSAGE_400 + ERROR_GENERAL);
+            }
+
+            var routeInfo = ExtractRouteInfo(request);
+            log.LogLine($"Method: {routeInfo.Method}, Path: {routeInfo.Path}, Route: {routeInfo.Route}");
+
+            // Handle OPTIONS preflight
+            if (routeInfo.Method == "OPTIONS")
+            {
+                return HandleOptionsRequest();
+            }
+
+            // Route to specific handlers
+            return await RouteToHandler(request, routeInfo);
+        }
+
+        /// <summary>
+        /// Validates the API Gateway request.
+        /// </summary>
+        private static bool IsValidRequest(APIGatewayProxyRequest request)
+        {
+            return request?.Path != null && 
+                   request.Path != "" && 
+                   request.HttpMethod != null;
+        }
+
+        /// <summary>
+        /// Extracts route information from the request.
+        /// </summary>
+        private static (string Method, string Path, string Route) ExtractRouteInfo(APIGatewayProxyRequest request)
+        {
+            var path = request.Path!;
+            if (path.Contains('/'))
+            {
+                path = path.Substring(path.IndexOf('/') + 1);
+            }
+
+            var route = path;
+            if (path.Contains('/'))
+            {
+                route = path.Substring(0, path.LastIndexOf('/'));
+            }
+
+            return (request.HttpMethod!.ToUpper(), path, route);
+        }
+
+        /// <summary>
+        /// Handles OPTIONS preflight requests.
+        /// </summary>
+        private static APIGatewayProxyResponse HandleOptionsRequest()
+        {
+            return new APIGatewayProxyResponse
+            {
+                StatusCode = (int)HttpStatusCode.OK,
+                Body = null,
+                Headers = new Dictionary<string, string> {
+                    { "Access-Control-Allow-Methods", "GET,POST,OPTIONS" },
+                    { "Access-Control-Allow-Origin", "*" },
+                    { "Access-Control-Allow-Headers", "Content-Type,X-Amz-Date,Authorization,x-api-key,X-Api-Key,X-Amz-Security-Token,Origin,Access-Control-Allow-Origin,Access-Control-Allow-Methods"}
+                }
+            };
+        }
+
+        /// <summary>
+        /// Routes to the appropriate handler based on method and route.
+        /// </summary>
+        private async Task<APIGatewayProxyResponse> RouteToHandler(APIGatewayProxyRequest request, (string Method, string Path, string Route) routeInfo)
+        {
+            // Check if route is valid
+            if (string.IsNullOrEmpty(routeInfo.Route) && (request.QueryStringParameters?.Count ?? 0) == 0)
+            {
+                return CreateErrorResponse(HttpStatusCode.NotFound, ERROR_MESSAGE_404 + ERROR_INVALID_ROUTE);
+            }
+
+            return routeInfo.Method switch
+            {
+                "POST" when routeInfo.Route == ROUTE_ALARM => await HandleAlarmWebhook(request),
+                "GET" when routeInfo.Route == ROUTE_LATEST_VIDEO => await HandleLatestVideoRequest(),
+                "GET" => await HandleVideoDownloadRequest(request),
+                _ => CreateInvalidRouteResponse(routeInfo.Route, routeInfo.Method)
+            };
+        }
+
+        /// <summary>
+        /// Handles alarm webhook POST requests.
+        /// </summary>
+        private async Task<APIGatewayProxyResponse> HandleAlarmWebhook(APIGatewayProxyRequest request)
+        {
+            if (string.IsNullOrEmpty(request.Body))
+            {
+                return CreateErrorResponse(HttpStatusCode.BadRequest, ERROR_MESSAGE_400 + ERROR_GENERAL);
+            }
+
+            log.LogLine("Request: " + request.Body);
+
+            var alarm = ParseAlarmFromRequest(request.Body);
+            if (alarm == null)
+            {
+                return CreateErrorResponse(HttpStatusCode.BadRequest, ERROR_MESSAGE_400 + "Invalid alarm object format");
+            }
+
+            return await QueueAlarmForProcessing(alarm);
+        }
+
+        /// <summary>
+        /// Parses alarm object from the request body.
+        /// </summary>
+        private static Alarm? ParseAlarmFromRequest(string requestBody)
+        {
+            try
+            {
+                var jo = JObject.Parse(requestBody);
+                var alarmObject = jo.SelectToken("alarm") as JObject;
+                var timestamp = jo.SelectToken("timestamp")?.Value<long>() ?? 0;
+
+                if (alarmObject == null)
+                {
+                    return null;
+                }
+
+                var alarm = JsonConvert.DeserializeObject<Alarm>(alarmObject.ToString());
+                if (alarm != null)
+                {
+                    alarm.timestamp = timestamp;
+                }
+
+                return alarm;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Handles latest video GET requests.
+        /// </summary>
+        private static async Task<APIGatewayProxyResponse> HandleLatestVideoRequest()
+        {
+            return await GetLatestVideoFunction();
+        }
+
+        /// <summary>
+        /// Handles video download GET requests.
+        /// </summary>
+        private static async Task<APIGatewayProxyResponse> HandleVideoDownloadRequest(APIGatewayProxyRequest request)
+        {
+            var eventId = request.QueryStringParameters?.TryGetValue("eventId", out var value) == true ? value : null;
+            
+            if (string.IsNullOrEmpty(eventId))
+            {
+                return new APIGatewayProxyResponse
+                {
+                    StatusCode = (int)HttpStatusCode.BadRequest,
+                    Body = JsonConvert.SerializeObject(new { msg = "Missing required parameter. Provide 'eventId' for video download." }),
+                    Headers = GetStandardHeaders()
+                };
+            }
+
+            return await GetVideoByEventIdFunction(eventId);
+        }
+
+        /// <summary>
+        /// Creates an invalid route response.
+        /// </summary>
+        private static APIGatewayProxyResponse CreateInvalidRouteResponse(string route, string method)
+        {
+            return new APIGatewayProxyResponse
+            {
+                StatusCode = (int)HttpStatusCode.NotFound,
+                Body = JsonConvert.SerializeObject(new { msg = $"{ERROR_MESSAGE_404} {ERROR_INVALID_ROUTE}. Route: {route}, Method: {method}" }),
+                Headers = GetStandardHeaders()
+            };
+        }
+
+        /// <summary>
+        /// Creates a standard error response.
+        /// </summary>
+        private static APIGatewayProxyResponse CreateErrorResponse(HttpStatusCode statusCode, string message)
+        {
+            return new APIGatewayProxyResponse
+            {
+                StatusCode = (int)statusCode,
+                Body = JsonConvert.SerializeObject(new { msg = message }),
+                Headers = GetStandardHeaders()
+            };
+        }
+
+        /// <summary>
+        /// Creates a standard success response.
+        /// </summary>
+        private static APIGatewayProxyResponse CreateSuccessResponse(object body)
+        {
+            return new APIGatewayProxyResponse
+            {
+                StatusCode = (int)HttpStatusCode.OK,
+                Body = JsonConvert.SerializeObject(body),
+                Headers = GetStandardHeaders()
+            };
+        }
+
+        /// <summary>
+        /// Gets standard CORS headers for responses.
+        /// </summary>
+        private static Dictionary<string, string> GetStandardHeaders()
+        {
+            return new Dictionary<string, string> 
+            { 
+                { "Content-Type", "application/json" }, 
+                { "Access-Control-Allow-Origin", "*" } 
+            };
+        }
+
+        #endregion
 
 
         #endregion
@@ -802,9 +802,7 @@ namespace UnifiWebhookEventReceiver
                     Trigger trigger = alarm.triggers.ElementAt(0);
                     String device = trigger.device;
                     long timestamp = alarm.timestamp;
-                    String triggerType = trigger.key;
                     String eventId = trigger.eventId;
-                    String eventPath = alarm.eventPath ?? "";
                     String eventLocalLink = alarm.eventLocalLink ?? "";
                     String deviceName = "";
 
@@ -858,8 +856,7 @@ namespace UnifiWebhookEventReceiver
 
                     // Return success response
                     String bodyContent = FUNCTION_NAME + "has successfully processed the Unifi alarm event webhook with key " + eventKey +
-                    " for " + deviceName + " that occurred at " + date + "."; //The corresponding video file can now be uploaded to the " + ALARM_BUCKET_NAME +
-                    //" S3 bucket using the presigned URL for " + videoKey + " within the next " + EXPIRATION_SECONDS + " seconds.";
+                    " for " + deviceName + " that occurred at " + date + ".";
                     log.LogLine("Returning response: " + bodyContent);
                     response = new APIGatewayProxyResponse
                     {
@@ -994,48 +991,6 @@ namespace UnifiWebhookEventReceiver
             }
         }
 
-
-        /// <summary>
-        /// Generates presigned URLs for S3 object access.
-        /// 
-        /// This method creates time-limited URLs that allow direct access to S3 objects without
-        /// requiring AWS credentials. Supports both upload (PUT) and download (GET) operations
-        /// with configurable expiration times.
-        /// 
-        /// Note: Currently used for future video upload functionality but not actively used
-        /// in the current alarm event processing workflow.
-        /// </summary>
-        /// <param name="keyName">S3 object key for the target file</param>
-        /// <param name="method">HTTP method (GET for download, PUT for upload)</param>
-        /// <param name="validDuration">URL validity duration in seconds</param>
-        /// <param name="contentType">MIME type for upload operations</param>
-        /// <returns>Presigned URL string valid for the specified duration</returns>
-        private static string GeneratePreSignedURL(string keyName, HttpVerb method, double validDuration, string contentType)
-        {
-            // Upload
-            var request = new GetPreSignedUrlRequest
-            {
-                BucketName = ALARM_BUCKET_NAME,
-                Key = keyName,
-                Verb = method,
-                Expires = DateTime.UtcNow.AddSeconds(validDuration),
-                ContentType = contentType
-            };
-
-            // Download
-            if (method == HttpVerb.GET)
-            {
-                request = new GetPreSignedUrlRequest
-                {
-                    BucketName = ALARM_BUCKET_NAME,
-                    Key = keyName,
-                    Expires = DateTime.UtcNow.AddSeconds(validDuration)
-                };
-            }
-
-            string url = s3Client.GetPreSignedURL(request);
-            return url;
-        }
 
         #endregion
 
@@ -1538,67 +1493,6 @@ namespace UnifiWebhookEventReceiver
             }
         }
 
-        /// <summary>
-        /// Retrieves video binary data from S3 and returns it as a byte array.
-        /// 
-        /// This method handles the low-level S3 operations for fetching stored video data.
-        /// It performs the S3 GetObject operation, reads the response stream, and returns
-        /// the binary content as a byte array for video processing.
-        /// 
-        /// Handles common S3 exceptions including missing objects (NoSuchKey) and access errors.
-        /// </summary>
-        /// <param name="keyName">S3 object key to retrieve</param>
-        /// <returns>Byte array containing the video data, or null if object doesn't exist</returns>
-        private static async Task<byte[]?> GetVideoFileFromS3BlobAsync(string keyName)
-        {
-            try
-            {
-                if (string.IsNullOrEmpty(ALARM_BUCKET_NAME))
-                {
-                    throw new InvalidOperationException("StorageBucket environment variable is not configured");
-                }
-
-                log.LogLine("Attempting to get video object: " + keyName + " from " + ALARM_BUCKET_NAME + ".");
-
-                // Prepare request
-                var getObjectRequest = new GetObjectRequest
-                {
-                    BucketName = ALARM_BUCKET_NAME,
-                    Key = keyName,
-                };
-
-                // Get the object
-                MemoryStream ms = new MemoryStream();
-                using (GetObjectResponse response = await s3Client.GetObjectAsync(getObjectRequest))
-                using (Stream responseStream = response.ResponseStream)
-                    responseStream.CopyTo(ms);
-                
-                byte[] fileBytes = ms.ToArray();
-
-                // Return the file byte array
-                log.LogLine("Successfully retrieved the video from S3: " + ALARM_BUCKET_NAME + "/" + keyName + " with a size of: " + fileBytes.Length + " bytes");
-                return fileBytes;
-            }
-            catch (AmazonS3Exception e)
-            {
-                if (e.ErrorCode == "NoSuchKey")
-                {
-                    log.LogLine("Video object doesn't exist.");
-                    return null;
-                }
-                else
-                {
-                    log.LogLine("Error encountered while reading video object from S3: " + e.Message);
-                    throw new Exception("Error encountered while getting video file from S3.");
-                }
-            }
-            catch (Exception e)
-            {
-                log.LogLine("Unknown error encountered when reading video object: " + e.Message);
-                throw new Exception("Error encountered while getting video file from S3.");
-            }
-        }
-
         #endregion
 
         #region Video Download Operations
@@ -1748,7 +1642,6 @@ namespace UnifiWebhookEventReceiver
                     if (Environment.OSVersion.Platform == PlatformID.Unix)
                     {
                         // Set permissions for Lambda environment
-                        var directoryInfo = new DirectoryInfo(downloadDirectory);
                         // This is a simplified permission setting - Lambda handles most of this automatically
                         log.LogLine($"Setting permissions for directory: {downloadDirectory}");
                     }
@@ -2057,45 +1950,5 @@ namespace UnifiWebhookEventReceiver
         }
 
         #endregion
-
-        /// <summary>
-        /// Uploads video binary data to S3.
-        /// 
-        /// This method handles the storage of video files in the configured S3 bucket.
-        /// The content is stored as binary data with appropriate content type for video files.
-        /// </summary>
-        /// <param name="bucketName">Target S3 bucket name for storage</param>
-        /// <param name="keyName">S3 object key (file path within bucket)</param>
-        /// <param name="videoData">Binary video data to store</param>
-        /// <returns>Task representing the asynchronous upload operation</returns>
-        private static async Task UploadVideoToS3Async(string bucketName, string keyName, byte[] videoData)
-        {
-            try
-            {
-                using var stream = new MemoryStream(videoData);
-
-                var putObjectRequest = new PutObjectRequest
-                {
-                    BucketName = bucketName,
-                    Key = keyName,
-                    InputStream = stream,
-                    ContentType = "video/mp4",
-                    StorageClass = S3StorageClass.StandardInfrequentAccess // Optimize for infrequent access
-                };
-
-                await s3Client.PutObjectAsync(putObjectRequest);
-                log.LogLine($"Successfully uploaded video to S3: {bucketName}/{keyName} ({videoData.Length} bytes)");
-            }
-            catch (AmazonS3Exception e)
-            {
-                log.LogLine($"S3 error uploading video: {e.Message}");
-                throw;
-            }
-            catch (Exception e)
-            {
-                log.LogLine($"Error uploading video to S3: {e.Message}");
-                throw;
-            }
-        }
     }
 }
