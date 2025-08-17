@@ -74,7 +74,7 @@ paths:
         
         **Storage Format:**
         Events are stored as JSON files in S3 with the path structure:
-        `{bucket}/{YYYY-MM-DD}/{deviceMac}_{timestamp}.json`
+        `{bucket}/{YYYY-MM-DD}/{eventId}_{deviceMac}_{timestamp}.json`
         
         **Error Handling:**
         - Malformed JSON returns 400 Bad Request
@@ -474,13 +474,13 @@ paths:
         5. Continue for up to 30 days maximum
         
         **File Format:**
-        Video files follow the naming pattern: `{deviceMac}_{timestamp}.mp4`
+        Video files follow the naming pattern: `{eventId}_{deviceMac}_{timestamp}.mp4`
         - **deviceMac**: 12-character hexadecimal MAC address
         - **timestamp**: Unix timestamp in milliseconds when the event occurred
         
         **Storage Organization:**
         Videos are stored in S3 with date-based organization:
-        `s3://{bucket}/{YYYY-MM-DD}/{deviceMac}_{timestamp}.mp4`
+        `s3://{bucket}/{YYYY-MM-DD}/{eventId}_{deviceMac}_{timestamp}.mp4`
         
         **Response Format:**
         Returns JSON containing:
@@ -536,13 +536,13 @@ paths:
                     type: string
                     description: |
                       S3 object key for the video file, useful for logging and tracking.
-                      Format: {YYYY-MM-DD}/{deviceMac}_{timestamp}.mp4
+                      Format: {YYYY-MM-DD}/{eventId}_{deviceMac}_{timestamp}.mp4
                     example: "2025-01-17/28704E113F33_1739819436108.mp4"
                   eventKey:
                     type: string
                     description: |
                       S3 object key for the corresponding event JSON data.
-                      Format: {YYYY-MM-DD}/{deviceMac}_{timestamp}.json
+                      Format: {YYYY-MM-DD}/{eventId}_{deviceMac}_{timestamp}.json
                     example: "2025-01-17/28704E113F33_1739819436108.json"
                   timestamp:
                     type: integer
@@ -941,7 +941,7 @@ components:
           type: string
           description: |
             Unique key for retrieving this event (added during processing).
-            Format: {deviceMac}_{timestamp}.json
+            Format: {eventId}_{deviceMac}_{timestamp}.json
           example: "28704E113F33_1739819436108.json"
           readOnly: true
 
@@ -960,7 +960,7 @@ components:
       description: |
         Alarm event as stored in S3 with additional processing metadata.
         
-        **Storage Location:** `s3://{bucket}/{YYYY-MM-DD}/{deviceMac}_{timestamp}.json`
+        **Storage Location:** `s3://{bucket}/{YYYY-MM-DD}/{eventId}_{deviceMac}_{timestamp}.json`
         **Retention:** Indefinite (configure S3 lifecycle policies as needed)
         **Encryption:** Server-side encryption with AES-256
 
@@ -1018,13 +1018,13 @@ components:
           type: string
           description: |
             S3 object key for the video file.
-            Format: {YYYY-MM-DD}/{deviceMac}_{timestamp}.mp4
+            Format: {YYYY-MM-DD}/{eventId}_{deviceMac}_{timestamp}.mp4
           example: "2025-01-17/28704E113F33_1739819436108.mp4"
         eventKey:
           type: string
           description: |
             S3 object key for the corresponding event JSON data.
-            Format: {YYYY-MM-DD}/{deviceMac}_{timestamp}.json
+            Format: {YYYY-MM-DD}/{eventId}_{deviceMac}_{timestamp}.json
           example: "2025-01-17/28704E113F33_1739819436108.json"
         eventId:
           type: string

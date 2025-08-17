@@ -57,8 +57,8 @@ The system includes browser automation to download video content directly from U
 S3 Bucket Structure:
 ├── events/
 │   └── YYYY-MM-DD/
-│       ├── {deviceMac}_{timestamp}.json
-│       └── {deviceMac}_{timestamp}.mp4
+│       ├── {eventId}_{deviceMac}_{timestamp}.json
+│       └── {eventId}_{deviceMac}_{timestamp}.mp4
 └── screenshots/
     ├── login-screenshot.png
     ├── pageload-screenshot.png
@@ -223,12 +223,13 @@ Receives alarm events from Unifi Protect systems
 - **Request**: JSON webhook payload from Unifi Dream Machine
 - **Response**: Success confirmation with event key
 
-#### 2. Event Retrieval - `GET /{stage}/?eventKey={eventKey}`
-Retrieves stored alarm event data
-- **Purpose**: Fetch specific alarm event JSON data
+#### 2. Event Retrieval - `GET /{stage}/?eventId={eventId}`
+Retrieves stored alarm event data and video by event ID
+- **Purpose**: Fetch specific alarm event JSON data and video download URL using the Unifi Protect event ID
 - **Authentication**: API Key required
-- **Parameters**: `eventKey` - Event identifier (format: `{deviceMac}_{timestamp}.json`)
-- **Response**: Complete alarm event JSON object
+- **Parameters**: `eventId` - Event identifier (format: Unifi Protect event ID used as filename prefix: `{eventId}_{deviceMac}_{timestamp}.json`)
+- **Response**: Complete alarm event JSON object with presigned video download URL
+- **Optimization**: Uses eventId as filename prefix for direct file lookup without JSON parsing
 
 #### 3. Latest Video Access - `GET /{stage}/latestvideo`
 Provides presigned URL for downloading the most recent video file from all stored events

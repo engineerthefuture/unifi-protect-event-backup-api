@@ -562,8 +562,8 @@ namespace UnifiWebhookEventReceiver
                     }
 
                     // Set event key and update alarm object
-                    String videoKey = device + "_" + timestamp.ToString() + ".mp4";
-                    String eventKey = device + "_" + timestamp.ToString() + ".json";
+                    String videoKey = eventId + "_" + device + "_" + timestamp.ToString() + ".mp4";
+                    String eventKey = eventId + "_" + device + "_" + timestamp.ToString() + ".json";
                     trigger.eventKey = eventKey;
                     trigger.videoKey = videoKey;
                     alarm.triggers[0] = trigger;
@@ -1074,13 +1074,10 @@ namespace UnifiWebhookEventReceiver
         /// <summary>
         /// Retrieves a video by eventId and returns a presigned URL for download along with event details.
         /// 
-        /// This method searches through all stored alarm events in S3 to find the specific event JSON
-        /// file that contains the provided eventId. Once found, it extracts the video metadata from
-        /// the event data and generates a presigned URL for the corresponding video file.
-        /// 
-        /// The search examines date-organized folders (YYYY-MM-DD) looking for JSON files that contain
-        /// the specified eventId in their trigger data. This allows retrieval of specific event videos
-        /// using the Unifi Protect event identifier.
+        /// This method uses the new naming convention where files are named with eventId as prefix
+        /// (e.g., {eventId}_{device}_{timestamp}.json) to efficiently find event files without 
+        /// searching through JSON content. It searches through date-organized folders looking for 
+        /// files that start with the specified eventId.
         /// 
         /// Returns a presigned URL for direct video download from S3 along with complete event metadata
         /// including device information, trigger details, and alarm context.
@@ -1115,8 +1112,8 @@ namespace UnifiWebhookEventReceiver
                     };
                 }
 
-                // Search for the event JSON file containing the specified eventId
-                log.LogLine($"Searching for event JSON file containing eventId: {eventId}");
+                // Search for event file by eventId prefix using the new naming convention
+                log.LogLine($"Searching for event file with eventId prefix: {eventId}");
 
                 string? foundEventKey = null;
                 string? foundVideoKey = null;
@@ -1133,79 +1130,37 @@ namespace UnifiWebhookEventReceiver
                     string dateFolder = searchDate.ToString("yyyy-MM-dd");
                     log.LogLine($"Searching for eventId {eventId} in date folder: {dateFolder}");
 
+                    // Search for files with eventId prefix in this date folder
                     var listRequest = new ListObjectsV2Request
                     {
                         BucketName = ALARM_BUCKET_NAME,
-                        Prefix = dateFolder + "/",
-                        MaxKeys = 1000 // Should be plenty for a single day
+                        Prefix = $"{dateFolder}/{eventId}_", // Look for files that start with eventId_
+                        MaxKeys = 10 // Should only be 1-2 files (JSON + MP4) per event
                     };
 
-                    // Search through all objects in this date folder
-                    do
+                    var response = await s3Client.ListObjectsV2Async(listRequest);
+
+                    foreach (var obj in response.S3Objects)
                     {
-                        var response = await s3Client.ListObjectsV2Async(listRequest);
-
-                        foreach (var obj in response.S3Objects)
+                        if (obj.Key.EndsWith(".json"))
                         {
-                            // Look for .json files (event files)
-                            if (obj.Key.EndsWith(".json"))
-                            {
-                                try
-                                {
-                                    // Get the JSON content and check if it contains our eventId
-                                    string? jsonContent = await GetJsonFileFromS3BlobAsync(obj.Key);
-                                    if (jsonContent != null)
-                                    {
-                                        // Parse the JSON and look for the eventId in triggers
-                                        var eventObject = JsonConvert.DeserializeObject<dynamic>(jsonContent);
-                                        if (eventObject?.alarm?.triggers != null)
-                                        {
-                                            foreach (var trigger in eventObject.alarm.triggers)
-                                            {
-                                                string? triggerEventId = trigger?.eventId?.ToString();
-                                                if (string.Equals(triggerEventId, eventId, StringComparison.OrdinalIgnoreCase))
-                                                {
-                                                    // Found the event! Extract the information
-                                                    foundEventKey = obj.Key;
-                                                    foundVideoKey = trigger?.videoKey?.ToString();
-                                                    
-                                                    // Extract timestamp
-                                                    if (long.TryParse(trigger?.eventId?.ToString().Split('_').LastOrDefault() ?? "0", out long extractedTimestamp))
-                                                    {
-                                                        foundTimestamp = extractedTimestamp;
-                                                    }
-                                                    else if (eventObject?.timestamp != null)
-                                                    {
-                                                        foundTimestamp = (long)eventObject.timestamp;
-                                                    }
-
-                                                    eventData = eventObject;
-                                                    log.LogLine($"Found event {eventId} in {foundEventKey} with video {foundVideoKey}");
-                                                    break; // Break out of triggers loop
-                                                }
-                                            }
-                                            
-                                            // If we found the event, break out of JSON processing
-                                            if (foundEventKey != null) break;
-                                        }
-                                    }
-                                }
-                                catch (Exception ex)
-                                {
-                                    log.LogLine($"Error parsing JSON file {obj.Key}: {ex.Message}");
-                                    // Continue searching other files
-                                }
-
-                                // Break out of the S3Objects loop if we found the event
-                                if (foundEventKey != null) break;
-                            }
+                            foundEventKey = obj.Key;
                             
-                            // Break out of the S3Objects loop if we found the event
-                            if (foundEventKey != null) break;
-                        }
+                            // Extract the video key by replacing .json with .mp4
+                            foundVideoKey = obj.Key.Replace(".json", ".mp4");
+                            
+                            // Extract timestamp from filename: {dateFolder}/{eventId}_{device}_{timestamp}.json
+                            var fileName = Path.GetFileName(obj.Key);
+                            var parts = fileName.Split('_');
+                            if (parts.Length >= 3 && long.TryParse(parts[parts.Length - 1].Replace(".json", ""), out long timestamp))
+                            {
+                                foundTimestamp = timestamp;
+                            }
 
-                        listRequest.ContinuationToken = response.NextContinuationToken;
-                    } while (listRequest.ContinuationToken != null && foundEventKey == null);
+                            log.LogLine($"Found event file: {foundEventKey}, corresponding video: {foundVideoKey}");
+                            break;
+                        }
+                    }
 
                     if (foundEventKey != null) break;
 
@@ -1225,7 +1180,21 @@ namespace UnifiWebhookEventReceiver
                     };
                 }
 
-                log.LogLine($"Found event: {foundEventKey}, video: {foundVideoKey}, timestamp: {foundTimestamp}");
+                // Get the event JSON data
+                try
+                {
+                    string? eventJsonData = await GetJsonFileFromS3BlobAsync(foundEventKey);
+                    if (eventJsonData != null)
+                    {
+                        eventData = JsonConvert.DeserializeObject(eventJsonData);
+                        log.LogLine($"Successfully retrieved event data for {foundEventKey}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    log.LogLine($"Error retrieving event data for {foundEventKey}: {ex.Message}");
+                    // Continue without event data rather than failing the entire request
+                }
 
                 // Verify the video file exists in S3
                 try
