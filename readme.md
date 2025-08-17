@@ -57,8 +57,8 @@ The system includes browser automation to download video content directly from U
 S3 Bucket Structure:
 ├── events/
 │   └── YYYY-MM-DD/
-│       ├── {deviceMac}_{timestamp}.json
-│       └── {deviceMac}_{timestamp}.mp4
+│       ├── {eventId}_{deviceMac}_{timestamp}.json
+│       └── {eventId}_{deviceMac}_{timestamp}.mp4
 └── screenshots/
     ├── login-screenshot.png
     ├── pageload-screenshot.png
@@ -223,12 +223,13 @@ Receives alarm events from Unifi Protect systems
 - **Request**: JSON webhook payload from Unifi Dream Machine
 - **Response**: Success confirmation with event key
 
-#### 2. Event Retrieval - `GET /{stage}/?eventKey={eventKey}`
-Retrieves stored alarm event data
-- **Purpose**: Fetch specific alarm event JSON data
+#### 2. Event Retrieval - `GET /{stage}/?eventId={eventId}`
+Retrieves stored alarm event data and video by event ID
+- **Purpose**: Fetch specific alarm event JSON data and video download URL using the Unifi Protect event ID
 - **Authentication**: API Key required
-- **Parameters**: `eventKey` - Event identifier (format: `{deviceMac}_{timestamp}.json`)
-- **Response**: Complete alarm event JSON object
+- **Parameters**: `eventId` - Event identifier (format: Unifi Protect event ID used as filename prefix: `{eventId}_{deviceMac}_{timestamp}.json`)
+- **Response**: Complete alarm event JSON object with presigned video download URL
+- **Optimization**: Uses eventId as filename prefix for direct file lookup without JSON parsing
 
 #### 3. Latest Video Access - `GET /{stage}/latestvideo`
 Provides presigned URL for downloading the most recent video file from all stored events
@@ -301,13 +302,57 @@ Processes incoming alarm webhook events from Unifi Protect.
 **Request Body**: JSON alarm event from Unifi Protect
 **Response**: Success confirmation with event details
 
-#### GET /?eventKey={key}
-Retrieves a stored alarm event by its unique key.
+#### GET /?eventId={id}
+Downloads a video file by searching for the specified Unifi Protect event ID and returning a presigned URL.
 
-**Parameters**: 
-- `eventKey`: Unique event identifier (format: `{deviceMac}_{timestamp}.json`)
+**Parameters:**
+- `eventId`: Unifi Protect event identifier (24-character hexadecimal string)
 
-**Response**: JSON alarm event data
+**Response**: JSON object containing:
+- `downloadUrl`: Presigned S3 URL for direct video download (expires in 1 hour)
+- `filename`: Suggested filename (`event_{eventId}_{YYYY-MM-DD_HH-mm-ss}.mp4`)
+- `videoKey`: S3 object key for the video file
+- `eventKey`: S3 object key for the corresponding event JSON data
+- `eventId`: The searched Unifi Protect event identifier
+- `timestamp`: Unix timestamp when the event occurred
+- `eventDate`: Human-readable event date and time
+- `expiresAt`: When the download URL expires
+- `eventData`: Complete alarm event details including device name, trigger type, zones, and timestamps
+- `message`: Instructions for using the download URL
+
+**How it works:**
+1. Searches through date-organized S3 folders (YYYY-MM-DD) for JSON event files
+2. Parses each event file to find the matching eventId in trigger data
+3. Locates the corresponding video file (.mp4)
+4. Generates a secure, time-limited presigned URL for direct S3 download
+5. Returns complete event context and metadata along with download URL
+
+**Example Response for eventId**:
+```json
+{
+  "downloadUrl": "https://s3.amazonaws.com/bucket/2025-01-17/28704E113F33_1739819436108.mp4?X-Amz-Signature=...",
+  "filename": "event_67b389ab005ec703e40075a5_2025-01-17_20-43-56.mp4",
+  "videoKey": "2025-01-17/28704E113F33_1739819436108.mp4",
+  "eventKey": "2025-01-17/28704E113F33_1739819436108.json",
+  "eventId": "67b389ab005ec703e40075a5",
+  "timestamp": 1739819436108,
+  "eventDate": "2025-01-17 20:43:56",
+  "expiresAt": "2025-01-17 21:43:56 UTC",
+  "eventData": {
+    "name": "Motion Detection Alert",
+    "timestamp": 1739819436108,
+    "triggers": [
+      {
+        "key": "motion",
+        "device": "28704E113F33",
+        "eventId": "67b389ab005ec703e40075a5",
+        "deviceName": "Backyard West"
+      }
+    ]
+  },
+  "message": "Use the downloadUrl to download the video file directly. URL expires in 1 hour."
+}
+```
 
 #### GET /latestvideo
 Returns a presigned URL for downloading the most recent video file from all stored events.
@@ -318,12 +363,35 @@ Returns a presigned URL for downloading the most recent video file from all stor
 - `downloadUrl`: Presigned S3 URL for direct video download (expires in 1 hour)
 - `filename`: Suggested filename (`latest_video_{YYYY-MM-DD_HH-mm-ss}.mp4`)
 - `videoKey`: S3 object key for the video file
+- `eventKey`: S3 object key for the corresponding event JSON data
 - `timestamp`: Unix timestamp when the event occurred
 - `eventDate`: Human-readable event date and time
 - `expiresAt`: When the download URL expires
+- `eventData`: Complete alarm event details including device name, trigger type, zones, and timestamps
 - `message`: Instructions for using the download URL
 
 **Why Presigned URL?**: Video files typically exceed API Gateway's 6MB payload limit, so this endpoint returns a secure, time-limited URL for direct S3 download instead of the video data itself.
+
+**Example Response**:
+```json
+{
+  "downloadUrl": "https://s3.amazonaws.com/bucket/2024-01-15/video_1705316234.mp4?X-Amz-Signature=...",
+  "filename": "latest_video_2024-01-15_10-30-34.mp4",
+  "videoKey": "2024-01-15/video_1705316234.mp4",
+  "eventKey": "2024-01-15/event_1705316234.json",
+  "timestamp": 1705316234,
+  "eventDate": "2024-01-15 10:30:34 UTC",
+  "expiresAt": "2024-01-15 11:30:34 UTC",
+  "eventData": {
+    "deviceName": "Front Door Camera",
+    "triggers": ["MOTION", "PERSON"],
+    "zones": ["Driveway", "Walkway"],
+    "score": 95,
+    "recordingStartTime": 1705316234
+  },
+  "message": "Use the downloadUrl to download the video file directly"
+}
+```
 
 #### OPTIONS /alarmevent
 Handles CORS preflight requests for web client support.
