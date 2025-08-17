@@ -55,13 +55,16 @@ namespace UnifiWebhookEventReceiver
     /// - UnifiUsername: Username for Unifi Protect authentication
     /// - UnifiPassword: Password for Unifi Protect authentication
     /// - DownloadDirectory: Directory for temporary video files (defaults to /tmp)
-    /// - ArchiveButtonX: X coordinate for archive button click 
-    /// - ArchiveButtonY: Y coordinate for archive button click 
-    /// - DownloadButtonX: X coordinate for download button click 
-    /// - DownloadButtonY: Y coordinate for download button click 
+    /// - ArchiveButtonX: X coordinate for archive button click (used for "Door" device, defaults to 1274)
+    /// - ArchiveButtonY: Y coordinate for archive button click (used for "Door" device, defaults to 257)
+    /// - DownloadButtonX: X coordinate for download button click (used for "Door" device, defaults to 1095)
+    /// - DownloadButtonY: Y coordinate for download button click (used for "Door" device, defaults to 275)
+    /// 
+    /// Note: For devices other than "Door", coordinates are automatically adjusted to (1205, 241) for archive
+    /// and (1026, 259) for download to accommodate different UI layouts in Unifi Protect.
     /// 
     /// Dependencies:
-    /// - For local development, ensure PuppeteerSharp can download browser or provide custom path
+    /// - For local development, ensure HeadlessChromium can be initialized properly
     /// </summary>
     public class UnifiWebhookEventReceiver
     {
@@ -581,7 +584,7 @@ namespace UnifiWebhookEventReceiver
 
                     // Get the video file byte array
                     eventLocalLink = UNIFI_HOST + alarm.eventPath;
-                    byte[] videoData = await GetVideoFromLocalUnifiProtectViaHeadlessClient(eventLocalLink);
+                    byte[] videoData = await GetVideoFromLocalUnifiProtectViaHeadlessClient(eventLocalLink, deviceName);
 
                     // Upload the video file to S3
                     await UploadFileAsync(ALARM_BUCKET_NAME, videoFileKey, videoData, "video/mp4");
@@ -914,21 +917,57 @@ namespace UnifiWebhookEventReceiver
         #region Video Download Operations
 
         /// <summary>
+        /// Calculates device-specific click coordinates for video download automation.
+        /// 
+        /// Different devices/cameras may have slightly different UI layouts in Unifi Protect,
+        /// requiring adjusted click coordinates for reliable automation.
+        /// 
+        /// Coordinate Logic:
+        /// - "Door" device: Uses default coordinates from environment variables
+        /// - Other devices: Uses adjusted coordinates (1205, 241) for archive and offset (-179, +18) for download
+        /// </summary>
+        /// <param name="deviceName">Name of the device to determine coordinates for</param>
+        /// <returns>Tuple containing archive and download button coordinates</returns>
+        private static ((int x, int y) archiveButton, (int x, int y) downloadButton) GetDeviceSpecificCoordinates(string deviceName)
+        {
+            // For "Door" device, use the default coordinates from environment variables
+            if (string.Equals(deviceName, "Door", StringComparison.OrdinalIgnoreCase))
+            {
+                return (
+                    archiveButton: (ARCHIVE_BUTTON_X, ARCHIVE_BUTTON_Y),
+                    downloadButton: (DOWNLOAD_BUTTON_X, DOWNLOAD_BUTTON_Y)
+                );
+            }
+            
+            // For all other devices, use adjusted coordinates
+            int archiveX = 1205;
+            int archiveY = 241;
+            int downloadX = archiveX - 179;  // 1205 - 179 = 1026
+            int downloadY = archiveY + 18;   // 241 + 18 = 259
+            
+            return (
+                archiveButton: (archiveX, archiveY),
+                downloadButton: (downloadX, downloadY)
+            );
+        }
+
+        /// <summary>
         /// Downloads video from Unifi Protect using automated browser navigation.
         /// 
-        /// This method uses PuppeteerSharp to automate a headless browser session that:
+        /// This method uses HeadlessChromium to automate a headless browser session that:
         /// 1. Navigates to the Unifi Protect event link
         /// 2. Authenticates using stored credentials
-        /// 3. Downloads the video file for the event
+        /// 3. Downloads the video file for the event using device-specific coordinates
         /// 4. Returns the video data as a byte array
         /// 
         /// The method handles the complete workflow of video retrieval from Unifi Protect
-        /// systems that require web-based authentication and interaction.
+        /// systems that require web-based authentication and interaction. Click coordinates
+        /// are adjusted based on the device name to account for UI differences.
         /// </summary>
         /// <param name="eventLocalLink">Direct URL to the event in Unifi Protect web interface</param>
-        /// <param name="eventKey">Unique event identifier for naming the video file</param>
+        /// <param name="deviceName">Name of the device to determine appropriate click coordinates</param>
         /// <returns>Byte array containing the downloaded video data</returns>
-        public static async Task<byte[]> GetVideoFromLocalUnifiProtectViaHeadlessClient(string eventLocalLink)
+        public static async Task<byte[]> GetVideoFromLocalUnifiProtectViaHeadlessClient(string eventLocalLink, string deviceName)
         {
             log.LogLine($"Starting video download for event from URL: {eventLocalLink}");
 
@@ -945,14 +984,17 @@ namespace UnifiWebhookEventReceiver
                 throw new InvalidOperationException("Server configuration error: StorageBucket not configured");
             }
 
+            // Calculate device-specific coordinates
+            var coordinates = GetDeviceSpecificCoordinates(deviceName);
+            
             //Create a dictionary of coordinates for clicks to download videos
             Dictionary<string, (int x, int y)> clickCoordinates = new Dictionary<string, (int x, int y)>
             {
-                { "archiveButton", (ARCHIVE_BUTTON_X, ARCHIVE_BUTTON_Y) },
-                { "downloadButton", (DOWNLOAD_BUTTON_X, DOWNLOAD_BUTTON_Y) }
+                { "archiveButton", coordinates.archiveButton },
+                { "downloadButton", coordinates.downloadButton }
             };
 
-            log.LogLine($"Using click coordinates - Archive: ({ARCHIVE_BUTTON_X}, {ARCHIVE_BUTTON_Y}), Download: ({DOWNLOAD_BUTTON_X}, {DOWNLOAD_BUTTON_Y})");
+            log.LogLine($"Device: {deviceName ?? "Unknown"} - Using click coordinates - Archive: ({coordinates.archiveButton.x}, {coordinates.archiveButton.y}), Download: ({coordinates.downloadButton.x}, {coordinates.downloadButton.y})");
 
             try
             {
