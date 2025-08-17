@@ -1184,6 +1184,9 @@ namespace UnifiWebhookEventReceiver
                                                     break; // Break out of triggers loop
                                                 }
                                             }
+                                            
+                                            // If we found the event, break out of JSON processing
+                                            if (foundEventKey != null) break;
                                         }
                                     }
                                 }
