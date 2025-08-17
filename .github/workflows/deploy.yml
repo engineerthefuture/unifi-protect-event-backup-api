@@ -150,19 +150,6 @@ jobs:
         if: steps.test.outcome == 'success'
         run: dotnet publish UnifiWebhookEventReceiver.csproj --configuration Release --output ./publish
 
-      - name: Package Chromium with Lambda
-        if: steps.test.outcome == 'success'
-        run: |
-          echo "Packaging Chromium with Lambda function..."
-          # Create chromium directory in publish folder
-          mkdir -p ./publish/chromium
-          # Copy the chrome executable and dependencies
-          cp -r ./chromium/chrome-linux64/* ./publish/chromium/
-          # Verify the chrome executable exists and is executable
-          ls -la ./publish/chromium/chrome
-          chmod +x ./publish/chromium/chrome
-          echo "Chromium packaging completed successfully"
-
       - name: Upload published files
         if: steps.test.outcome == 'success'
         uses: actions/upload-artifact@v4
