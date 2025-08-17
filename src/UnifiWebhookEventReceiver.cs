@@ -20,6 +20,7 @@ using System.Text;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using PuppeteerSharp;
+using HeadlessChromium.Puppeteer.Lambda.Dotnet;
 
 // AWS includes
 using Amazon;
@@ -55,7 +56,6 @@ namespace UnifiWebhookEventReceiver
     /// - UnifiPassword: Password for Unifi Protect authentication
     /// 
     /// Dependencies:
-    /// - Chromium browser binary expected at: /var/task/chromium/chrome (packaged during deployment)
     /// - For local development, ensure PuppeteerSharp can download browser or provide custom path
     /// </summary>
     public class UnifiWebhookEventReceiver
@@ -528,24 +528,23 @@ namespace UnifiWebhookEventReceiver
                             log.LogLine("Device name found for " + device + ": " + deviceName);
                             trigger.deviceName = deviceName;
                         }
-                        
+
                         // Generate presigned URL 
                         /*
+                        String videoKey = deviceName + "/" + device + "_" + timestamp.ToString() + "_" + triggerType + "-video.mp4";
                         string presignedUrl = GeneratePreSignedURL(videoKey, HttpVerb.PUT, EXPIRATION_SECONDS, "video/mp4");
                         trigger.presignedUrl = presignedUrl;
+                        trigger.videoKey = videoKey;
                         log.LogLine("Presigned URL generated for " + videoKey + ": " + presignedUrl);
                         */
 
-                    // Set event key and update alarm object
-                        String videoKey = device + "_" + timestamp.ToString() + ".mp4";
+                        // Save alarm event to S3
                         String eventKey = device + "_" + timestamp.ToString() + ".json";
                         trigger.eventKey = eventKey;
-                        trigger.videoKey = videoKey;
                         alarm.triggers[0] = trigger;
 
                     // Create a file key that saves into a subfolder based on the date formated like "2024-12-23"
-                    String eventFileKey = $"{dt.Year}-{dt.Month.ToString("D2")}-{dt.Day.ToString("D2")}/{eventKey}";
-                    String videoFileKey = $"{dt.Year}-{dt.Month.ToString("D2")}-{dt.Day.ToString("D2")}/{videoKey}";
+                    String fileKey = $"{dt.Year}-{dt.Month.ToString("D2")}-{dt.Day.ToString("D2")}/{eventKey}";
 
                     if (string.IsNullOrEmpty(ALARM_BUCKET_NAME))
                     {
@@ -559,34 +558,7 @@ namespace UnifiWebhookEventReceiver
                         return errorResponse;
                     }
 
-                    // Upload the alarm event to S3
-                    await UploadFileAsync(ALARM_BUCKET_NAME, eventFileKey, JsonConvert.SerializeObject(alarm));
-
-                    // Get the video file byte array
-                    eventLocalLink = UNIFI_HOST + alarm.eventPath;
-                    byte[] videoData = await GetVideoFromLocalUnifiProtectViaHeadlessClient(eventLocalLink);
-
-                    // Upload the video file to S3
-                    await UploadFileAsync(ALARM_BUCKET_NAME, videoFileKey, videoData, "video/mp4");
-
-                    /*
-                    // Generate S3 key for the video file
-                                    var videoKey = $"videos/{eventKey}";
-
-                                        // Generate presigned URL for the downloaded video
-                                        log.LogLine($"Generating presigned URL for video key: {videoKey}");
-
-                                        string presignedUrl = GeneratePreSignedURL(videoKey, HttpVerb.GET, EXPIRATION_SECONDS, "video/mp4");
-                                        log.LogLine($"Presigned URL generated: {presignedUrl}");
-
-                                        // Upload the video to S3
-                                    log.LogLine($"Uploading video to S3 bucket: {ALARM_BUCKET_NAME}, key: {videoKey}");
-
-                                        await UploadFileAsync(ALARM_BUCKET_NAME, videoKey, videoData, "video/mp4");
-
-                                        log.LogLine($"Video successfully uploaded to S3: {ALARM_BUCKET_NAME}/{videoKey}");
-                    */
-
+                    await UploadFileAsync(ALARM_BUCKET_NAME, fileKey, JsonConvert.SerializeObject(alarm));
 
                     // Return success response
                     String bodyContent = FUNCTION_NAME + "has successfully processed the Unifi alarm event webhook with key " + eventKey + 
@@ -645,19 +617,6 @@ namespace UnifiWebhookEventReceiver
         /// <returns>Task representing the asynchronous upload operation</returns>
         private static async Task UploadFileAsync(string bucketName, string keyName, string obj)
         {
-            await UploadFileAsync(bucketName, keyName, obj, "application/json");
-        }
-
-        /// <summary>
-        /// Uploads string content to S3 with specified content type.
-        /// </summary>
-        /// <param name="bucketName">Target S3 bucket name for storage</param>
-        /// <param name="keyName">S3 object key (file path within bucket)</param>
-        /// <param name="content">String content to store</param>
-        /// <param name="contentType">MIME type of the content</param>
-        /// <returns>Task representing the asynchronous upload operation</returns>
-        private static async Task UploadFileAsync(string bucketName, string keyName, string content, string contentType)
-        {
             try
             {
                 // Prepare request
@@ -665,54 +624,12 @@ namespace UnifiWebhookEventReceiver
                 {
                     BucketName = bucketName,
                     Key = keyName,
-                    ContentBody = content,
-                    ContentType = contentType,
-                    StorageClass = S3StorageClass.StandardInfrequentAccess // Optimize for infrequent access
+                    ContentBody = obj
                 };
 
                 // Upload the object
                 await s3Client.PutObjectAsync(putObjectRequest);
                 log.LogLine("Successfully wrote the object to S3: " + bucketName + "/" + keyName);
-            }
-            catch (AmazonS3Exception e)
-            {
-                log.LogLine("Error encountered on object write: " + e.Message);
-                log.LogLine(e.ToString());
-            }
-            catch (Exception e)
-            {
-                log.LogLine("Unknown encountered when writing an object: " + e.Message);
-                log.LogLine(e.ToString());
-            }
-        }
-
-        /// <summary>
-        /// Uploads binary data to S3 with specified content type.
-        /// </summary>
-        /// <param name="bucketName">Target S3 bucket name for storage</param>
-        /// <param name="keyName">S3 object key (file path within bucket)</param>
-        /// <param name="data">Binary data to store</param>
-        /// <param name="contentType">MIME type of the content</param>
-        /// <returns>Task representing the asynchronous upload operation</returns>
-        private static async Task UploadFileAsync(string bucketName, string keyName, byte[] data, string contentType)
-        {
-            try
-            {
-                using var stream = new MemoryStream(data);
-
-                // Prepare request
-                var putObjectRequest = new PutObjectRequest
-                {
-                    BucketName = bucketName,
-                    Key = keyName,
-                    InputStream = stream,
-                    ContentType = contentType,
-                    StorageClass = S3StorageClass.StandardInfrequentAccess // Optimize for infrequent access
-                };
-
-                // Upload the object
-                await s3Client.PutObjectAsync(putObjectRequest);
-                log.LogLine($"Successfully wrote the object to S3: {bucketName}/{keyName} ({data.Length} bytes)");
             }
             catch (AmazonS3Exception e)
             {
@@ -916,35 +833,45 @@ namespace UnifiWebhookEventReceiver
         #region Video Download Operations
 
         /// <summary>
-        /// Downloads video from Unifi Protect using automated browser navigation.
+        /// Downloads video from Unifi Protect using automated browser navigation and uploads to S3.
         /// 
         /// This method uses PuppeteerSharp to automate a headless browser session that:
         /// 1. Navigates to the Unifi Protect event link
         /// 2. Authenticates using stored credentials
         /// 3. Downloads the video file for the event
-        /// 4. Returns the video data as a byte array
+        /// 4. Uploads the video to S3 using a presigned URL
         /// 
         /// The method handles the complete workflow of video retrieval from Unifi Protect
         /// systems that require web-based authentication and interaction.
         /// </summary>
         /// <param name="eventLocalLink">Direct URL to the event in Unifi Protect web interface</param>
         /// <param name="eventKey">Unique event identifier for naming the video file</param>
-        /// <returns>Byte array containing the downloaded video data</returns>
-        public static async Task<byte[]> GetVideoFromLocalUnifiProtectViaHeadlessClient(string eventLocalLink)
+        /// <returns>API Gateway response indicating success or failure of video download</returns>
+        public static async Task<APIGatewayProxyResponse> DownloadVideoFromLocalUnifiProtect(string eventLocalLink, string eventKey)
         {
-            log.LogLine($"Starting video download for event from URL: {eventLocalLink}");
+            log.LogLine($"Starting video download for event: {eventKey} from URL: {eventLocalLink}");
 
             // Validate all required environment variables first to fail fast
-            if (string.IsNullOrEmpty(eventLocalLink) || string.IsNullOrEmpty(UNIFI_USERNAME) || string.IsNullOrEmpty(UNIFI_PASSWORD))
+            if (string.IsNullOrEmpty(UNIFI_HOST) || string.IsNullOrEmpty(UNIFI_USERNAME) || string.IsNullOrEmpty(UNIFI_PASSWORD))
             {
                 log.LogLine("Missing required Unifi Protect credentials in environment variables");
-                throw new InvalidOperationException("Server configuration error: Unifi Protect credentials not configured");
+                return new APIGatewayProxyResponse
+                {
+                    StatusCode = (int)HttpStatusCode.InternalServerError,
+                    Body = JsonConvert.SerializeObject(new { msg = "Server configuration error: Unifi Protect credentials not configured" }),
+                    Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
+                };
             }
 
             if (string.IsNullOrEmpty(ALARM_BUCKET_NAME))
             {
                 log.LogLine("StorageBucket environment variable is not configured");
-                throw new InvalidOperationException("Server configuration error: StorageBucket not configured");
+                return new APIGatewayProxyResponse
+                {
+                    StatusCode = (int)HttpStatusCode.InternalServerError,
+                    Body = JsonConvert.SerializeObject(new { msg = "Server configuration error: StorageBucket not configured" }),
+                    Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
+                };
             }
 
             //Create a dictionary of coordinates for clicks to download videos
@@ -960,93 +887,45 @@ namespace UnifiWebhookEventReceiver
 
                 try
                 {
-                // Use pre-packaged Chromium browser from deployment
-                log.LogLine("Looking for pre-packaged Chromium browser...");
-                var chromeExecutablePath = Path.Combine(
-                    AppDomain.CurrentDomain.BaseDirectory, 
-                    "chromium", 
-                    "chrome"
-                );
+                // Launch headless browser using HeadlessChromium for AWS Lambda optimization
+                log.LogLine("Launching headless browser with HeadlessChromium...");
                 
-                LaunchOptions launchOptions;
+                // Create a simple logger factory for HeadlessChromium
+                using var loggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder => { });
                 
-                if (File.Exists(chromeExecutablePath))
+                var browserLauncher = new HeadlessChromiumPuppeteerLauncher(loggerFactory);
+                
+                // Use custom chrome arguments optimized for video downloading
+                var chromeArgs = new[]
                 {
-                    log.LogLine($"Using pre-packaged Chrome at: {chromeExecutablePath}");
-                    launchOptions = new LaunchOptions
-                    {
-                        Headless = true,
-                        ExecutablePath = chromeExecutablePath,
-                        Args = new[]
-                        {
-                            "--no-sandbox",
-                            "--disable-setuid-sandbox",
-                            "--disable-dev-shm-usage",
-                            "--disable-gpu",
-                            "--disable-web-security",
-                            "--ignore-certificate-errors",
-                            "--ignore-ssl-errors",
-                            "--ignore-certificate-errors-spki-list",
-                            "--no-first-run",
-                            "--no-zygote",
-                            "--disable-background-timer-throttling",
-                            "--disable-backgrounding-occluded-windows",
-                            "--disable-renderer-backgrounding",
-                            "--disable-features=VizDisplayCompositor"
-                        },
-                        DefaultViewport = new ViewPortOptions
-                        {
-                            Width = 1920,
-                            Height = 1080
-                        },
-                        Timeout = 20000 // 20 second timeout for browser launch
-                    };
-                }
-                else
-                {
-                    log.LogLine($"Pre-packaged Chrome not found at: {chromeExecutablePath}");
-                    log.LogLine("Falling back to PuppeteerSharp browser download for local development...");
-                    
-                    // Fallback for local development - download Chromium
-                    var browserFetcher = new BrowserFetcher();
-                    await browserFetcher.DownloadAsync();
-                    log.LogLine("Chromium download completed successfully");
-                    
-                    launchOptions = new LaunchOptions
-                    {
-                        Headless = true,
-                        Args = new[]
-                        {
-                            "--no-sandbox",
-                            "--disable-setuid-sandbox",
-                            "--disable-dev-shm-usage",
-                            "--disable-gpu",
-                            "--disable-web-security",
-                            "--ignore-certificate-errors",
-                            "--ignore-ssl-errors",
-                            "--ignore-certificate-errors-spki-list",
-                            "--no-first-run",
-                            "--no-zygote",
-                            "--disable-background-timer-throttling",
-                            "--disable-backgrounding-occluded-windows",
-                            "--disable-renderer-backgrounding",
-                            "--disable-features=VizDisplayCompositor"
-                        },
-                        DefaultViewport = new ViewPortOptions
-                        {
-                            Width = 1920,
-                            Height = 1080
-                        },
-                        Timeout = 20000 // 20 second timeout for browser launch
-                    };
-                }
-
-                // Launch headless browser
-                log.LogLine("Launching headless browser...");
-                using var browser = await Puppeteer.LaunchAsync(launchOptions);
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-gpu",
+                    "--disable-web-security",
+                    "--ignore-certificate-errors",
+                    "--ignore-ssl-errors",
+                    "--ignore-certificate-errors-spki-list",
+                    "--no-first-run",
+                    "--no-zygote",
+                    "--disable-background-timer-throttling",
+                    "--disable-backgrounding-occluded-windows",
+                    "--disable-renderer-backgrounding",
+                    "--disable-features=VizDisplayCompositor",
+                    "--window-size=1920,1080"
+                };
+                
+                using var browser = await browserLauncher.LaunchAsync(chromeArgs);
 
                 // Create a new page
                 using var page = await browser.NewPageAsync();
+
+                // Set viewport to ensure consistent rendering
+                await page.SetViewportAsync(new ViewPortOptions
+                {
+                    Width = 1920,
+                    Height = 1080
+                });
 
                 // Set the download path for the page - use configurable directory with Lambda-compatible default
                 var downloadDirectory = DOWNLOAD_DIRECTORY;
@@ -1251,18 +1130,91 @@ namespace UnifiWebhookEventReceiver
                 byte[] videoData = File.ReadAllBytes(latestVideoFile);  
                 log.LogLine($"Video data size: {videoData.Length} bytes");
 
-                // Return the video data
-                return videoData;
+                // Generate S3 key for the video file
+                var videoKey = $"videos/{eventKey}";
+
+                    // Generate presigned URL for the downloaded video
+                    log.LogLine($"Generating presigned URL for video key: {videoKey}");
+
+                    string presignedUrl = GeneratePreSignedURL(videoKey, HttpVerb.GET, EXPIRATION_SECONDS, "video/mp4");
+                    log.LogLine($"Presigned URL generated: {presignedUrl}");
+
+                    // Upload the video to S3
+                log.LogLine($"Uploading video to S3 bucket: {ALARM_BUCKET_NAME}, key: {videoKey}");
+                    
+                    await UploadVideoToS3Async(ALARM_BUCKET_NAME, videoKey, videoData);
+                    
+                    log.LogLine($"Video successfully uploaded to S3: {ALARM_BUCKET_NAME}/{videoKey}");
+
+                return new APIGatewayProxyResponse
+                {
+                    StatusCode = (int)HttpStatusCode.OK,
+                    Body = JsonConvert.SerializeObject(new
+                    {
+                        msg = $"Video successfully downloaded and stored for event {eventKey}",
+                        eventKey = eventKey,
+                        videoKey = videoKey,
+                        videoSize = videoData.Length,
+                        presignedUrl = presignedUrl,
+                        bucketName = ALARM_BUCKET_NAME
+                    }),
+                    Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
+                };
 
                 }
                 catch (Exception ex)
                 {
                     log.LogLine($"Error while processing video download: {ex.Message}");
-                    throw new Exception($"Error downloading video: {ex.Message}", ex);
+
+                    return new APIGatewayProxyResponse
+                    {
+                        StatusCode = (int)HttpStatusCode.InternalServerError,
+                        Body = JsonConvert.SerializeObject(new { msg = $"Error downloading video: {ex.Message}" }),
+                        Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
+                    };
                 }
         }
 
         #endregion
 
+            /// <summary>
+            /// Uploads video binary data to S3.
+            /// 
+            /// This method handles the storage of video files in the configured S3 bucket.
+            /// The content is stored as binary data with appropriate content type for video files.
+            /// </summary>
+            /// <param name="bucketName">Target S3 bucket name for storage</param>
+            /// <param name="keyName">S3 object key (file path within bucket)</param>
+            /// <param name="videoData">Binary video data to store</param>
+            /// <returns>Task representing the asynchronous upload operation</returns>
+        private static async Task UploadVideoToS3Async(string bucketName, string keyName, byte[] videoData)
+        {
+            try
+            {
+                using var stream = new MemoryStream(videoData);
+
+                var putObjectRequest = new PutObjectRequest
+                {
+                    BucketName = bucketName,
+                    Key = keyName,
+                    InputStream = stream,
+                    ContentType = "video/mp4",
+                    StorageClass = S3StorageClass.StandardInfrequentAccess // Optimize for infrequent access
+                };
+
+                await s3Client.PutObjectAsync(putObjectRequest);
+                log.LogLine($"Successfully uploaded video to S3: {bucketName}/{keyName} ({videoData.Length} bytes)");
+            }
+            catch (AmazonS3Exception e)
+            {
+                log.LogLine($"S3 error uploading video: {e.Message}");
+                throw;
+            }
+            catch (Exception e)
+            {
+                log.LogLine($"Error uploading video to S3: {e.Message}");
+                throw;
+            }
+        }
     }
 }
