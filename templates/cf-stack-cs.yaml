@@ -175,7 +175,7 @@ Resources:
       # DelaySeconds: 0  # Delay is configured per message, not per queue
       MessageRetentionPeriod: 1209600  # 14 days
       ReceiveMessageWaitTimeSeconds: 20  # Long polling
-      VisibilityTimeoutSeconds: 300  # 5 minutes (should exceed Lambda timeout)
+      VisibilityTimeout: 300  # 5 minutes (should exceed Lambda timeout)
       RedrivePolicy:
         deadLetterTargetArn: !GetAtt AlarmProcessingDeadLetterQueue.Arn
         maxReceiveCount: 3
