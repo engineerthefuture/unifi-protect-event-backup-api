@@ -153,6 +153,14 @@ Resources:
                   - sqs:SendMessage
                   - sqs:GetQueueAttributes
                 Resource: !GetAtt AlarmProcessingQueue.Arn
+        - PolicyName: UnifiCredentialsSecretsPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Ref UnifiCredentialsSecret
       Path: /
       Tags: 
         - Key: "Name"
@@ -215,6 +223,24 @@ Resources:
       FunctionName: !Ref LambdaFunction
       BatchSize: 1  # Process one message at a time
       MaximumBatchingWindowInSeconds: 0  # Process immediately when available
+
+  # Secrets Manager for Unifi Protect credentials
+  UnifiCredentialsSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "${FunctionName}-unifi-credentials"
+      Description: "Unifi Protect credentials for video downloads"
+      SecretString: !Sub |
+        {
+          "hostname": "${UnifiHost}",
+          "username": "${UnifiUsername}",
+          "password": "${UnifiPassword}"
+        }
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${FunctionName}-unifi-credentials"
+        - Key: "Purpose"
+          Value: "Unifi Protect authentication credentials"
 
   # API gateway instance
   ApiGateway:
@@ -413,9 +439,7 @@ Resources:
           DeviceMac28704E113C44: "Side"
           DeviceMac28704E113F33: "Backyard West"
           DeviceMacF4E2C677E20F: "Door"
-          UnifiHost: !Ref UnifiHost
-          UnifiUsername: !Ref UnifiUsername
-          UnifiPassword: !Ref UnifiPassword
+          UnifiCredentialsSecretArn: !Ref UnifiCredentialsSecret
           DownloadDirectory: !Ref DownloadDirectory
           ArchiveButtonX: !Ref ArchiveButtonX
           ArchiveButtonY: !Ref ArchiveButtonY

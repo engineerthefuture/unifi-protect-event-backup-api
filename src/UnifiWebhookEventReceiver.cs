@@ -31,6 +31,8 @@ using Amazon.S3;
 using Amazon.S3.Model;
 using Amazon.SQS;
 using Amazon.SQS.Model;
+using Amazon.SecretsManager;
+using Amazon.SecretsManager.Model;
 
 // Assembly attribute to enable the Lambda function's JSON input to be converted into a .NET class
 [assembly: LambdaSerializer(typeof(Amazon.Lambda.Serialization.SystemTextJson.DefaultLambdaJsonSerializer))]
@@ -57,14 +59,19 @@ namespace UnifiWebhookEventReceiver
     /// - DevicePrefix: Prefix for environment variables containing device name mappings
     /// - DeployedEnv: Environment identifier (dev, prod, etc.)
     /// - FunctionName: Lambda function name for logging
-    /// - UnifiHost: Hostname or IP of Unifi Protect system
-    /// - UnifiUsername: Username for Unifi Protect authentication
-    /// - UnifiPassword: Password for Unifi Protect authentication
+    /// - UnifiCredentialsSecretArn: AWS Secrets Manager ARN containing Unifi Protect credentials
     /// - DownloadDirectory: Directory for temporary video files (defaults to /tmp)
     /// - ArchiveButtonX: X coordinate for archive button click (used for "Door" device, defaults to 1274)
     /// - ArchiveButtonY: Y coordinate for archive button click (used for "Door" device, defaults to 257)
     /// - DownloadButtonX: X coordinate for download button click (used for "Door" device, defaults to 1095)
     /// - DownloadButtonY: Y coordinate for download button click (used for "Door" device, defaults to 275)
+    /// 
+    /// AWS Secrets Manager Secret Format (JSON):
+    /// {
+    ///   "hostname": "unifi-host.local or IP address",
+    ///   "username": "unifi-protect-username",
+    ///   "password": "unifi-protect-password"
+    /// }
     /// 
     /// Note: For devices other than "Door", coordinates are automatically adjusted to (1205, 241) for archive
     /// and (1026, 259) for download to accommodate different UI layouts in Unifi Protect.
@@ -125,14 +132,8 @@ namespace UnifiWebhookEventReceiver
         /// <summary>Lambda function name for logging and identification</summary>
         static string? FUNCTION_NAME = Environment.GetEnvironmentVariable("FunctionName");
 
-        /// <summary>Unifi Protect hostname or IP address for video downloads</summary>
-        static string? UNIFI_HOST = Environment.GetEnvironmentVariable("UnifiHost");
-
-        /// <summary>Unifi Protect username for authentication</summary>
-        static string? UNIFI_USERNAME = Environment.GetEnvironmentVariable("UnifiUsername");
-
-        /// <summary>Unifi Protect password for authentication</summary>
-        static string? UNIFI_PASSWORD = Environment.GetEnvironmentVariable("UnifiPassword");
+        /// <summary>AWS Secrets Manager ARN containing Unifi Protect credentials</summary>
+        static string? UNIFI_CREDENTIALS_SECRET_ARN = Environment.GetEnvironmentVariable("UnifiCredentialsSecretArn");
 
         /// <summary>Download directory for temporary video files. Defaults to /tmp for Lambda compatibility.</summary>
         static string DOWNLOAD_DIRECTORY = Environment.GetEnvironmentVariable("DownloadDirectory") ?? "/tmp";
@@ -163,6 +164,65 @@ namespace UnifiWebhookEventReceiver
 
         /// <summary>SQS client instance for queue operations</summary>
         static IAmazonSQS sqsClient = new AmazonSQSClient(AWS_REGION);
+
+        /// <summary>Secrets Manager client instance for credential retrieval</summary>
+        static IAmazonSecretsManager secretsClient = new AmazonSecretsManagerClient(AWS_REGION);
+
+        #endregion
+
+        #region Unifi Credentials Management
+
+        /// <summary>Class to hold Unifi Protect credentials retrieved from Secrets Manager</summary>
+        public class UnifiCredentials
+        {
+            public string hostname { get; set; } = string.Empty;
+            public string username { get; set; } = string.Empty;
+            public string password { get; set; } = string.Empty;
+        }
+
+        /// <summary>Cache for Unifi credentials to avoid repeated Secrets Manager calls</summary>
+        private static UnifiCredentials? _cachedCredentials = null;
+
+        /// <summary>
+        /// Retrieves Unifi Protect credentials from AWS Secrets Manager
+        /// </summary>
+        /// <returns>UnifiCredentials object containing hostname, username, and password</returns>
+        private static async Task<UnifiCredentials> GetUnifiCredentialsAsync()
+        {
+            if (_cachedCredentials != null)
+            {
+                return _cachedCredentials;
+            }
+
+            if (string.IsNullOrEmpty(UNIFI_CREDENTIALS_SECRET_ARN))
+            {
+                throw new InvalidOperationException("UnifiCredentialsSecretArn environment variable is not set");
+            }
+
+            try
+            {
+                var request = new GetSecretValueRequest
+                {
+                    SecretId = UNIFI_CREDENTIALS_SECRET_ARN
+                };
+
+                var response = await secretsClient.GetSecretValueAsync(request);
+                var credentials = JsonConvert.DeserializeObject<UnifiCredentials>(response.SecretString);
+                
+                if (credentials == null)
+                {
+                    throw new InvalidOperationException("Failed to deserialize Unifi credentials from Secrets Manager");
+                }
+
+                _cachedCredentials = credentials;
+                return credentials;
+            }
+            catch (Exception ex)
+            {
+                log.LogError($"Error retrieving Unifi credentials from Secrets Manager: {ex.Message}");
+                throw;
+            }
+        }
 
         #endregion
 
@@ -717,6 +777,9 @@ namespace UnifiWebhookEventReceiver
 
             try
             {
+                // Get Unifi credentials from Secrets Manager
+                var credentials = await GetUnifiCredentialsAsync();
+
                 // Check for null object
                 if (alarm != null)
                 {
@@ -787,8 +850,8 @@ namespace UnifiWebhookEventReceiver
                     await UploadFileAsync(ALARM_BUCKET_NAME, eventFileKey, JsonConvert.SerializeObject(alarm));
 
                     // Get the video file byte array
-                    eventLocalLink = UNIFI_HOST + alarm.eventPath;
-                    byte[] videoData = await GetVideoFromLocalUnifiProtectViaHeadlessClient(eventLocalLink, deviceName);
+                    eventLocalLink = credentials.hostname + alarm.eventPath;
+                    byte[] videoData = await GetVideoFromLocalUnifiProtectViaHeadlessClient(eventLocalLink, deviceName, credentials);
 
                     // Upload the video file to S3
                     await UploadFileAsync(ALARM_BUCKET_NAME, videoFileKey, videoData, "video/mp4");
@@ -1591,12 +1654,12 @@ namespace UnifiWebhookEventReceiver
         /// <param name="eventLocalLink">Direct URL to the event in Unifi Protect web interface</param>
         /// <param name="deviceName">Name of the device to determine appropriate click coordinates</param>
         /// <returns>Byte array containing the downloaded video data</returns>
-        public static async Task<byte[]> GetVideoFromLocalUnifiProtectViaHeadlessClient(string eventLocalLink, string deviceName)
+        public static async Task<byte[]> GetVideoFromLocalUnifiProtectViaHeadlessClient(string eventLocalLink, string deviceName, UnifiCredentials credentials)
         {
             log.LogLine($"Starting video download for event from URL: {eventLocalLink}");
 
             // Validate all required environment variables first to fail fast
-            if (string.IsNullOrEmpty(eventLocalLink) || string.IsNullOrEmpty(UNIFI_USERNAME) || string.IsNullOrEmpty(UNIFI_PASSWORD))
+            if (string.IsNullOrEmpty(eventLocalLink) || string.IsNullOrEmpty(credentials.username) || string.IsNullOrEmpty(credentials.password))
             {
                 log.LogLine("Missing required Unifi Protect credentials in environment variables");
                 throw new InvalidOperationException("Server configuration error: Unifi Protect credentials not configured");
@@ -1748,14 +1811,14 @@ namespace UnifiWebhookEventReceiver
 
                     // Take the username and password and * out all but the first 3 characters of the username and all of the characters of the password
                     log.LogLine("Filling in credentials for login...");
-                    var maskedUsername = UNIFI_USERNAME.Length > 3 ? UNIFI_USERNAME.Substring(0, 3) + new string('*', UNIFI_USERNAME.Length - 3) : UNIFI_USERNAME;
-                    var maskedPassword = new string('*', UNIFI_PASSWORD.Length);
+                    var maskedUsername = credentials.username.Length > 3 ? credentials.username.Substring(0, 3) + new string('*', credentials.username.Length - 3) : credentials.username;
+                    var maskedPassword = new string('*', credentials.password.Length);
 
                     log.LogLine($"Using credentials - Username: {maskedUsername}, Password: {maskedPassword}");
 
                     // Fill in credentials
-                    await usernameField.TypeAsync(UNIFI_USERNAME);
-                    await passwordField.TypeAsync(UNIFI_PASSWORD);
+                    await usernameField.TypeAsync(credentials.username);
+                    await passwordField.TypeAsync(credentials.password);
 
                     // Look for login button
                     var loginButton = await page.QuerySelectorAsync("button[type='submit']");
