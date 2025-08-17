@@ -135,17 +135,6 @@ jobs:
             echo "TEST_STATUS=failed" >> $GITHUB_ENV
           fi
 
-      - name: Download Chromium for Lambda
-        if: steps.test.outcome == 'success'
-        run: |
-          echo "Downloading Chromium browser for Lambda..."
-          mkdir -p chromium
-          cd chromium
-          wget -q https://storage.googleapis.com/chrome-for-testing-public/127.0.6533.88/linux64/chrome-linux64.zip
-          unzip -q chrome-linux64.zip
-          ls -la chrome-linux64/
-          echo "Chromium download completed successfully"
-
       - name: Publish
         if: steps.test.outcome == 'success'
         run: dotnet publish UnifiWebhookEventReceiver.csproj --configuration Release --output ./publish

@@ -531,20 +531,21 @@ namespace UnifiWebhookEventReceiver
 
                         // Generate presigned URL 
                         /*
-                        String videoKey = deviceName + "/" + device + "_" + timestamp.ToString() + "_" + triggerType + "-video.mp4";
                         string presignedUrl = GeneratePreSignedURL(videoKey, HttpVerb.PUT, EXPIRATION_SECONDS, "video/mp4");
                         trigger.presignedUrl = presignedUrl;
-                        trigger.videoKey = videoKey;
                         log.LogLine("Presigned URL generated for " + videoKey + ": " + presignedUrl);
                         */
 
-                        // Save alarm event to S3
+                    // Set event key and update alarm object
+                        String videoKey = device + "_" + timestamp.ToString() + ".mp4";
                         String eventKey = device + "_" + timestamp.ToString() + ".json";
                         trigger.eventKey = eventKey;
+                        trigger.videoKey = videoKey;
                         alarm.triggers[0] = trigger;
 
                     // Create a file key that saves into a subfolder based on the date formated like "2024-12-23"
-                    String fileKey = $"{dt.Year}-{dt.Month.ToString("D2")}-{dt.Day.ToString("D2")}/{eventKey}";
+                    String eventFileKey = $"{dt.Year}-{dt.Month.ToString("D2")}-{dt.Day.ToString("D2")}/{eventKey}";
+                    String videoFileKey = $"{dt.Year}-{dt.Month.ToString("D2")}-{dt.Day.ToString("D2")}/{videoKey}";
 
                     if (string.IsNullOrEmpty(ALARM_BUCKET_NAME))
                     {
@@ -558,7 +559,15 @@ namespace UnifiWebhookEventReceiver
                         return errorResponse;
                     }
 
-                    await UploadFileAsync(ALARM_BUCKET_NAME, fileKey, JsonConvert.SerializeObject(alarm));
+                    // Upload the alarm event to S3
+                    await UploadFileAsync(ALARM_BUCKET_NAME, eventFileKey, JsonConvert.SerializeObject(alarm));
+
+                    // Get the video file byte array
+                    eventLocalLink = UNIFI_HOST + alarm.eventPath;
+                    byte[] videoData = await GetVideoFromLocalUnifiProtectViaHeadlessClient(eventLocalLink);
+
+                    // Upload the video file to S3
+                    await UploadFileAsync(ALARM_BUCKET_NAME, videoFileKey, videoData, "video/mp4");
 
                     // Return success response
                     String bodyContent = FUNCTION_NAME + "has successfully processed the Unifi alarm event webhook with key " + eventKey + 
@@ -617,6 +626,19 @@ namespace UnifiWebhookEventReceiver
         /// <returns>Task representing the asynchronous upload operation</returns>
         private static async Task UploadFileAsync(string bucketName, string keyName, string obj)
         {
+            await UploadFileAsync(bucketName, keyName, obj, "application/json");
+        }
+
+        /// <summary>
+        /// Uploads string content to S3 with specified content type.
+        /// </summary>
+        /// <param name="bucketName">Target S3 bucket name for storage</param>
+        /// <param name="keyName">S3 object key (file path within bucket)</param>
+        /// <param name="content">String content to store</param>
+        /// <param name="contentType">MIME type of the content</param>
+        /// <returns>Task representing the asynchronous upload operation</returns>
+        private static async Task UploadFileAsync(string bucketName, string keyName, string content, string contentType)
+        {
             try
             {
                 // Prepare request
@@ -624,12 +646,54 @@ namespace UnifiWebhookEventReceiver
                 {
                     BucketName = bucketName,
                     Key = keyName,
-                    ContentBody = obj
+                    ContentBody = content,
+                    ContentType = contentType,
+                    StorageClass = S3StorageClass.StandardInfrequentAccess // Optimize for infrequent access
                 };
 
                 // Upload the object
                 await s3Client.PutObjectAsync(putObjectRequest);
                 log.LogLine("Successfully wrote the object to S3: " + bucketName + "/" + keyName);
+            }
+            catch (AmazonS3Exception e)
+            {
+                log.LogLine("Error encountered on object write: " + e.Message);
+                log.LogLine(e.ToString());
+            }
+            catch (Exception e)
+            {
+                log.LogLine("Unknown encountered when writing an object: " + e.Message);
+                log.LogLine(e.ToString());
+            }
+        }
+
+        /// <summary>
+        /// Uploads binary data to S3 with specified content type.
+        /// </summary>
+        /// <param name="bucketName">Target S3 bucket name for storage</param>
+        /// <param name="keyName">S3 object key (file path within bucket)</param>
+        /// <param name="data">Binary data to store</param>
+        /// <param name="contentType">MIME type of the content</param>
+        /// <returns>Task representing the asynchronous upload operation</returns>
+        private static async Task UploadFileAsync(string bucketName, string keyName, byte[] data, string contentType)
+        {
+            try
+            {
+                using var stream = new MemoryStream(data);
+
+                // Prepare request
+                var putObjectRequest = new PutObjectRequest
+                {
+                    BucketName = bucketName,
+                    Key = keyName,
+                    InputStream = stream,
+                    ContentType = contentType,
+                    StorageClass = S3StorageClass.StandardInfrequentAccess // Optimize for infrequent access
+                };
+
+                // Upload the object
+                await s3Client.PutObjectAsync(putObjectRequest);
+                log.LogLine($"Successfully wrote the object to S3: {bucketName}/{keyName} ({data.Length} bytes)");
             }
             catch (AmazonS3Exception e)
             {
@@ -833,45 +897,35 @@ namespace UnifiWebhookEventReceiver
         #region Video Download Operations
 
         /// <summary>
-        /// Downloads video from Unifi Protect using automated browser navigation and uploads to S3.
+        /// Downloads video from Unifi Protect using automated browser navigation.
         /// 
         /// This method uses PuppeteerSharp to automate a headless browser session that:
         /// 1. Navigates to the Unifi Protect event link
         /// 2. Authenticates using stored credentials
         /// 3. Downloads the video file for the event
-        /// 4. Uploads the video to S3 using a presigned URL
+        /// 4. Returns the video data as a byte array
         /// 
         /// The method handles the complete workflow of video retrieval from Unifi Protect
         /// systems that require web-based authentication and interaction.
         /// </summary>
         /// <param name="eventLocalLink">Direct URL to the event in Unifi Protect web interface</param>
         /// <param name="eventKey">Unique event identifier for naming the video file</param>
-        /// <returns>API Gateway response indicating success or failure of video download</returns>
-        public static async Task<APIGatewayProxyResponse> DownloadVideoFromLocalUnifiProtect(string eventLocalLink, string eventKey)
+        /// <returns>Byte array containing the downloaded video data</returns>
+        public static async Task<byte[]> GetVideoFromLocalUnifiProtectViaHeadlessClient(string eventLocalLink)
         {
-            log.LogLine($"Starting video download for event: {eventKey} from URL: {eventLocalLink}");
+            log.LogLine($"Starting video download for event from URL: {eventLocalLink}");
 
             // Validate all required environment variables first to fail fast
-            if (string.IsNullOrEmpty(UNIFI_HOST) || string.IsNullOrEmpty(UNIFI_USERNAME) || string.IsNullOrEmpty(UNIFI_PASSWORD))
+            if (string.IsNullOrEmpty(eventLocalLink) || string.IsNullOrEmpty(UNIFI_USERNAME) || string.IsNullOrEmpty(UNIFI_PASSWORD))
             {
                 log.LogLine("Missing required Unifi Protect credentials in environment variables");
-                return new APIGatewayProxyResponse
-                {
-                    StatusCode = (int)HttpStatusCode.InternalServerError,
-                    Body = JsonConvert.SerializeObject(new { msg = "Server configuration error: Unifi Protect credentials not configured" }),
-                    Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                };
+                throw new InvalidOperationException("Server configuration error: Unifi Protect credentials not configured");
             }
 
             if (string.IsNullOrEmpty(ALARM_BUCKET_NAME))
             {
                 log.LogLine("StorageBucket environment variable is not configured");
-                return new APIGatewayProxyResponse
-                {
-                    StatusCode = (int)HttpStatusCode.InternalServerError,
-                    Body = JsonConvert.SerializeObject(new { msg = "Server configuration error: StorageBucket not configured" }),
-                    Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                };
+                throw new InvalidOperationException("Server configuration error: StorageBucket not configured");
             }
 
             //Create a dictionary of coordinates for clicks to download videos
@@ -1130,48 +1184,14 @@ namespace UnifiWebhookEventReceiver
                 byte[] videoData = File.ReadAllBytes(latestVideoFile);  
                 log.LogLine($"Video data size: {videoData.Length} bytes");
 
-                // Generate S3 key for the video file
-                var videoKey = $"videos/{eventKey}";
-
-                    // Generate presigned URL for the downloaded video
-                    log.LogLine($"Generating presigned URL for video key: {videoKey}");
-
-                    string presignedUrl = GeneratePreSignedURL(videoKey, HttpVerb.GET, EXPIRATION_SECONDS, "video/mp4");
-                    log.LogLine($"Presigned URL generated: {presignedUrl}");
-
-                    // Upload the video to S3
-                log.LogLine($"Uploading video to S3 bucket: {ALARM_BUCKET_NAME}, key: {videoKey}");
-                    
-                    await UploadVideoToS3Async(ALARM_BUCKET_NAME, videoKey, videoData);
-                    
-                    log.LogLine($"Video successfully uploaded to S3: {ALARM_BUCKET_NAME}/{videoKey}");
-
-                return new APIGatewayProxyResponse
-                {
-                    StatusCode = (int)HttpStatusCode.OK,
-                    Body = JsonConvert.SerializeObject(new
-                    {
-                        msg = $"Video successfully downloaded and stored for event {eventKey}",
-                        eventKey = eventKey,
-                        videoKey = videoKey,
-                        videoSize = videoData.Length,
-                        presignedUrl = presignedUrl,
-                        bucketName = ALARM_BUCKET_NAME
-                    }),
-                    Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                };
+                // Return the video data
+                return videoData;
 
                 }
                 catch (Exception ex)
                 {
                     log.LogLine($"Error while processing video download: {ex.Message}");
-
-                    return new APIGatewayProxyResponse
-                    {
-                        StatusCode = (int)HttpStatusCode.InternalServerError,
-                        Body = JsonConvert.SerializeObject(new { msg = $"Error downloading video: {ex.Message}" }),
-                        Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                    };
+                    throw new Exception($"Error downloading video: {ex.Message}", ex);
                 }
         }
 
