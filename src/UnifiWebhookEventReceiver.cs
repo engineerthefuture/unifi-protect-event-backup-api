@@ -1017,52 +1017,53 @@ namespace UnifiWebhookEventReceiver
                     var screenshotPath = Path.Combine(downloadDirectory, "login-screenshot.png");
                     await page.ScreenshotAsync(screenshotPath);
                     log.LogLine($"Screenshot taken: {screenshotPath}");
+                    await UploadFileAsync(ALARM_BUCKET_NAME, "screenshots/login-screenshot.png", File.ReadAllBytes(screenshotPath), "image/png");
 
                     // Check if username and password fields are present
-                    if (usernameField != null && passwordField != null)
+                if (usernameField != null && passwordField != null)
+                {
+                    log.LogLine("Login form detected, attempting authentication...");
+
+                    // Fill in credentials
+                    await usernameField.TypeAsync(UNIFI_USERNAME);
+                    await passwordField.TypeAsync(UNIFI_PASSWORD);
+
+                    // Look for login button
+                    var loginButton = await page.QuerySelectorAsync("button[type='submit']");
+
+                    // Check if login button is present
+                    if (loginButton != null)
                     {
-                        log.LogLine("Login form detected, attempting authentication...");
+                        await loginButton.ClickAsync();
+                        log.LogLine("Login button clicked, waiting for authentication...");
 
-                        // Fill in credentials
-                        await usernameField.TypeAsync(UNIFI_USERNAME);
-                        await passwordField.TypeAsync(UNIFI_PASSWORD);
-
-                        // Look for login button
-                        var loginButton = await page.QuerySelectorAsync("button[type='submit']");
-
-                        // Check if login button is present
-                        if (loginButton != null)
+                        // Wait for navigation after login
+                        await page.WaitForNavigationAsync(new NavigationOptions
                         {
-                            await loginButton.ClickAsync();
-                            log.LogLine("Login button clicked, waiting for authentication...");
+                            WaitUntil = new[] { WaitUntilNavigation.Networkidle0 },
+                            Timeout = 15000
+                        });
+                    }
+                    else
+                    {
+                        log.LogLine("Login button not found, trying Enter key...");
+                        await passwordField.PressAsync("Enter");
 
-                            // Wait for navigation after login
+                        // Wait for navigation after Enter key
+                        try
+                        {
                             await page.WaitForNavigationAsync(new NavigationOptions
                             {
                                 WaitUntil = new[] { WaitUntilNavigation.Networkidle0 },
-                                Timeout = 15000
+                                Timeout = 10000
                             });
                         }
-                        else
+                        catch (Exception)
                         {
-                            log.LogLine("Login button not found, trying Enter key...");
-                            await passwordField.PressAsync("Enter");
-                            
-                            // Wait for navigation after Enter key
-                            try
-                            {
-                                await page.WaitForNavigationAsync(new NavigationOptions
-                                {
-                                    WaitUntil = new[] { WaitUntilNavigation.Networkidle0 },
-                                    Timeout = 10000
-                                });
-                            }
-                            catch (Exception)
-                            {
-                                log.LogLine("Navigation timeout after Enter key, continuing...");
-                            }
+                            log.LogLine("Navigation timeout after Enter key, continuing...");
                         }
                     }
+                }
 
                     // Wait for the page to fully load after authentication
                     log.LogLine("Waiting for page to load after authentication...");
@@ -1107,6 +1108,7 @@ namespace UnifiWebhookEventReceiver
                     screenshotPath = Path.Combine(downloadDirectory, "pageload-screenshot.png");
                     await page.ScreenshotAsync(screenshotPath);
                     log.LogLine($"Screenshot taken of the loaded page: {screenshotPath}");
+                    await UploadFileAsync(ALARM_BUCKET_NAME, "screenshots/pageload-screenshot.png", File.ReadAllBytes(screenshotPath), "image/png");
 
                     // Click at click coordinates for archive button
                     await page.Mouse.ClickAsync(clickCoordinates["archiveButton"].x, clickCoordinates["archiveButton"].y);
@@ -1116,18 +1118,20 @@ namespace UnifiWebhookEventReceiver
                     screenshotPath = Path.Combine(downloadDirectory, "firstclick-screenshot.png");
                     await page.ScreenshotAsync(screenshotPath);
                     log.LogLine($"Screenshot taken of the clicked archive button: {screenshotPath}");
+                    await UploadFileAsync(ALARM_BUCKET_NAME, "screenshots/firstclick-screenshot.png", File.ReadAllBytes(screenshotPath), "image/png");
 
                     // Click at click coordinates for download button
-                    await page.Mouse.ClickAsync(clickCoordinates["downloadButton"].x, clickCoordinates["downloadButton"].y);
+                await page.Mouse.ClickAsync(clickCoordinates["downloadButton"].x, clickCoordinates["downloadButton"].y);
                     log.LogLine("Clicked on download button at coordinates: " + clickCoordinates["downloadButton"]);
 
                     // Take a screenshot of the clicked download button
                     screenshotPath = Path.Combine(downloadDirectory, "secondclick-screenshot.png");
                     await page.ScreenshotAsync(screenshotPath);
                     log.LogLine($"Screenshot taken of the clicked download button: {screenshotPath}");
+                    await UploadFileAsync(ALARM_BUCKET_NAME, "screenshots/secondclick-screenshot.png", File.ReadAllBytes(screenshotPath), "image/png");
 
                     // Wait for download to complete
-                    log.LogLine("Waiting for video download to complete...");
+                log.LogLine("Waiting for video download to complete...");
                     
                     // Instead of a fixed delay, monitor the download directory for new files
                     var initialFileCount = Directory.GetFiles(downloadDirectory, "*.mp4").Length;
