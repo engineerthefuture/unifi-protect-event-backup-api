@@ -66,17 +66,159 @@ jobs:
           dotnet build UnifiWebhookEventReceiver.csproj --configuration Release --no-restore
           dotnet build test/UnifiWebhookEventReceiverTests.csproj --configuration Release --no-restore
 
-      - name: Run unit tests
+      - name: Run unit tests with coverage
         id: test
         run: |
-          echo "Running unit tests..."
-          dotnet test test/ --configuration Release --no-build --verbosity normal --logger trx --results-directory ./test-results
+          echo "Running unit tests with code coverage analysis..."
+          
+          # Create directories for coverage results
+          mkdir -p ./coverage-results
+          mkdir -p ./test-results
+          
+          # Run tests with code coverage collection
+          dotnet test test/ \
+            --configuration Release \
+            --no-build \
+            --verbosity normal \
+            --logger trx \
+            --results-directory ./test-results \
+            --collect:"XPlat Code Coverage" \
+            --settings test/coverlet.runsettings \
+            /p:CollectCoverage=true \
+            /p:CoverletOutputFormat=opencover \
+            /p:CoverletOutput=../coverage-results/coverage.opencover.xml \
+            /p:Exclude="[xunit*]*%2c[*.Tests*]*" \
+            /p:ExcludeByAttribute="Obsolete%2cGeneratedCodeAttribute%2cCompilerGeneratedAttribute"
+          
           TEST_EXIT_CODE=$?
           if [ $TEST_EXIT_CODE -ne 0 ]; then
             echo "::error::Unit tests failed with exit code $TEST_EXIT_CODE"
             exit $TEST_EXIT_CODE
           fi
+          
+          # Generate coverage reports in multiple formats
+          dotnet tool install --global dotnet-reportgenerator-globaltool --version 5.2.4
+          
+          reportgenerator \
+            -reports:"./coverage-results/coverage.opencover.xml" \
+            -targetdir:"./coverage-results/html" \
+            -reporttypes:"Html;JsonSummary;Badges;TextSummary;Cobertura" \
+            -verbosity:Info \
+            -classfilters:"-xunit*;-*.Tests*" \
+            -assemblyfilters:"-xunit*;-*.Tests*"
+          
+          # Display coverage summary
+          echo "=== Code Coverage Summary ==="
+          if [ -f "./coverage-results/html/Summary.txt" ]; then
+            cat ./coverage-results/html/Summary.txt
+          fi
+          
+          # Extract key metrics for annotations
+          if [ -f "./coverage-results/html/Summary.json" ]; then
+            echo "Parsing coverage metrics..."
+            COVERAGE_DATA=$(cat ./coverage-results/html/Summary.json)
+            echo "COVERAGE_DATA<<EOF" >> $GITHUB_ENV
+            echo "$COVERAGE_DATA" >> $GITHUB_ENV
+            echo "EOF" >> $GITHUB_ENV
+          fi
+          
           echo "All unit tests passed successfully!"
+
+      - name: Create coverage summary
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let summary = '## 📊 Test Results & Code Coverage\n\n';
+            
+            try {
+              // Parse coverage data
+              const coverageFile = './coverage-results/html/Summary.json';
+              if (fs.existsSync(coverageFile)) {
+                const coverage = JSON.parse(fs.readFileSync(coverageFile, 'utf8'));
+                
+                const lineCoverage = coverage.summary.linecoverage || 0;
+                const branchCoverage = coverage.summary.branchcoverage || 0;
+                const methodCoverage = coverage.summary.methodcoverage || 0;
+                
+                // Coverage badges
+                const lineBadge = lineCoverage >= 80 ? '🟢' : lineCoverage >= 60 ? '🟡' : '🔴';
+                const branchBadge = branchCoverage >= 80 ? '🟢' : branchCoverage >= 60 ? '🟡' : '🔴';
+                const methodBadge = methodCoverage >= 80 ? '🟢' : methodCoverage >= 60 ? '🟡' : '🔴';
+                
+                summary += `### Coverage Metrics\n\n`;
+                summary += `| Metric | Coverage | Status |\n`;
+                summary += `|--------|----------|--------|\n`;
+                summary += `| Line Coverage | ${lineCoverage.toFixed(1)}% | ${lineBadge} |\n`;
+                summary += `| Branch Coverage | ${branchCoverage.toFixed(1)}% | ${branchBadge} |\n`;
+                summary += `| Method Coverage | ${methodCoverage.toFixed(1)}% | ${methodBadge} |\n\n`;
+                
+                // Detailed coverage by assembly
+                if (coverage.coverage && coverage.coverage.length > 0) {
+                  summary += `### Coverage by Assembly\n\n`;
+                  summary += `| Assembly | Line % | Branch % | Method % |\n`;
+                  summary += `|----------|--------|----------|----------|\n`;
+                  
+                  coverage.coverage.forEach(assembly => {
+                    if (assembly.name && !assembly.name.includes('Test')) {
+                      const linePercent = ((assembly.coveredlines / assembly.coverablelines) * 100) || 0;
+                      const branchPercent = ((assembly.coveredbranches / assembly.totalbranches) * 100) || 0;
+                      const methodPercent = ((assembly.coveredmethods / assembly.totalmethods) * 100) || 0;
+                      
+                      summary += `| ${assembly.name} | ${linePercent.toFixed(1)}% | ${branchPercent.toFixed(1)}% | ${methodPercent.toFixed(1)}% |\n`;
+                    }
+                  });
+                }
+                
+                summary += '\n';
+              }
+              
+              // Test results summary
+              const testResultsDir = './test-results';
+              if (fs.existsSync(testResultsDir)) {
+                const files = fs.readdirSync(testResultsDir).filter(f => f.endsWith('.trx'));
+                if (files.length > 0) {
+                  summary += `### Test Execution Results\n\n`;
+                  files.forEach(file => {
+                    const content = fs.readFileSync(`${testResultsDir}/${file}`, 'utf8');
+                    const totalMatch = content.match(/total="(\d+)"/);
+                    const passedMatch = content.match(/passed="(\d+)"/);
+                    const failedMatch = content.match(/failed="(\d+)"/);
+                    
+                    if (totalMatch && passedMatch) {
+                      const total = parseInt(totalMatch[1]);
+                      const passed = parseInt(passedMatch[1]);
+                      const failed = failedMatch ? parseInt(failedMatch[1]) : 0;
+                      const status = failed === 0 ? '✅' : '❌';
+                      
+                      summary += `${status} **${passed}/${total} tests passed** (${failed} failed)\n\n`;
+                    }
+                  });
+                }
+              }
+              
+              // Quality metrics interpretation
+              summary += `### Quality Assessment\n\n`;
+              if (fs.existsSync('./coverage-results/html/Summary.json')) {
+                const coverage = JSON.parse(fs.readFileSync('./coverage-results/html/Summary.json', 'utf8'));
+                const avgCoverage = (coverage.summary.linecoverage + coverage.summary.branchcoverage) / 2;
+                
+                if (avgCoverage >= 80) {
+                  summary += `🎯 **Excellent coverage** - The codebase has comprehensive test coverage.\n\n`;
+                } else if (avgCoverage >= 60) {
+                  summary += `⚡ **Good coverage** - Consider adding tests for uncovered branches and edge cases.\n\n`;
+                } else {
+                  summary += `⚠️ **Coverage needs improvement** - Significant portions of code lack test coverage.\n\n`;
+                }
+              }
+              
+            } catch (error) {
+              summary += `❌ Error parsing coverage results: ${error.message}\n\n`;
+            }
+            
+            core.summary.addRaw(summary);
+            await core.summary.write();
 
       - name: Publish test results
         uses: dorny/test-reporter@v1
@@ -101,6 +243,32 @@ jobs:
           name: test-results
           path: ./test-results
 
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-reports
+          path: ./coverage-results
+
+      - name: Add coverage to PR comment
+        if: github.event_name == 'pull_request' && always()
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          recreate: true
+          message: |
+            ## 📊 Code Coverage Report
+            
+            Coverage reports have been generated and uploaded as artifacts.
+            
+            You can download the detailed HTML coverage report from the workflow run artifacts.
+            
+            ### Quick Stats
+            - **Line Coverage**: Check the detailed report for exact percentages
+            - **Branch Coverage**: Detailed branch analysis available
+            - **Cyclomatic Complexity**: Method complexity metrics included
+            
+            📈 Full interactive HTML report available in workflow artifacts!
+
       - name: Display test results summary
         if: always()
         run: |
@@ -123,6 +291,22 @@ jobs:
           else
             echo "No test result files found."
           fi
+          
+          echo ""
+          echo "=== Code Coverage Summary ==="
+          if [ -f "./coverage-results/html/Summary.txt" ]; then
+            echo "Coverage summary:"
+            cat ./coverage-results/html/Summary.txt
+          else
+            echo "No coverage summary found."
+          fi
+          
+          echo ""
+          echo "=== Coverage Files Generated ==="
+          if [ -d "./coverage-results" ]; then
+            echo "Coverage files:"
+            find ./coverage-results -type f -name "*.xml" -o -name "*.json" -o -name "*.html" | head -20
+          fi
 
       - name: Test Summary
         if: always()
@@ -130,6 +314,34 @@ jobs:
           if [ "${{ steps.test.outcome }}" == "success" ]; then
             echo "✅ All unit tests passed! Deployment can proceed."
             echo "TEST_STATUS=passed" >> $GITHUB_ENV
+            
+            # Extract and display key coverage metrics
+            if [ -f "./coverage-results/html/Summary.json" ]; then
+              echo "📊 Extracting coverage metrics..."
+              python3 << 'EOF'
+          import json
+          import sys
+          try:
+              with open('./coverage-results/html/Summary.json', 'r') as f:
+                  data = json.load(f)
+              
+              line_coverage = data['summary']['linecoverage']
+              branch_coverage = data['summary']['branchcoverage'] 
+              method_coverage = data['summary']['methodcoverage']
+              
+              print(f'📈 Line Coverage: {line_coverage:.1f}%')
+              print(f'🌿 Branch Coverage: {branch_coverage:.1f}%') 
+              print(f'🔧 Method Coverage: {method_coverage:.1f}%')
+              
+              # Set coverage as output for other steps
+              with open('coverage_summary.txt', 'w') as f:
+                  f.write(f'Line: {line_coverage:.1f}% | Branch: {branch_coverage:.1f}% | Method: {method_coverage:.1f}%')
+                  
+          except Exception as e:
+              print(f'Could not parse coverage: {e}')
+              sys.exit(0)
+          EOF
+            fi
           else
             echo "❌ Unit tests failed! Deployment will be skipped."
             echo "TEST_STATUS=failed" >> $GITHUB_ENV
