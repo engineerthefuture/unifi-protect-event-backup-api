@@ -80,11 +80,11 @@ Parameters:
   DownloadButtonX:
     Type: Number
     Description: X coordinate for download button click in Unifi Protect UI
-    Default: 1095
+    Default: 1270
   DownloadButtonY:
     Type: Number
     Description: Y coordinate for download button click in Unifi Protect UI
-    Default: 275
+    Default: 298
 
 # Resources
 Resources: 
@@ -342,7 +342,7 @@ Resources:
               #AssemblyName::NameSpace.ClassName::FunctionHandlerName
       Handler: UnifiWebhookEventReceiver::UnifiWebhookEventReceiver.UnifiWebhookEventReceiver::FunctionHandler
       MemorySize: 2056
-      Timeout: 90
+      Timeout: 150
       Runtime: dotnet8
       Role: !GetAtt LambdaRole.Arn
       Environment:

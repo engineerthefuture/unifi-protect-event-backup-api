@@ -135,10 +135,10 @@ namespace UnifiWebhookEventReceiver
         static int ARCHIVE_BUTTON_Y = int.TryParse(Environment.GetEnvironmentVariable("ArchiveButtonY"), out var archiveY) ? archiveY : 257;
 
         /// <summary>X coordinate for download button click. Defaults to 1095.</summary>
-        static int DOWNLOAD_BUTTON_X = int.TryParse(Environment.GetEnvironmentVariable("DownloadButtonX"), out var downloadX) ? downloadX : 1095;
+        static int DOWNLOAD_BUTTON_X = int.TryParse(Environment.GetEnvironmentVariable("DownloadButtonX"), out var downloadX) ? downloadX : 1270;
 
         /// <summary>Y coordinate for download button click. Defaults to 275.</summary>
-        static int DOWNLOAD_BUTTON_Y = int.TryParse(Environment.GetEnvironmentVariable("DownloadButtonY"), out var downloadY) ? downloadY : 275;
+        static int DOWNLOAD_BUTTON_Y = int.TryParse(Environment.GetEnvironmentVariable("DownloadButtonY"), out var downloadY) ? downloadY : 298;
 
         /// <summary>AWS region for S3 operations</summary>
         static RegionEndpoint AWS_REGION = RegionEndpoint.USEast1;
