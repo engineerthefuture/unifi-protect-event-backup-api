@@ -28,7 +28,6 @@ This serverless application provides a comprehensive backup and retrieval system
 - **Comprehensive Error Handling**: Detailed logging and error management
 - **Scalable Architecture**: Serverless design that scales automatically
 - **Browser Automation**: Headless Chrome integration for Unifi Protect navigation
-- **Blob URL Processing**: Direct video blob extraction and MP4 conversion
 
 ## 🎥 Video Download Capabilities
 
@@ -41,13 +40,12 @@ The system now includes sophisticated browser automation to download video conte
 3. **Navigation**: Programmatic navigation to specific event pages
 4. **Video Extraction**: Direct blob URL access and video content download
 5. **Format Conversion**: Conversion to MP4 format for standardized storage
-6. **S3 Storage**: Organized storage in S3 with presigned URL generation
+6. **S3 Storage**: Organized storage in S3 
 
 ### Technical Implementation
 
 - **🔐 Secure Authentication**: Credential-based login with error handling
 - **📱 Responsive Navigation**: Handles Unifi Protect's modern web interface
-- **💾 Blob Processing**: Direct blob URL extraction using JavaScript execution
 - **🔄 Error Recovery**: Comprehensive error handling and retry mechanisms
 - **📊 Progress Monitoring**: Detailed logging and screenshot capture for debugging
 
@@ -58,8 +56,6 @@ S3 Bucket Structure:
 ├── events/
 │   └── YYYY-MM-DD/
 │       └── {deviceMac}_{timestamp}.json
-└── videos/
-    └── YYYY-MM-DD/
         └── {deviceMac}_{timestamp}.mp4
 ```
 
@@ -286,13 +282,6 @@ Retrieves stored alarm event data
 - **Parameters**: `eventKey` - Event identifier (format: `{deviceMac}_{timestamp}.json`)
 - **Response**: Complete alarm event JSON object
 
-#### 3. **🆕 Video Download** - `GET /{stage}/video?eventKey={eventKey}`
-Downloads video content for alarm events
-- **Purpose**: Automated video retrieval from Unifi Protect
-- **Authentication**: API Key required
-- **Process**: Browser automation → Video extraction → S3 storage
-- **Response**: Video metadata with S3 presigned URL for download
-
 ### OpenAPI 3.0 Specification
 
 📋 **Complete API Documentation**: [openapi.yaml](openapi.yaml)
@@ -301,7 +290,6 @@ The full OpenAPI 3.0 specification is available in the [`openapi.yaml`](openapi.
 
 - **Complete endpoint documentation** with detailed request/response schemas
 - **Interactive examples** for all supported event types (motion, person, vehicle detection)
-- **Video endpoint documentation** with automation workflow details
 - **Comprehensive error handling** documentation with specific error codes
 - **Authentication and security** requirements
 - **Validation patterns** for MAC addresses, timestamps, and event keys
@@ -402,7 +390,6 @@ The project includes a comprehensive CI/CD pipeline that automatically builds, t
 - **Artifact Management**: Preserves build outputs and test results
 - **AWS Integration**: Uses OIDC for secure AWS authentication
 - **Infrastructure as Code**: Complete CloudFormation-based infrastructure management
-- **🆕 Video Download Testing**: Validates PuppeteerSharp browser automation functionality
 
 #### Required GitHub Repository Variables
 
@@ -595,12 +582,6 @@ curl -X POST "https://your-api-gateway-url/prod/alarmevent" \
     }],
     "timestamp": 1755383421797
   }'
-```
-
-#### Test Video Download Endpoint  
-```bash
-curl -X GET "https://your-api-gateway-url/prod/video?eventKey=F4E2C67A2FE8_1755383421797.json" \
-  -H "x-api-key: your-api-key"
 ```
 
 ## Manual Deployment (Alternative)
@@ -1241,14 +1222,6 @@ aws cloudwatch get-metric-statistics \
 3. **Test components individually** to isolate problems
 4. **Use AWS CLI commands** to verify resource configuration
 5. **Create GitHub Issues** for bugs or feature requests
-
-## Future Enhancements
-
-- **🎬 Advanced Video Processing**: Video compression and format optimization
-- **🔍 Event Analytics**: Machine learning-based event analysis and categorization  
-- **📱 Mobile Integration**: Push notifications and mobile app connectivity
-- **🔄 Real-time Streaming**: Live video streaming capabilities
-- **🛡️ Advanced Security**: Enhanced encryption and access control mechanisms
 
 ## Contributing
 
