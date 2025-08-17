@@ -1092,214 +1092,276 @@ namespace UnifiWebhookEventReceiver
         /// for the one with the highest timestamp from the most recent date that contains videos.
         /// </summary>
         /// <returns>API Gateway response containing download URL, metadata, and event details, or error message</returns>
+        /// <summary>
+        /// Retrieves the latest video from S3 and returns a presigned URL for download along with event details.
+        /// 
+        /// This method efficiently searches through date-organized folders in S3 to find the most recent
+        /// video file (.mp4) based on the timestamp in the filename. It starts from today's date folder
+        /// and works backwards day by day until a video is found, making it much more efficient than
+        /// scanning all objects in the bucket.
+        /// 
+        /// Instead of returning the video data directly (which would exceed API Gateway's 6MB limit),
+        /// this method returns a presigned URL that allows direct download from S3. The URL expires
+        /// after 1 hour for security purposes.
+        /// 
+        /// Additionally, this method retrieves the corresponding event JSON data (alarm details, device
+        /// information, trigger types, etc.) by looking up the matching .json file and includes it in
+        /// the response to provide complete context about the video.
+        /// 
+        /// The search looks through folders in YYYY-MM-DD format and finds files matching
+        /// the pattern {deviceMac}_{timestamp}.mp4, returning metadata, download URL, and event details 
+        /// for the one with the highest timestamp from the most recent date that contains videos.
+        /// </summary>
+        /// <returns>API Gateway response containing download URL, metadata, and event details, or error message</returns>
         public static async Task<APIGatewayProxyResponse> GetLatestVideoFunction()
         {
             log.LogLine("Executing Get latest video function");
 
             try
             {
-                if (string.IsNullOrEmpty(ALARM_BUCKET_NAME))
-                {
-                    log.LogLine("StorageBucket environment variable is not configured");
-                    return new APIGatewayProxyResponse
-                    {
-                        StatusCode = (int)HttpStatusCode.InternalServerError,
-                        Body = JsonConvert.SerializeObject(new { msg = "Server configuration error: StorageBucket not configured" }),
-                        Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                    };
-                }
+                // Validate configuration
+                var configError = ValidateLatestVideoConfiguration();
+                if (configError != null) return configError;
 
-                // Search for latest video using date-organized folder structure
-                log.LogLine("Searching for latest video file in S3 bucket using date-organized approach: " + ALARM_BUCKET_NAME);
+                // Search for the latest video
+                var searchResult = await SearchForLatestVideoAsync();
+                if (searchResult.ErrorResponse != null) return searchResult.ErrorResponse;
 
-                string? latestVideoKey = null;
-                long latestTimestamp = 0;
+                // Verify video exists
+                var verificationError = await VerifyVideoExistsAsync(searchResult.VideoKey!);
+                if (verificationError != null) return verificationError;
 
-                // Start from today and work backwards day by day
-                DateTime searchDate = DateTime.UtcNow.Date;
-                int maxDaysToSearch = 30; // Limit search to avoid infinite loops
-                int daysSearched = 0;
+                // Get event data
+                var eventData = await RetrieveEventDataAsync(searchResult.VideoKey!);
 
-                while (latestVideoKey == null && daysSearched < maxDaysToSearch)
-                {
-                    string dateFolder = searchDate.ToString("yyyy-MM-dd");
-                    log.LogLine($"Searching for videos in date folder: {dateFolder}");
-
-                    var listRequest = new ListObjectsV2Request
-                    {
-                        BucketName = ALARM_BUCKET_NAME,
-                        Prefix = dateFolder + "/",
-                        MaxKeys = 1000 // Should be plenty for a single day
-                    };
-
-                    string? dayLatestVideoKey = null;
-                    long dayLatestTimestamp = 0;
-
-                    // Search through all objects in this date folder
-                    do
-                    {
-                        var response = await s3Client.ListObjectsV2Async(listRequest);
-
-                        foreach (var obj in response.S3Objects)
-                        {
-                            // Look for .mp4 files
-                            if (obj.Key.EndsWith(".mp4"))
-                            {
-                                // Extract timestamp from filename: {dateFolder}/{deviceMac}_{timestamp}.mp4
-                                var fileName = Path.GetFileName(obj.Key);
-                                var underscoreIndex = fileName.LastIndexOf('_');
-                                var dotIndex = fileName.LastIndexOf('.');
-
-                                if (underscoreIndex > 0 && dotIndex > underscoreIndex)
-                                {
-                                    var timestampStr = fileName.Substring(underscoreIndex + 1, dotIndex - underscoreIndex - 1);
-                                    if (long.TryParse(timestampStr, out var timestamp))
-                                    {
-                                        if (timestamp > dayLatestTimestamp)
-                                        {
-                                            dayLatestTimestamp = timestamp;
-                                            dayLatestVideoKey = obj.Key;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        listRequest.ContinuationToken = response.NextContinuationToken;
-                    } while (listRequest.ContinuationToken != null);
-
-                    // If we found a video in this day, it's the latest overall
-                    if (dayLatestVideoKey != null)
-                    {
-                        latestVideoKey = dayLatestVideoKey;
-                        latestTimestamp = dayLatestTimestamp;
-                        log.LogLine($"Found latest video in {dateFolder}: {latestVideoKey} with timestamp {latestTimestamp}");
-                        break;
-                    }
-
-                    // Move to previous day
-                    searchDate = searchDate.AddDays(-1);
-                    daysSearched++;
-                    log.LogLine($"No videos found in {dateFolder}, moving to previous day: {searchDate:yyyy-MM-dd}");
-                }
-
-                if (string.IsNullOrEmpty(latestVideoKey))
-                {
-                    log.LogLine("No video files found in S3 bucket");
-                    return new APIGatewayProxyResponse
-                    {
-                        StatusCode = (int)HttpStatusCode.NotFound,
-                        Body = JsonConvert.SerializeObject(new { msg = "No video files found" }),
-                        Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                    };
-                }
-
-                log.LogLine($"Latest video found: {latestVideoKey} with timestamp: {latestTimestamp}");
-
-                // Verify the video file exists in S3 without downloading it
-                try
-                {
-                    var headRequest = new GetObjectMetadataRequest
-                    {
-                        BucketName = ALARM_BUCKET_NAME,
-                        Key = latestVideoKey
-                    };
-                    var metadata = await s3Client.GetObjectMetadataAsync(headRequest);
-                    log.LogLine($"Video file confirmed in S3: {latestVideoKey} ({metadata.ContentLength} bytes)");
-                }
-                catch (AmazonS3Exception e) when (e.ErrorCode == "NoSuchKey")
-                {
-                    log.LogLine($"Video file {latestVideoKey} not found in S3");
-                    return new APIGatewayProxyResponse
-                    {
-                        StatusCode = (int)HttpStatusCode.NotFound,
-                        Body = JsonConvert.SerializeObject(new { msg = "Video file not found" }),
-                        Headers = new Dictionary<string, string> { { "Content-Type", "application/json" }, { "Access-Control-Allow-Origin", "*" } }
-                    };
-                }
-
-                // Get the corresponding event JSON data
-                // Convert video key to event key: replace .mp4 with .json
-                string eventKey = latestVideoKey.Replace(".mp4", ".json");
-                log.LogLine($"Looking for corresponding event data: {eventKey}");
-                
-                string? eventJsonData = null;
-                object? eventData = null;
-                
-                try
-                {
-                    eventJsonData = await GetJsonFileFromS3BlobAsync(eventKey);
-                    if (eventJsonData != null)
-                    {
-                        // Parse the JSON to include as an object in the response
-                        eventData = JsonConvert.DeserializeObject(eventJsonData);
-                        log.LogLine($"Successfully retrieved event data for {eventKey}");
-                    }
-                    else
-                    {
-                        log.LogLine($"No event data found for {eventKey}");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    log.LogLine($"Error retrieving event data for {eventKey}: {ex.Message}");
-                    // Continue without event data rather than failing the entire request
-                }
-
-                // Generate a presigned URL for direct download from S3
-                DateTime dt = DateTimeOffset.FromUnixTimeMilliseconds(latestTimestamp).DateTime;
-                string suggestedFilename = $"latest_video_{dt:yyyy-MM-dd_HH-mm-ss}.mp4";
-                
-                // Generate presigned URL with 1 hour expiration and suggested filename
-                var presignedRequest = new GetPreSignedUrlRequest
-                {
-                    BucketName = ALARM_BUCKET_NAME,
-                    Key = latestVideoKey,
-                    Verb = HttpVerb.GET,
-                    Expires = DateTime.UtcNow.AddHours(1),
-                    ResponseHeaderOverrides = new ResponseHeaderOverrides
-                    {
-                        ContentDisposition = $"attachment; filename=\"{suggestedFilename}\""
-                    }
-                };
-
-                string presignedUrl = s3Client.GetPreSignedURL(presignedRequest);
-                log.LogLine($"Generated presigned URL for {latestVideoKey}, expires in 1 hour");
-
-                // Return the presigned URL, metadata, and event data
-                var responseData = new
-                {
-                    downloadUrl = presignedUrl,
-                    filename = suggestedFilename,
-                    videoKey = latestVideoKey,
-                    eventKey = eventKey,
-                    timestamp = latestTimestamp,
-                    eventDate = dt.ToString("yyyy-MM-dd HH:mm:ss"),
-                    expiresAt = DateTime.UtcNow.AddHours(1).ToString("yyyy-MM-dd HH:mm:ss UTC"),
-                    eventData = eventData,
-                    message = "Use the downloadUrl to download the video file directly. URL expires in 1 hour."
-                };
-
-                return new APIGatewayProxyResponse
-                {
-                    StatusCode = (int)HttpStatusCode.OK,
-                    Body = JsonConvert.SerializeObject(responseData, Formatting.Indented),
-                    Headers = new Dictionary<string, string> 
-                    { 
-                        { "Content-Type", "application/json" },
-                        { "Access-Control-Allow-Origin", "*" }
-                    }
-                };
+                // Build and return response
+                return await BuildLatestVideoResponse(searchResult.VideoKey!, searchResult.Timestamp, eventData);
             }
             catch (Exception e)
             {
                 log.LogLine($"Error retrieving latest video: {e.Message}");
-                return new APIGatewayProxyResponse
-                {
-                    StatusCode = (int)HttpStatusCode.InternalServerError,
-                    Body = JsonConvert.SerializeObject(new { msg = $"Error retrieving latest video: {e.Message}" }),
-                };
+                return CreateErrorResponse(HttpStatusCode.InternalServerError, $"Error retrieving latest video: {e.Message}");
             }
+        }
+
+        /// <summary>
+        /// Validates the configuration required for latest video retrieval.
+        /// </summary>
+        /// <returns>Error response if configuration is invalid, null if valid</returns>
+        internal static APIGatewayProxyResponse? ValidateLatestVideoConfiguration()
+        {
+            var storageBucket = Environment.GetEnvironmentVariable("StorageBucket");
+            if (string.IsNullOrWhiteSpace(storageBucket))
+            {
+                log.LogLine("StorageBucket environment variable is not configured");
+                return CreateErrorResponse(HttpStatusCode.InternalServerError, "Server configuration error: StorageBucket not configured");
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Searches for the latest video file in S3 using date-organized folder structure.
+        /// </summary>
+        /// <returns>Search result containing video key and timestamp, or error response</returns>
+        internal static async Task<(string? VideoKey, long Timestamp, APIGatewayProxyResponse? ErrorResponse)> SearchForLatestVideoAsync()
+        {
+            log.LogLine("Searching for latest video file in S3 bucket using date-organized approach: " + ALARM_BUCKET_NAME);
+
+            DateTime searchDate = DateTime.UtcNow.Date;
+            const int maxDaysToSearch = 30;
+            int daysSearched = 0;
+
+            while (daysSearched < maxDaysToSearch)
+            {
+                string dateFolder = searchDate.ToString("yyyy-MM-dd");
+                log.LogLine($"Searching for videos in date folder: {dateFolder}");
+
+                var dayResult = await SearchDateFolderForLatestVideoAsync(dateFolder);
+                if (dayResult.VideoKey != null)
+                {
+                    log.LogLine($"Found latest video in {dateFolder}: {dayResult.VideoKey} with timestamp {dayResult.Timestamp}");
+                    return (dayResult.VideoKey, dayResult.Timestamp, null);
+                }
+
+                // Move to previous day
+                searchDate = searchDate.AddDays(-1);
+                daysSearched++;
+                log.LogLine($"No videos found in {dateFolder}, moving to previous day: {searchDate:yyyy-MM-dd}");
+            }
+
+            log.LogLine("No video files found in S3 bucket");
+            return (null, 0, CreateErrorResponse(HttpStatusCode.NotFound, "No video files found"));
+        }
+
+        /// <summary>
+        /// Searches a specific date folder for the latest video file.
+        /// </summary>
+        /// <param name="dateFolder">The date folder to search (YYYY-MM-DD format)</param>
+        /// <returns>Video key and timestamp if found, null otherwise</returns>
+        internal static async Task<(string? VideoKey, long Timestamp)> SearchDateFolderForLatestVideoAsync(string dateFolder)
+        {
+            var listRequest = new ListObjectsV2Request
+            {
+                BucketName = ALARM_BUCKET_NAME!,
+                Prefix = dateFolder + "/",
+                MaxKeys = 1000 // Should be plenty for a single day
+            };
+
+            string? latestVideoKey = null;
+            long latestTimestamp = 0;
+
+            do
+            {
+                var response = await s3Client.ListObjectsV2Async(listRequest);
+
+                var videoTimestamps = response.S3Objects
+                    .Where(obj => obj.Key.EndsWith(".mp4"))
+                    .Select(obj => new { Key = obj.Key, Timestamp = ExtractTimestampFromFileName(obj.Key) })
+                    .Where(item => item.Timestamp > 0);
+
+                foreach (var item in videoTimestamps)
+                {
+                    if (item.Timestamp > latestTimestamp)
+                    {
+                        latestTimestamp = item.Timestamp;
+                        latestVideoKey = item.Key;
+                    }
+                }
+
+                listRequest.ContinuationToken = response.NextContinuationToken;
+            } while (listRequest.ContinuationToken != null);
+
+            return (latestVideoKey, latestTimestamp);
+        }
+
+        /// <summary>
+        /// Extracts timestamp from a video file name.
+        /// </summary>
+        /// <param name="s3Key">The S3 key containing the filename</param>
+        /// <returns>Timestamp if successfully extracted, 0 otherwise</returns>
+        internal static long ExtractTimestampFromFileName(string s3Key)
+        {
+            var fileName = Path.GetFileName(s3Key);
+            var underscoreIndex = fileName.LastIndexOf('_');
+            var dotIndex = fileName.LastIndexOf('.');
+
+            if (underscoreIndex > 0 && dotIndex > underscoreIndex)
+            {
+                var timestampStr = fileName.Substring(underscoreIndex + 1, dotIndex - underscoreIndex - 1);
+                if (long.TryParse(timestampStr, out var timestamp) && timestamp >= 0)
+                {
+                    return timestamp;
+                }
+            }
+            return 0;
+        }
+
+        /// <summary>
+        /// Verifies that a video file exists in S3.
+        /// </summary>
+        /// <param name="videoKey">The S3 key of the video file</param>
+        /// <returns>Error response if video doesn't exist, null if it exists</returns>
+        internal static async Task<APIGatewayProxyResponse?> VerifyVideoExistsAsync(string videoKey)
+        {
+            try
+            {
+                var headRequest = new GetObjectMetadataRequest
+                {
+                    BucketName = ALARM_BUCKET_NAME!,
+                    Key = videoKey
+                };
+                var metadata = await s3Client.GetObjectMetadataAsync(headRequest);
+                log.LogLine($"Video file confirmed in S3: {videoKey} ({metadata.ContentLength} bytes)");
+                return null;
+            }
+            catch (AmazonS3Exception e) when (e.ErrorCode == "NoSuchKey")
+            {
+                log.LogLine($"Video file {videoKey} not found in S3");
+                return CreateErrorResponse(HttpStatusCode.NotFound, "Video file not found");
+            }
+        }
+
+        /// <summary>
+        /// Retrieves event data associated with a video file.
+        /// </summary>
+        /// <param name="videoKey">The S3 key of the video file</param>
+        /// <returns>Parsed event data object, or null if not found</returns>
+        internal static async Task<object?> RetrieveEventDataAsync(string videoKey)
+        {
+            string eventKey = videoKey.Replace(".mp4", ".json");
+            log.LogLine($"Looking for corresponding event data: {eventKey}");
+
+            try
+            {
+                string? eventJsonData = await GetJsonFileFromS3BlobAsync(eventKey);
+                if (eventJsonData != null)
+                {
+                    var eventData = JsonConvert.DeserializeObject(eventJsonData);
+                    log.LogLine($"Successfully retrieved event data for {eventKey}");
+                    return eventData;
+                }
+                else
+                {
+                    log.LogLine($"No event data found for {eventKey}");
+                }
+            }
+            catch (Exception ex)
+            {
+                log.LogLine($"Error retrieving event data for {eventKey}: {ex.Message}");
+                // Continue without event data rather than failing the entire request
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Builds the API Gateway response for latest video request.
+        /// </summary>
+        /// <param name="videoKey">The S3 key of the video file</param>
+        /// <param name="timestamp">The timestamp of the video</param>
+        /// <param name="eventData">Associated event data</param>
+        /// <returns>API Gateway response with video download information</returns>
+        internal static async Task<APIGatewayProxyResponse> BuildLatestVideoResponse(string videoKey, long timestamp, object? eventData)
+        {
+            DateTime dt = DateTimeOffset.FromUnixTimeMilliseconds(timestamp).DateTime;
+            string suggestedFilename = $"latest_video_{dt:yyyy-MM-dd_HH-mm-ss}.mp4";
+            string eventKey = videoKey.Replace(".mp4", ".json");
+
+            // Generate presigned URL with 1 hour expiration and suggested filename
+            var presignedRequest = new GetPreSignedUrlRequest
+            {
+                BucketName = ALARM_BUCKET_NAME!,
+                Key = videoKey,
+                Verb = HttpVerb.GET,
+                Expires = DateTime.UtcNow.AddHours(1),
+                ResponseHeaderOverrides = new ResponseHeaderOverrides
+                {
+                    ContentDisposition = $"attachment; filename=\"{suggestedFilename}\""
+                }
+            };
+
+            string presignedUrl = await s3Client.GetPreSignedURLAsync(presignedRequest);
+            log.LogLine($"Generated presigned URL for {videoKey}, expires in 1 hour");
+
+            var responseData = new
+            {
+                downloadUrl = presignedUrl,
+                filename = suggestedFilename,
+                videoKey = videoKey,
+                eventKey = eventKey,
+                timestamp = timestamp,
+                eventDate = dt.ToString("yyyy-MM-dd HH:mm:ss"),
+                expiresAt = DateTime.UtcNow.AddHours(1).ToString("yyyy-MM-dd HH:mm:ss UTC"),
+                eventData = eventData,
+                message = "Use the downloadUrl to download the video file directly. URL expires in 1 hour."
+            };
+
+            return new APIGatewayProxyResponse
+            {
+                StatusCode = (int)HttpStatusCode.OK,
+                Body = JsonConvert.SerializeObject(responseData, Formatting.Indented),
+                Headers = GetStandardHeaders()
+            };
         }
 
         /// <summary>

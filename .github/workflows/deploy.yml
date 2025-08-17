@@ -83,17 +83,26 @@ jobs:
             --logger trx \
             --results-directory ./test-results \
             --collect:"XPlat Code Coverage" \
-            --settings test/coverlet.runsettings \
-            /p:CollectCoverage=true \
-            /p:CoverletOutputFormat=opencover \
-            /p:CoverletOutput=../coverage-results/coverage.opencover.xml \
-            /p:Exclude="[xunit*]*%2c[*.Tests*]*" \
-            /p:ExcludeByAttribute="Obsolete%2cGeneratedCodeAttribute%2cCompilerGeneratedAttribute"
+            --settings test/coverlet.runsettings
           
           TEST_EXIT_CODE=$?
           if [ $TEST_EXIT_CODE -ne 0 ]; then
             echo "::error::Unit tests failed with exit code $TEST_EXIT_CODE"
             exit $TEST_EXIT_CODE
+          fi
+          
+          # Find the generated coverage file and move it to expected location
+          echo "Looking for coverage files..."
+          find ./test-results -name "coverage.opencover.xml" -type f
+          
+          COVERAGE_FILE=$(find ./test-results -name "coverage.opencover.xml" -type f | head -n1)
+          if [ -f "$COVERAGE_FILE" ]; then
+            echo "Found coverage file: $COVERAGE_FILE"
+            cp "$COVERAGE_FILE" ./coverage-results/coverage.opencover.xml
+            echo "Coverage file copied to ./coverage-results/coverage.opencover.xml"
+          else
+            echo "::error::Coverage file not found"
+            exit 1
           fi
           
           # Generate coverage reports in multiple formats
