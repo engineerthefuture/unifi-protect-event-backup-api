@@ -27,22 +27,22 @@ namespace UnifiWebhookEventReceiver
     {
         /// <summary>Human-readable name of the alarm rule</summary>
         public string? name { get; set; }
-        
+
         /// <summary>List of source devices involved in the alarm event</summary>
         public List<Source>? sources { get; set; }
-        
+
         /// <summary>List of conditions that must be met for the alarm to trigger</summary>
         public List<Condition>? conditions { get; set; }
-        
+
         /// <summary>List of specific triggers that activated this alarm event</summary>
         public required List<Trigger> triggers { get; set; }
-        
+
         /// <summary>Unix timestamp (milliseconds) when the alarm event occurred</summary>
         public required long timestamp { get; set; }
-        
+
         /// <summary>Local file path to the associated event data on the Unifi system</summary>
         public string? eventPath { get; set; }
-        
+
         /// <summary>Local network link to access the event data directly from the Unifi system</summary>
         public string? eventLocalLink { get; set; }
     }
@@ -57,11 +57,11 @@ namespace UnifiWebhookEventReceiver
     {
         /// <summary>Unique device identifier (typically MAC address)</summary>
         public required string device { get; set; }
-        
+
         /// <summary>Type of device (camera, sensor, etc.)</summary>
         public required string type { get; set; }
     }
-    
+
     /// <summary>
     /// Represents a condition that must be satisfied for an alarm to trigger.
     /// 
@@ -72,7 +72,7 @@ namespace UnifiWebhookEventReceiver
     {
         /// <summary>Type of condition (motion, intrusion, etc.)</summary>
         public string? type { get; set; }
-        
+
         /// <summary>Source device or rule that this condition applies to</summary>
         public string? source { get; set; }
     }
@@ -88,25 +88,25 @@ namespace UnifiWebhookEventReceiver
     {
         /// <summary>Type/key identifier for the trigger event (motion, intrusion, etc.)</summary>
         public required string key { get; set; }
-        
+
         /// <summary>Device identifier (MAC address) that generated the trigger</summary>
         public required string device { get; set; }
-        
+
         /// <summary>Unique event identifier from the Unifi Protect system</summary>
         public required string eventId { get; set; }
-        
+
         /// <summary>Human-readable device name (populated during processing from environment variables)</summary>
         public string? deviceName { get; set; }
-        
+
         /// <summary>Formatted date string of when the event occurred (populated during processing)</summary>
         public string? date { get; set; }
-        
+
         /// <summary>S3 storage key for the processed event data (populated during processing)</summary>
         public string? eventKey { get; set; }
-        
+
         /// <summary>S3 storage key for associated video file (for future video upload functionality)</summary>
         public string? videoKey { get; set; }
-        
+
         /// <summary>Presigned URL for video upload (for future video upload functionality)</summary>
         public string? presignedUrl { get; set; }
     }
