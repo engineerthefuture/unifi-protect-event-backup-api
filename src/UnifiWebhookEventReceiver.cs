@@ -1142,7 +1142,7 @@ namespace UnifiWebhookEventReceiver
                     
                     // Instead of a fixed delay, monitor the download directory for new files
                     var initialFileCount = Directory.GetFiles(downloadDirectory, "*.mp4").Length;
-                    var maxWaitTime = TimeSpan.FromSeconds(60);
+                    var maxWaitTime = TimeSpan.FromSeconds(90);
                     var checkInterval = TimeSpan.FromSeconds(1);
                     var startTime = DateTime.Now;
                     
