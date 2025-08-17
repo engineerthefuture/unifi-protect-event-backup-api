@@ -16,6 +16,7 @@ using System.Collections;
 using System.Net;
 using System.Reflection;
 using System.Text;
+using System.Text.Json;
 
 // Third-party includes
 using Newtonsoft.Json;
@@ -335,36 +336,158 @@ namespace UnifiWebhookEventReceiver
 
                 foreach (var record in sqsEvent.Records)
                 {
-                    try
-                    {
-                        log.LogLine($"Processing SQS message: {record.MessageId}");
-                        
-                        // Parse the alarm data from the message body
-                        var messageBody = record.Body;
-                        var alarm = JsonConvert.DeserializeObject<Alarm>(messageBody);
-                        
-                        if (alarm != null)
-                        {
-                            log.LogLine($"Processing delayed alarm for device: {alarm.triggers?.FirstOrDefault()?.device}");
-                            await AlarmReceiverFunction(alarm);
-                            log.LogLine($"Successfully processed delayed alarm: {record.MessageId}");
-                        }
-                        else
-                        {
-                            log.LogLine($"Failed to deserialize alarm from message: {record.MessageId}");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        log.LogLine($"Error processing SQS message {record.MessageId}: {ex.Message}");
-                        // Don't throw here - we want to continue processing other messages
-                    }
+                    await ProcessSingleSQSRecord(record);
                 }
             }
             catch (Exception ex)
             {
                 log.LogLine($"Error processing SQS event: {ex.Message}");
                 throw;
+            }
+        }
+
+        /// <summary>
+        /// Processes a single SQS record containing alarm data.
+        /// </summary>
+        /// <param name="record">The SQS record to process</param>
+        /// <returns>Task representing the asynchronous processing operation</returns>
+        private static async Task ProcessSingleSQSRecord(SQSEvent.SQSMessage record)
+        {
+            try
+            {
+                log.LogLine($"Processing SQS message: {record.MessageId}");
+                
+                // Parse the alarm data from the message body
+                var messageBody = record.Body;
+                var alarm = JsonConvert.DeserializeObject<Alarm>(messageBody);
+                
+                if (alarm != null)
+                {
+                    log.LogLine($"Processing delayed alarm for device: {alarm.triggers?.FirstOrDefault()?.device}");
+                    await AlarmReceiverFunction(alarm);
+                    log.LogLine($"Successfully processed delayed alarm: {record.MessageId}");
+                }
+                else
+                {
+                    log.LogLine($"Failed to deserialize alarm from message: {record.MessageId}");
+                }
+            }
+            catch (Exception ex)
+            {
+                log.LogLine($"Error processing SQS message {record.MessageId}: {ex.Message}");
+                // Don't throw here - we want to continue processing other messages
+            }
+        }
+
+        /// <summary>
+        /// Handles the Unifi Protect login process with credentials.
+        /// </summary>
+        /// <param name="page">The Puppeteer page object</param>
+        /// <param name="usernameField">The username input field element</param>
+        /// <param name="passwordField">The password input field element</param>
+        /// <param name="credentials">The Unifi credentials to use</param>
+        /// <returns>Task representing the asynchronous login operation</returns>
+        private static async Task PerformUnifiLogin(IPage page, IElementHandle usernameField, IElementHandle passwordField, UnifiCredentials credentials)
+        {
+            log.LogLine("Login form detected, attempting authentication...");
+
+            // Take the username and password and * out all but the first 3 characters of the username and all of the characters of the password
+            log.LogLine("Filling in credentials for login...");
+            var maskedUsername = credentials.username.Length > 3 ? string.Concat(credentials.username.AsSpan(0, 3), new string('*', credentials.username.Length - 3)) : credentials.username;
+            var maskedPassword = new string('*', credentials.password.Length);
+
+            log.LogLine($"Using credentials - Username: {maskedUsername}, Password: {maskedPassword}");
+
+            // Fill in credentials
+            await usernameField.TypeAsync(credentials.username);
+            await passwordField.TypeAsync(credentials.password);
+
+            // Look for login button
+            var loginButton = await page.QuerySelectorAsync("button[type='submit']");
+
+            // Check if login button is present
+            if (loginButton != null)
+            {
+                await loginButton.ClickAsync();
+                log.LogLine("Login button clicked, waiting for authentication...");
+
+                // Wait for navigation after login
+                await page.WaitForNavigationAsync(new NavigationOptions
+                {
+                    WaitUntil = new[] { WaitUntilNavigation.Networkidle0 },
+                    Timeout = 10000
+                });
+            }
+            else
+            {
+                log.LogLine("Login button not found, trying Enter key...");
+                await passwordField.PressAsync("Enter");
+
+                // Wait for navigation after Enter key
+                try
+                {
+                    await page.WaitForNavigationAsync(new NavigationOptions
+                    {
+                        WaitUntil = new[] { WaitUntilNavigation.Networkidle0 },
+                        Timeout = 10000
+                    });
+                }
+                catch (Exception)
+                {
+                    log.LogLine("Navigation timeout after Enter key, continuing...");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Processes download events from the browser to track download progress.
+        /// </summary>
+        /// <param name="messageId">The message ID from the browser event</param>
+        /// <param name="messageData">The message data from the browser event</param>
+        /// <param name="downloadStarted">Reference to track if download has started</param>
+        /// <param name="downloadGuid">Reference to store the download GUID</param>
+        private static void ProcessDownloadEvent(string messageId, JsonElement messageData, ref bool downloadStarted, ref string? downloadGuid)
+        {
+            if (messageId == "Browser.downloadWillBegin")
+            {
+                downloadStarted = true;
+                log.LogLine("Download event detected: Browser.downloadWillBegin");
+                ProcessDownloadBeginEvent(messageData, ref downloadGuid);
+            }
+            else if (messageId == "Browser.downloadProgress")
+            {
+                ProcessDownloadProgressEvent(messageData);
+            }
+        }
+
+        /// <summary>
+        /// Processes the download begin event to extract GUID information.
+        /// </summary>
+        /// <param name="data">The message data from the browser event</param>
+        /// <param name="downloadGuid">Reference to store the download GUID</param>
+        private static void ProcessDownloadBeginEvent(JsonElement data, ref string? downloadGuid)
+        {
+            if (data.ValueKind == System.Text.Json.JsonValueKind.Object && data.TryGetProperty("guid", out var guidElement))
+            {
+                downloadGuid = guidElement.GetString();
+                log.LogLine($"Download started with GUID: {downloadGuid}");
+            }
+        }
+
+        /// <summary>
+        /// Processes the download progress event to track completion status.
+        /// </summary>
+        /// <param name="data">The message data from the browser event</param>
+        private static void ProcessDownloadProgressEvent(JsonElement data)
+        {
+            if (data.ValueKind == System.Text.Json.JsonValueKind.Object && data.TryGetProperty("state", out var stateElement))
+            {
+                var state = stateElement.GetString();
+                log.LogLine($"Download progress: {state}");
+                if (state == "completed")
+                {
+                    log.LogLine("Download completed via event notification");
+                }
             }
         }
 
@@ -431,7 +554,7 @@ namespace UnifiWebhookEventReceiver
             {
                 return JsonConvert.DeserializeObject<APIGatewayProxyRequest>(requestBody);
             }
-            catch (JsonException e)
+            catch (Newtonsoft.Json.JsonException e)
             {
                 logger.LogLine("Failed to deserialize API Gateway request from: " + requestBody + ". Error: " + e.Message);
                 // For JSON parsing errors, throw to trigger 500 error
@@ -1786,54 +1909,7 @@ namespace UnifiWebhookEventReceiver
                 // Check if username and password fields are present
                 if (usernameField != null && passwordField != null)
                 {
-                    log.LogLine("Login form detected, attempting authentication...");
-
-                    // Take the username and password and * out all but the first 3 characters of the username and all of the characters of the password
-                    log.LogLine("Filling in credentials for login...");
-                    var maskedUsername = credentials.username.Length > 3 ? string.Concat(credentials.username.AsSpan(0, 3), new string('*', credentials.username.Length - 3)) : credentials.username;
-                    var maskedPassword = new string('*', credentials.password.Length);
-
-                    log.LogLine($"Using credentials - Username: {maskedUsername}, Password: {maskedPassword}");
-
-                    // Fill in credentials
-                    await usernameField.TypeAsync(credentials.username);
-                    await passwordField.TypeAsync(credentials.password);
-
-                    // Look for login button
-                    var loginButton = await page.QuerySelectorAsync("button[type='submit']");
-
-                    // Check if login button is present
-                    if (loginButton != null)
-                    {
-                        await loginButton.ClickAsync();
-                        log.LogLine("Login button clicked, waiting for authentication...");
-
-                        // Wait for navigation after login
-                        await page.WaitForNavigationAsync(new NavigationOptions
-                        {
-                            WaitUntil = new[] { WaitUntilNavigation.Networkidle0 },
-                            Timeout = 10000
-                        });
-                    }
-                    else
-                    {
-                        log.LogLine("Login button not found, trying Enter key...");
-                        await passwordField.PressAsync("Enter");
-
-                        // Wait for navigation after Enter key
-                        try
-                        {
-                            await page.WaitForNavigationAsync(new NavigationOptions
-                            {
-                                WaitUntil = new[] { WaitUntilNavigation.Networkidle0 },
-                                Timeout = 10000
-                            });
-                        }
-                        catch (Exception)
-                        {
-                            log.LogLine("Navigation timeout after Enter key, continuing...");
-                        }
-                    }
+                    await PerformUnifiLogin(page, usernameField, passwordField, credentials);
                 }
 
                 // Wait for the page to fully load after authentication
@@ -1884,32 +1960,7 @@ namespace UnifiWebhookEventReceiver
                 {
                     try
                     {
-                        if (e.MessageID == "Browser.downloadWillBegin")
-                        {
-                            downloadStarted = true;
-                            log.LogLine("Download event detected: Browser.downloadWillBegin");
-
-                            // Try to extract GUID if available
-                            var data = e.MessageData;
-                            if (data.ValueKind == System.Text.Json.JsonValueKind.Object && data.TryGetProperty("guid", out var guidElement))
-                            {
-                                downloadGuid = guidElement.GetString();
-                                log.LogLine($"Download started with GUID: {downloadGuid}");
-                            }
-                        }
-                        else if (e.MessageID == "Browser.downloadProgress")
-                        {
-                            var data = e.MessageData;
-                            if (data.ValueKind == System.Text.Json.JsonValueKind.Object && data.TryGetProperty("state", out var stateElement))
-                            {
-                                var state = stateElement.GetString();
-                                log.LogLine($"Download progress: {state}");
-                                if (state == "completed")
-                                {
-                                    log.LogLine("Download completed via event notification");
-                                }
-                            }
-                        }
+                        ProcessDownloadEvent(e.MessageID, e.MessageData, ref downloadStarted, ref downloadGuid);
                     }
                     catch (Exception ex)
                     {
