@@ -77,6 +77,17 @@ S3 Bucket Structure:
     └── secondclick-screenshot.png
 ```
 
+### Data Retention Policy
+
+The S3 storage bucket is configured with an automatic lifecycle policy that deletes all objects after **30 days**. This policy provides:
+
+- **Automatic Cleanup**: Event data and video files are automatically removed after 30 days
+- **Cost Management**: Prevents unlimited storage growth and associated costs
+- **Compliance**: Maintains a consistent 30-day retention period for all alarm events
+- **Maintenance-Free**: No manual intervention required for data cleanup
+
+The lifecycle rule applies to both JSON event files and MP4 video files, ensuring the bucket remains within reasonable storage limits while preserving recent events for analysis and review.
+
 ### Recent Technical Improvements
 
 #### AWS Lambda Optimization
@@ -287,17 +298,6 @@ graph TB
 - **API Key Authentication**: API Gateway requires valid API key for all requests
 - **CORS Support**: Configurable Cross-Origin Resource Sharing for web clients
 - **Audit Trail**: All operations logged to CloudWatch with detailed execution context
-    classDef unifi fill:#0066cc,stroke:#003d7a,stroke-width:2px,color:#fff
-    classDef cicd fill:#28a745,stroke:#1e7e34,stroke-width:2px,color:#fff
-    classDef security fill:#dc3545,stroke:#721c24,stroke-width:2px,color:#fff
-    classDef video fill:#6f42c1,stroke:#4c2a85,stroke-width:2px,color:#fff
-    
-    class API,HANDLER,S3,CW,METRICS aws
-    class UDM,CAM1,CAM2,CAM3,VIDEO unifi
-    class GH,TEST,BUILD,DEV_DEPLOY,PROD_DEPLOY cicd
-    class IAM,ENCRYPT,AUTH security
-    class BROWSER,DOWNLOADER,VIDEOS video
-```
 
 ### Enhanced Data Flow
 
