@@ -319,6 +319,54 @@ graph TB
 14. **Monitoring**: All operations logged to CloudWatch for observability
 15. **Retrieval**: GET endpoints allow querying events and generating video presigned URLs
 
+## File Structure
+
+```
+src/
+├── Configuration/
+│   └── AppConfiguration.cs              # Centralized configuration management
+├── Infrastructure/
+│   └── ServiceFactory.cs                # Dependency injection and service composition
+├── Models/
+│   └── UnifiCredentials.cs              # Data models for Unifi Protect credentials
+├── Services/
+│   ├── IAlarmProcessingService.cs        # Interface for alarm event processing
+│   ├── ICredentialsService.cs           # Interface for credential management
+│   ├── IRequestRouter.cs                # Interface for HTTP request routing
+│   ├── IResponseHelper.cs               # Interface for HTTP response generation
+│   ├── IS3StorageService.cs             # Interface for S3 storage operations
+│   ├── ISqsService.cs                   # Interface for SQS message handling
+│   ├── IUnifiProtectService.cs          # Interface for Unifi Protect interactions
+│   └── Implementations/
+│       ├── AlarmProcessingService.cs    # Core alarm event processing logic
+│       ├── CredentialsService.cs        # AWS Secrets Manager integration
+│       ├── RequestRouter.cs             # HTTP request routing and validation
+│       ├── ResponseHelper.cs            # HTTP response formatting
+│       ├── S3StorageService.cs          # Amazon S3 storage operations
+│       ├── SqsService.cs                # Amazon SQS message processing
+│       └── UnifiProtectService.cs       # Unifi Protect video download automation
+├── AssemblyInfo.cs                      # Assembly metadata and attributes
+├── Event.cs                             # Event data models and structures
+├── UnifiWebhookEventHandler.cs          # New main Lambda entry point (service-oriented)
+└── UnifiWebhookEventReceiver.cs         # Original monolithic implementation (deprecated)
+```
+
+### Service Architecture Benefits
+
+- **Separation of Concerns**: Each service has a single, well-defined responsibility
+- **Testability**: Services can be unit tested independently with dependency injection
+- **Maintainability**: Clear boundaries make the codebase easier to understand and modify
+- **Extensibility**: New features can be added as new services without affecting existing code
+- **SOLID Principles**: Implementation follows industry best practices for object-oriented design
+
+### Migration Path
+
+The original `UnifiWebhookEventReceiver.cs` class remains in the codebase for backward compatibility but should be considered deprecated. The new `UnifiWebhookEventHandler.cs` provides the same functionality through the decomposed service architecture. Update your Lambda function handler configuration to use:
+
+```
+UnifiWebhookEventReceiver.UnifiWebhookEventHandler::FunctionHandler
+```
+
 ## API Endpoints
 
 ### Core Endpoints

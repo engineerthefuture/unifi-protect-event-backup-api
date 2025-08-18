@@ -1,0 +1,244 @@
+/************************
+ * Unifi Webhook Event Receiver
+ * SqsService.cs
+ * 
+ * Service for handling SQS message processing operations.
+ * Manages queue operations and delayed alarm processing.
+ * 
+ * Author: Brent Foster
+ * Created: 08-18-2025
+ ***********************/
+
+using System.Diagnostics.CodeAnalysis;
+using Amazon.Lambda.APIGatewayEvents;
+using Amazon.Lambda.Core;
+using Amazon.Lambda.SQSEvents;
+using Amazon.SQS;
+using Amazon.SQS.Model;
+using Newtonsoft.Json;
+using UnifiWebhookEventReceiver.Configuration;
+using UnifiWebhookEventReceiver.Services;
+
+namespace UnifiWebhookEventReceiver.Services.Implementations
+{
+    /// <summary>
+    /// Service for handling SQS message processing operations.
+    /// </summary>
+    public class SqsService : ISqsService
+    {
+        private readonly AmazonSQSClient _sqsClient;
+        private readonly IAlarmProcessingService _alarmProcessingService;
+        private readonly IResponseHelper _responseHelper;
+        private readonly ILambdaLogger _logger;
+
+        /// <summary>
+        /// Initializes a new instance of the SqsService.
+        /// </summary>
+        /// <param name="sqsClient">AWS SQS client</param>
+        /// <param name="alarmProcessingService">Alarm processing service</param>
+        /// <param name="responseHelper">Response helper service</param>
+        /// <param name="logger">Lambda logger instance</param>
+        public SqsService(
+            AmazonSQSClient sqsClient, 
+            IAlarmProcessingService alarmProcessingService,
+            IResponseHelper responseHelper,
+            ILambdaLogger logger)
+        {
+            _sqsClient = sqsClient ?? throw new ArgumentNullException(nameof(sqsClient));
+            _alarmProcessingService = alarmProcessingService ?? throw new ArgumentNullException(nameof(alarmProcessingService));
+            _responseHelper = responseHelper ?? throw new ArgumentNullException(nameof(responseHelper));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        }
+
+        /// <summary>
+        /// Processes SQS events containing delayed alarm processing requests.
+        /// </summary>
+        /// <param name="requestBody">JSON string containing the SQS event</param>
+        /// <returns>API Gateway response indicating processing status</returns>
+        public async Task<APIGatewayProxyResponse> ProcessSqsEventAsync(string requestBody)
+        {
+            try
+            {
+                _logger.LogLine("Detected SQS event, processing delayed alarm");
+                await ProcessSqsEventInternal(requestBody);
+
+                return new APIGatewayProxyResponse
+                {
+                    StatusCode = 200,
+                    Body = JsonConvert.SerializeObject(new { msg = "SQS event processed successfully" }),
+                    Headers = _responseHelper.GetStandardHeaders()
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogLine($"Error processing SQS event: {ex.Message}");
+                return _responseHelper.CreateErrorResponse(System.Net.HttpStatusCode.InternalServerError, 
+                    $"Error processing SQS event: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Determines if the request body represents an SQS event.
+        /// </summary>
+        /// <param name="requestBody">The request body to check</param>
+        /// <returns>True if this is an SQS event, false otherwise</returns>
+        public bool IsSqsEvent(string requestBody)
+        {
+            return requestBody.Contains("\"Records\"") && requestBody.Contains("\"eventSource\":\"aws:sqs\"");
+        }
+
+        /// <summary>
+        /// Sends an alarm event to the SQS queue for delayed processing.
+        /// </summary>
+        /// <param name="alarm">The alarm event to queue</param>
+        /// <returns>SQS message ID</returns>
+        [ExcludeFromCodeCoverage] // Requires AWS SQS connectivity
+        public async Task<string> SendAlarmToQueueAsync(Alarm alarm)
+        {
+            if (string.IsNullOrEmpty(AppConfiguration.AlarmProcessingQueueUrl))
+            {
+                throw new InvalidOperationException("AlarmProcessingQueueUrl environment variable is not configured");
+            }
+
+            // Serialize the alarm for the queue message
+            string messageBody = JsonConvert.SerializeObject(alarm);
+
+            // Get the first trigger for event details
+            var trigger = alarm.triggers?.FirstOrDefault();
+            string eventId = trigger?.eventId ?? "unknown";
+            string device = trigger?.device ?? "unknown";
+
+            // Send message to SQS with delay
+            var sendMessageRequest = new SendMessageRequest
+            {
+                QueueUrl = AppConfiguration.AlarmProcessingQueueUrl,
+                MessageBody = messageBody,
+                DelaySeconds = AppConfiguration.ProcessingDelaySeconds,
+                MessageAttributes = new Dictionary<string, MessageAttributeValue>
+                {
+                    ["EventId"] = new MessageAttributeValue
+                    {
+                        DataType = "String",
+                        StringValue = eventId
+                    },
+                    ["Device"] = new MessageAttributeValue
+                    {
+                        DataType = "String",
+                        StringValue = device
+                    },
+                    ["Timestamp"] = new MessageAttributeValue
+                    {
+                        DataType = "Number",
+                        StringValue = alarm.timestamp.ToString()
+                    }
+                }
+            };
+
+            var result = await _sqsClient.SendMessageAsync(sendMessageRequest);
+
+            _logger.LogLine($"Successfully queued alarm event {eventId} for processing in {AppConfiguration.ProcessingDelaySeconds} seconds. MessageId: {result.MessageId}");
+
+            return result.MessageId;
+        }
+
+        /// <summary>
+        /// Queues an alarm event for delayed processing and returns an appropriate response.
+        /// </summary>
+        /// <param name="alarm">The alarm event to queue</param>
+        /// <returns>API Gateway response indicating the event has been queued</returns>
+        public async Task<APIGatewayProxyResponse> QueueAlarmForProcessingAsync(Alarm alarm)
+        {
+            _logger.LogLine("Queueing alarm event for delayed processing");
+
+            try
+            {
+                if (string.IsNullOrEmpty(AppConfiguration.AlarmProcessingQueueUrl))
+                {
+                    _logger.LogLine("AlarmProcessingQueueUrl environment variable is not configured");
+                    return _responseHelper.CreateErrorResponse(System.Net.HttpStatusCode.InternalServerError,
+                        "Server configuration error: SQS queue not configured");
+                }
+
+                // Send alarm to SQS queue
+                var messageId = await SendAlarmToQueueAsync(alarm);
+
+                // Get the first trigger for event details
+                var trigger = alarm.triggers?.FirstOrDefault();
+                string eventId = trigger?.eventId ?? "unknown";
+                string device = trigger?.device ?? "unknown";
+
+                _logger.LogLine($"Successfully queued alarm event {eventId} for processing in {AppConfiguration.ProcessingDelaySeconds} seconds. MessageId: {messageId}");
+
+                // Return immediate success response
+                var responseData = new
+                {
+                    msg = $"Alarm event has been queued for processing",
+                    eventId = eventId,
+                    device = device,
+                    processingDelay = AppConfiguration.ProcessingDelaySeconds,
+                    messageId = messageId,
+                    estimatedProcessingTime = DateTime.UtcNow.AddSeconds(AppConfiguration.ProcessingDelaySeconds).ToString("yyyy-MM-dd HH:mm:ss UTC")
+                };
+
+                return _responseHelper.CreateSuccessResponse(responseData);
+            }
+            catch (Exception e)
+            {
+                _logger.LogLine($"Error queueing alarm for processing: {e.Message}");
+                return _responseHelper.CreateErrorResponse(System.Net.HttpStatusCode.InternalServerError,
+                    $"Error queueing alarm for processing: {e.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Internal method to process SQS events.
+        /// </summary>
+        /// <param name="requestBody">JSON string containing the SQS event</param>
+        private async Task ProcessSqsEventInternal(string requestBody)
+        {
+            var sqsEvent = JsonConvert.DeserializeObject<SQSEvent>(requestBody);
+            if (sqsEvent?.Records == null)
+            {
+                _logger.LogLine("No SQS records found in event");
+                return;
+            }
+
+            foreach (var record in sqsEvent.Records)
+            {
+                await ProcessSingleSqsRecord(record);
+            }
+        }
+
+        /// <summary>
+        /// Processes a single SQS record containing alarm data.
+        /// </summary>
+        /// <param name="record">The SQS record to process</param>
+        private async Task ProcessSingleSqsRecord(SQSEvent.SQSMessage record)
+        {
+            try
+            {
+                _logger.LogLine($"Processing SQS message: {record.MessageId}");
+
+                // Parse the alarm data from the message body
+                var messageBody = record.Body;
+                var alarm = JsonConvert.DeserializeObject<Alarm>(messageBody);
+
+                if (alarm != null)
+                {
+                    _logger.LogLine($"Processing delayed alarm for device: {alarm.triggers?.FirstOrDefault()?.device}");
+                    await _alarmProcessingService.ProcessAlarmAsync(alarm);
+                    _logger.LogLine($"Successfully processed delayed alarm: {record.MessageId}");
+                }
+                else
+                {
+                    _logger.LogLine($"Failed to deserialize alarm from message: {record.MessageId}");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogLine($"Error processing SQS message {record.MessageId}: {ex.Message}");
+                // Don't throw here - we want to continue processing other messages
+            }
+        }
+    }
+}

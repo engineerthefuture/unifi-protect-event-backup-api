@@ -37,10 +37,6 @@ using Amazon.SQS.Model;
 using Amazon.SecretsManager;
 using Amazon.SecretsManager.Model;
 
-// Assembly attributes
-[assembly: AssemblyVersion("1.0.0.0")]
-[assembly: LambdaSerializer(typeof(Amazon.Lambda.Serialization.SystemTextJson.DefaultLambdaJsonSerializer))]
-
 namespace UnifiWebhookEventReceiver
 {
     /// <summary>
