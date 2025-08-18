@@ -20,7 +20,7 @@ namespace UnifiWebhookEventReceiver.Tests
             // Arrange
             var eventLocalLink = "https://test.local/protect/events/event123";
             var deviceName = "TestDevice";
-            var credentials = new UnifiWebhookEventReceiver.UnifiWebhookEventReceiver.UnifiCredentials 
+            var credentials = new UnifiWebhookEventReceiver.UnifiCredentials 
             { 
                 username = "test", 
                 password = "test", 
@@ -29,8 +29,8 @@ namespace UnifiWebhookEventReceiver.Tests
 
             // Act & Assert
             // This method should fail gracefully with a meaningful error, not with "Cannot access a disposed object"
-            var exception = await Assert.ThrowsAsync<Exception>(async () =>
-                await UnifiWebhookEventReceiver.UnifiWebhookEventReceiver.GetVideoFromLocalUnifiProtectViaHeadlessClient(eventLocalLink, deviceName, credentials));
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                await UnifiWebhookEventReceiver.GetVideoFromLocalUnifiProtectViaHeadlessClient(eventLocalLink, deviceName, credentials));
 
             // The error should be about video download failure, not disposed object access
             Assert.DoesNotContain("Cannot access a disposed object", exception.Message);
@@ -45,7 +45,7 @@ namespace UnifiWebhookEventReceiver.Tests
             // Arrange
             var eventLocalLink = "https://test.local/protect/events/event123";
             var deviceName = "TestDevice";
-            var credentials = new UnifiWebhookEventReceiver.UnifiWebhookEventReceiver.UnifiCredentials 
+            var credentials = new UnifiWebhookEventReceiver.UnifiCredentials 
             { 
                 username = "test", 
                 password = "test", 
@@ -55,8 +55,8 @@ namespace UnifiWebhookEventReceiver.Tests
             // Act & Assert - multiple calls should not cause disposal issues
             for (int i = 0; i < 3; i++)
             {
-                var exception = await Assert.ThrowsAsync<Exception>(async () =>
-                    await UnifiWebhookEventReceiver.UnifiWebhookEventReceiver.GetVideoFromLocalUnifiProtectViaHeadlessClient(
+                var exception = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                    await UnifiWebhookEventReceiver.GetVideoFromLocalUnifiProtectViaHeadlessClient(
                         eventLocalLink, 
                         deviceName, 
                         credentials));
