@@ -1875,14 +1875,26 @@ namespace UnifiWebhookEventReceiver
                 // Navigate to the event link and handle authentication
                 await NavigateAndAuthenticate(page, eventLocalLink, credentials, downloadDirectory);
 
-                // Wait for page to be ready for interaction
-                await WaitForPageReady(page, downloadDirectory);
+                // Wait for page to be ready for interaction and get the event handler for cleanup
+                var downloadEventHandler = await WaitForPageReady(page, downloadDirectory);
 
-                // Perform video download actions
-                await PerformVideoDownloadActions(page, deviceName, downloadDirectory);
+                try
+                {
+                    // Perform video download actions
+                    await PerformVideoDownloadActions(page, deviceName, downloadDirectory);
 
-                // Wait for download to complete and return video data
-                return await WaitForDownloadAndGetVideoData(downloadDirectory);
+                    // Wait for download to complete and return video data
+                    return await WaitForDownloadAndGetVideoData(downloadDirectory);
+                }
+                finally
+                {
+                    // Clean up the event handler to prevent disposed object access
+                    if (downloadEventHandler != null)
+                    {
+                        page.Client.MessageReceived -= downloadEventHandler;
+                        log.LogLine("Download event handler cleaned up");
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -2073,7 +2085,8 @@ namespace UnifiWebhookEventReceiver
         /// </summary>
         /// <param name="page">The browser page</param>
         /// <param name="downloadDirectory">Download directory for screenshots</param>
-        private static async Task WaitForPageReady(IPage page, string downloadDirectory)
+        /// <returns>The download event handler that was attached, so it can be properly cleaned up</returns>
+        private static async Task<EventHandler<MessageEventArgs>?> WaitForPageReady(IPage page, string downloadDirectory)
         {
             // Wait for the page to fully load after authentication
             log.LogLine("Waiting for page to load after authentication...");
@@ -2118,8 +2131,8 @@ namespace UnifiWebhookEventReceiver
             bool downloadStarted = false;
             string? downloadGuid = null;
 
-            // Listen for download events (simplified approach)
-            page.Client.MessageReceived += (sender, e) =>
+            // Define the event handler so we can properly unsubscribe later
+            EventHandler<MessageEventArgs> downloadEventHandler = (sender, e) =>
             {
                 try
                 {
@@ -2131,12 +2144,18 @@ namespace UnifiWebhookEventReceiver
                 }
             };
 
+            // Listen for download events (simplified approach)
+            page.Client.MessageReceived += downloadEventHandler;
+
             // Take a screenshot of the page
             await Task.Delay(3000); // Brief wait for any immediate changes
             var screenshotPath = Path.Combine(downloadDirectory, "pageload-screenshot.png");
             await page.ScreenshotAsync(screenshotPath);
             log.LogLine($"Screenshot taken of the loaded page: {screenshotPath}");
             await UploadFileAsync(ALARM_BUCKET_NAME!, "screenshots/pageload-screenshot.png", await File.ReadAllBytesAsync(screenshotPath), "image/png");
+            
+            // Return the event handler so it can be properly cleaned up
+            return downloadEventHandler;
         }
 
         /// <summary>
