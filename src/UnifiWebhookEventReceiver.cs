@@ -2003,38 +2003,52 @@ namespace UnifiWebhookEventReceiver
         {
             log.LogLine("Launching headless browser with HeadlessChromium...");
 
-            // Create a simple logger factory for HeadlessChromium
-            using var loggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder => { });
-            var browserLauncher = new HeadlessChromiumPuppeteerLauncher(loggerFactory);
-
-            // Use custom chrome arguments optimized for video downloading
-            var chromeArgs = new[]
+            try
             {
-                "--no-sandbox",
-                "--disable-setuid-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-gpu",
-                "--disable-web-security",
-                "--ignore-certificate-errors",
-                "--ignore-ssl-errors",
-                "--ignore-certificate-errors-spki-list",
-                "--no-first-run",
-                "--no-zygote",
-                "--disable-background-timer-throttling",
-                "--disable-backgrounding-occluded-windows",
-                "--disable-renderer-backgrounding",
-                "--disable-features=VizDisplayCompositor",
-                "--window-size=1920,1080",
-                "--disable-extensions",
-                "--disable-plugins",
-                "--disable-default-apps",
-                "--allow-running-insecure-content",
-                "--disable-background-networking",
-                "--enable-logging",
-                "--disable-ipc-flooding-protection"
-            };
+                // Create a logger factory for HeadlessChromium - don't dispose it yet as browser may need it
+                var loggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder => { });
+                
+                var browserLauncher = new HeadlessChromiumPuppeteerLauncher(loggerFactory);
 
-            return await browserLauncher.LaunchAsync(chromeArgs);
+                // Use custom chrome arguments optimized for video downloading
+                var chromeArgs = new[]
+                {
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-gpu",
+                    "--disable-web-security",
+                    "--ignore-certificate-errors",
+                    "--ignore-ssl-errors",
+                    "--ignore-certificate-errors-spki-list",
+                    "--no-first-run",
+                    "--no-zygote",
+                    "--disable-background-timer-throttling",
+                    "--disable-backgrounding-occluded-windows",
+                    "--disable-renderer-backgrounding",
+                    "--disable-features=VizDisplayCompositor",
+                    "--window-size=1920,1080",
+                    "--disable-extensions",
+                    "--disable-plugins",
+                    "--disable-default-apps",
+                    "--allow-running-insecure-content",
+                    "--disable-background-networking",
+                    "--enable-logging",
+                    "--disable-ipc-flooding-protection"
+                };
+
+                var browser = await browserLauncher.LaunchAsync(chromeArgs);
+                
+                // Important: Don't dispose loggerFactory here as the browser might still need it
+                // The loggerFactory will be disposed when the browser is disposed
+                
+                return browser;
+            }
+            catch (Exception ex)
+            {
+                log.LogLine($"Failed to launch browser: {ex.Message}");
+                throw new InvalidOperationException($"Browser launch failed: {ex.Message}", ex);
+            }
         }
 
         /// <summary>
