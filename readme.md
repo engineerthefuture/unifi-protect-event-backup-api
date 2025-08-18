@@ -347,8 +347,7 @@ src/
 │       └── UnifiProtectService.cs       # Unifi Protect video download automation
 ├── AssemblyInfo.cs                      # Assembly metadata and attributes
 ├── Event.cs                             # Event data models and structures
-├── UnifiWebhookEventHandler.cs          # New main Lambda entry point (service-oriented)
-└── UnifiWebhookEventReceiver.cs         # Original monolithic implementation (deprecated)
+├── UnifiWebhookEventHandler.cs          # Main Lambda entry point
 ```
 
 ### Service Architecture Benefits
