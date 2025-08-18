@@ -428,7 +428,7 @@ Resources:
         S3Key: !Sub "${FunctionName}/publish.zip"
       Description: !Sub "${EnvPrefix} - ${AppName}"
               #AssemblyName::NameSpace.ClassName::FunctionHandlerName
-      Handler: UnifiWebhookEventReceiver::UnifiWebhookEventReceiver.UnifiWebhookEventReceiver::FunctionHandler
+      Handler: UnifiWebhookEventReceiver::UnifiWebhookEventReceiver.UnifiWebhookEventHandler::FunctionHandler
       MemorySize: 2056
       Timeout: 150
       Runtime: dotnet8
