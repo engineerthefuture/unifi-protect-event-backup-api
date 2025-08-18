@@ -6,7 +6,7 @@
         <Configuration>
           <Format>opencover</Format>
           <Exclude>[xunit*]*,[*.Tests*]*,[*]*.Program,[*]*Exception</Exclude>
-          <ExcludeByAttribute>Obsolete,GeneratedCodeAttribute,CompilerGeneratedAttribute</ExcludeByAttribute>
+          <ExcludeByAttribute>Obsolete,GeneratedCodeAttribute,CompilerGeneratedAttribute,ExcludeFromCodeCoverageAttribute</ExcludeByAttribute>
           <ExcludeByFile>**/bin/**/*,**/obj/**/*</ExcludeByFile>
           <IncludeTestAssembly>false</IncludeTestAssembly>
           <SingleHit>false</SingleHit>

@@ -13,6 +13,7 @@
 
 // System includes
 using System.Collections;
+using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Reflection;
 using System.Text;
@@ -184,6 +185,7 @@ namespace UnifiWebhookEventReceiver
         /// Retrieves Unifi Protect credentials from AWS Secrets Manager
         /// </summary>
         /// <returns>UnifiCredentials object containing hostname, username, and password</returns>
+        [ExcludeFromCodeCoverage] // Requires AWS Secrets Manager connectivity
         private static async Task<UnifiCredentials> GetUnifiCredentialsAsync()
         {
             if (_cachedCredentials != null)
@@ -847,6 +849,7 @@ namespace UnifiWebhookEventReceiver
         /// </summary>
         /// <param name="alarm">Alarm event to queue for processing</param>
         /// <returns>API Gateway response indicating the event has been queued</returns>
+        [ExcludeFromCodeCoverage] // Requires AWS SQS connectivity
         public static async Task<APIGatewayProxyResponse> QueueAlarmForProcessing(Alarm alarm)
         {
             log.LogLine("Queueing alarm event for delayed processing");
@@ -951,6 +954,7 @@ namespace UnifiWebhookEventReceiver
         /// </summary>
         /// <param name="alarm">Parsed alarm object containing triggers, device info, and event details</param>
         /// <returns>API Gateway response indicating success or failure of alarm processing</returns>
+        [ExcludeFromCodeCoverage] // Requires AWS S3 and Secrets Manager connectivity
         public static async Task<APIGatewayProxyResponse> AlarmReceiverFunction(Alarm alarm)
         {
             log.LogLine("Executing alarm receiver function.");
@@ -1008,6 +1012,7 @@ namespace UnifiWebhookEventReceiver
         /// <param name="alarm">The validated alarm object</param>
         /// <param name="credentials">Unifi credentials for video download</param>
         /// <returns>Success response with processed alarm details</returns>
+        [ExcludeFromCodeCoverage] // Requires AWS S3 connectivity
         private static async Task<APIGatewayProxyResponse> ProcessValidAlarm(Alarm alarm, UnifiCredentials credentials)
         {
             // Extract and enhance trigger information
@@ -1147,6 +1152,7 @@ namespace UnifiWebhookEventReceiver
         /// <param name="content">String content to store</param>
         /// <param name="contentType">MIME type of the content</param>
         /// <returns>Task representing the asynchronous upload operation</returns>
+        [ExcludeFromCodeCoverage] // Requires AWS S3 connectivity
         private static async Task UploadFileAsync(string bucketName, string keyName, string content, string contentType)
         {
             try
@@ -1185,6 +1191,7 @@ namespace UnifiWebhookEventReceiver
         /// <param name="data">Binary data to store</param>
         /// <param name="contentType">MIME type of the content</param>
         /// <returns>Task representing the asynchronous upload operation</returns>
+        [ExcludeFromCodeCoverage] // Requires AWS S3 connectivity
         private static async Task UploadFileAsync(string bucketName, string keyName, byte[] data, string contentType)
         {
             try
@@ -1325,6 +1332,7 @@ namespace UnifiWebhookEventReceiver
         /// for the one with the highest timestamp from the most recent date that contains videos.
         /// </summary>
         /// <returns>API Gateway response containing download URL, metadata, and event details, or error message</returns>
+        [ExcludeFromCodeCoverage] // Requires AWS S3 connectivity
         public static async Task<APIGatewayProxyResponse> GetLatestVideoFunction()
         {
             log.LogLine("Executing Get latest video function");
@@ -1375,6 +1383,7 @@ namespace UnifiWebhookEventReceiver
         /// Searches for the latest video file in S3 using date-organized folder structure.
         /// </summary>
         /// <returns>Search result containing video key and timestamp, or error response</returns>
+        [ExcludeFromCodeCoverage] // Requires AWS S3 connectivity
         internal static async Task<(string? VideoKey, long Timestamp, APIGatewayProxyResponse? ErrorResponse)> SearchForLatestVideoAsync()
         {
             log.LogLine("Searching for latest video file in S3 bucket using date-organized approach: " + ALARM_BUCKET_NAME);
@@ -1474,6 +1483,7 @@ namespace UnifiWebhookEventReceiver
         /// </summary>
         /// <param name="videoKey">The S3 key of the video file</param>
         /// <returns>Error response if video doesn't exist, null if it exists</returns>
+        [ExcludeFromCodeCoverage] // Requires AWS S3 connectivity
         internal static async Task<APIGatewayProxyResponse?> VerifyVideoExistsAsync(string videoKey)
         {
             try
@@ -1845,6 +1855,7 @@ namespace UnifiWebhookEventReceiver
         /// <param name="eventLocalLink">Direct URL to the event in Unifi Protect web interface</param>
         /// <param name="deviceName">Name of the device to determine appropriate click coordinates</param>
         /// <returns>Byte array containing the downloaded video data</returns>
+        [ExcludeFromCodeCoverage] // Requires headless browser and external network connectivity
         public static async Task<byte[]> GetVideoFromLocalUnifiProtectViaHeadlessClient(string eventLocalLink, string deviceName, UnifiCredentials credentials)
         {
             log.LogLine($"Starting video download for event from URL: {eventLocalLink}");
@@ -1904,6 +1915,7 @@ namespace UnifiWebhookEventReceiver
         /// Launches an optimized headless browser for video downloading.
         /// </summary>
         /// <returns>Browser instance configured for video downloading</returns>
+        [ExcludeFromCodeCoverage] // Requires headless browser infrastructure
         private static async Task<IBrowser> LaunchOptimizedBrowser()
         {
             log.LogLine("Launching headless browser with HeadlessChromium...");
@@ -1947,6 +1959,7 @@ namespace UnifiWebhookEventReceiver
         /// </summary>
         /// <param name="browser">The browser instance</param>
         /// <returns>Configured page instance</returns>
+        [ExcludeFromCodeCoverage] // Requires headless browser infrastructure
         private static async Task<IPage> SetupBrowserPage(IBrowser browser)
         {
             var page = await browser.NewPageAsync();
@@ -1966,6 +1979,7 @@ namespace UnifiWebhookEventReceiver
         /// </summary>
         /// <param name="page">The browser page</param>
         /// <returns>The download directory path</returns>
+        [ExcludeFromCodeCoverage] // Requires headless browser infrastructure
         private static async Task<string> ConfigureDownloadBehavior(IPage page)
         {
             var downloadDirectory = DOWNLOAD_DIRECTORY;
