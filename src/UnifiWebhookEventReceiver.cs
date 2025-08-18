@@ -1916,19 +1916,62 @@ namespace UnifiWebhookEventReceiver
                 }
                 finally
                 {
-                    // Clean up the event handler to prevent disposed object access
-                    if (downloadEventHandler != null)
-                    {
-                        page.Client.MessageReceived -= downloadEventHandler;
-                        log.LogLine("Download event handler cleaned up");
-                    }
+                    // Clean up the event handler FIRST to prevent disposed object access
+                    await CleanupEventHandler(page, downloadEventHandler);
                 }
+            }
+            catch (ObjectDisposedException ex)
+            {
+                log.LogLine($"Browser was disposed during operation: {ex.Message}");
+                throw new InvalidOperationException("Video download failed due to browser lifecycle issue. Please try again.");
             }
             catch (Exception ex)
             {
+                // Filter out disposed object errors and provide cleaner error messages
+                if (IsDisposedObjectError(ex))
+                {
+                    log.LogLine($"Disposed object error detected: {ex.Message}");
+                    throw new InvalidOperationException("Video download failed due to browser cleanup issue. Please try again.");
+                }
+                
                 log.LogLine($"Error while processing video download: {ex.Message}");
                 throw new InvalidOperationException($"Error downloading video: {ex.Message}", ex);
             }
+        }
+
+        /// <summary>
+        /// Cleans up the event handler to prevent disposed object access issues.
+        /// </summary>
+        /// <param name="page">The browser page</param>
+        /// <param name="downloadEventHandler">The event handler to clean up</param>
+        private static async Task CleanupEventHandler(IPage page, EventHandler<MessageEventArgs>? downloadEventHandler)
+        {
+            if (downloadEventHandler != null)
+            {
+                try
+                {
+                    page.Client.MessageReceived -= downloadEventHandler;
+                    log.LogLine("Download event handler cleaned up");
+                }
+                catch (Exception ex)
+                {
+                    log.LogLine($"Warning: Error cleaning up event handler: {ex.Message}");
+                }
+            }
+            await Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// Checks if an exception is related to disposed object access.
+        /// </summary>
+        /// <param name="ex">The exception to check</param>
+        /// <returns>True if it's a disposed object error</returns>
+        private static bool IsDisposedObjectError(Exception ex)
+        {
+            var errorMessage = ex.Message?.ToLower() ?? string.Empty;
+            return errorMessage.Contains("cannot access a disposed object") || 
+                   errorMessage.Contains("disposed") ||
+                   ex is ObjectDisposedException;
         }
 
         /// <summary>
