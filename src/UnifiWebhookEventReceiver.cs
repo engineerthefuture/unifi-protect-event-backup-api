@@ -1625,10 +1625,23 @@ namespace UnifiWebhookEventReceiver
                 return await BuildEventVideoResponse(searchResult.EventKey!, searchResult.VideoKey!, 
                     eventId, searchResult.Timestamp, eventData);
             }
+            catch (AmazonS3Exception ex) when (ex.ErrorCode == "NoSuchKey")
+            {
+                log.LogLine($"Video or event data not found in S3 for eventId {eventId}: {ex.Message}");
+                return CreateErrorResponse(HttpStatusCode.NotFound, 
+                    $"Video file for event {eventId} is not available. The video may have been automatically deleted due to the 30-day retention policy or the video download may have failed during event processing.");
+            }
+            catch (AmazonS3Exception ex)
+            {
+                log.LogLine($"S3 error retrieving video by eventId {eventId}: {ex.ErrorCode} - {ex.Message}");
+                return CreateErrorResponse(HttpStatusCode.InternalServerError, 
+                    $"Storage service error while retrieving event {eventId}. Please try again later.");
+            }
             catch (Exception e)
             {
-                log.LogLine($"Error retrieving video by eventId {eventId}: {e.Message}");
-                return CreateErrorResponse(HttpStatusCode.InternalServerError, $"Error retrieving video by eventId: {e.Message}");
+                log.LogLine($"Unexpected error retrieving video by eventId {eventId}: {e.Message}");
+                return CreateErrorResponse(HttpStatusCode.InternalServerError, 
+                    $"An unexpected error occurred while retrieving event {eventId}. Please try again later.");
             }
         }
 
@@ -1762,42 +1775,57 @@ namespace UnifiWebhookEventReceiver
         internal static async Task<APIGatewayProxyResponse> BuildEventVideoResponse(string eventKey, string videoKey, 
             string eventId, long timestamp, object? eventData)
         {
-            // Generate a presigned URL for direct download from S3
-            DateTime dt = timestamp > 0 ? DateTimeOffset.FromUnixTimeMilliseconds(timestamp).DateTime : DateTime.UtcNow;
-            string suggestedFilename = $"event_{eventId}_{dt:yyyy-MM-dd_HH-mm-ss}.mp4";
-            
-            // Generate presigned URL with 1 hour expiration and suggested filename
-            var presignedRequest = new GetPreSignedUrlRequest
+            try
             {
-                BucketName = ALARM_BUCKET_NAME!,
-                Key = videoKey,
-                Verb = HttpVerb.GET,
-                Expires = DateTime.UtcNow.AddHours(1),
-                ResponseHeaderOverrides = new ResponseHeaderOverrides
+                // Generate a presigned URL for direct download from S3
+                DateTime dt = timestamp > 0 ? DateTimeOffset.FromUnixTimeMilliseconds(timestamp).DateTime : DateTime.UtcNow;
+                string suggestedFilename = $"event_{eventId}_{dt:yyyy-MM-dd_HH-mm-ss}.mp4";
+                
+                // Generate presigned URL with 1 hour expiration and suggested filename
+                var presignedRequest = new GetPreSignedUrlRequest
                 {
-                    ContentDisposition = $"attachment; filename=\"{suggestedFilename}\""
-                }
-            };
+                    BucketName = ALARM_BUCKET_NAME!,
+                    Key = videoKey,
+                    Verb = HttpVerb.GET,
+                    Expires = DateTime.UtcNow.AddHours(1),
+                    ResponseHeaderOverrides = new ResponseHeaderOverrides
+                    {
+                        ContentDisposition = $"attachment; filename=\"{suggestedFilename}\""
+                    }
+                };
 
-            string presignedUrl = await s3Client.GetPreSignedURLAsync(presignedRequest);
-            log.LogLine($"Generated presigned URL for {videoKey}, expires in 1 hour");
+                string presignedUrl = await s3Client.GetPreSignedURLAsync(presignedRequest);
+                log.LogLine($"Generated presigned URL for {videoKey}, expires in 1 hour");
 
-            // Return the presigned URL, metadata, and event data
-            var responseData = new
+                // Return the presigned URL, metadata, and event data
+                var responseData = new
+                {
+                    downloadUrl = presignedUrl,
+                    filename = suggestedFilename,
+                    videoKey = videoKey,
+                    eventKey = eventKey,
+                    eventId = eventId,
+                    timestamp = timestamp,
+                    eventDate = dt.ToString("yyyy-MM-dd HH:mm:ss"),
+                    expiresAt = DateTime.UtcNow.AddHours(1).ToString("yyyy-MM-dd HH:mm:ss UTC"),
+                    eventData = eventData,
+                    message = "Use the downloadUrl to download the video file directly. URL expires in 1 hour."
+                };
+
+                return CreateSuccessResponse(responseData);
+            }
+            catch (AmazonS3Exception ex) when (ex.ErrorCode == "NoSuchKey")
             {
-                downloadUrl = presignedUrl,
-                filename = suggestedFilename,
-                videoKey = videoKey,
-                eventKey = eventKey,
-                eventId = eventId,
-                timestamp = timestamp,
-                eventDate = dt.ToString("yyyy-MM-dd HH:mm:ss"),
-                expiresAt = DateTime.UtcNow.AddHours(1).ToString("yyyy-MM-dd HH:mm:ss UTC"),
-                eventData = eventData,
-                message = "Use the downloadUrl to download the video file directly. URL expires in 1 hour."
-            };
-
-            return CreateSuccessResponse(responseData);
+                log.LogLine($"Video file {videoKey} not found in S3 when generating presigned URL for event {eventId}");
+                return CreateErrorResponse(HttpStatusCode.NotFound, 
+                    $"Video file for event {eventId} is not available. The video may have been automatically deleted due to the 30-day retention policy or the video download may have failed during event processing.");
+            }
+            catch (AmazonS3Exception ex)
+            {
+                log.LogLine($"S3 error when generating presigned URL for {videoKey}: {ex.ErrorCode} - {ex.Message}");
+                return CreateErrorResponse(HttpStatusCode.InternalServerError, 
+                    $"Unable to generate download link for event {eventId}. Please try again later.");
+            }
         }
 
         #endregion
