@@ -51,6 +51,11 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         [ExcludeFromCodeCoverage] // Requires headless browser and external network connectivity
         public async Task<string> DownloadVideoAsync(Trigger trigger, string eventLocalLink, long timestamp)
         {
+            ArgumentNullException.ThrowIfNull(trigger);
+            ArgumentException.ThrowIfNullOrWhiteSpace(eventLocalLink);
+            if (timestamp <= 0)
+                throw new ArgumentException("Timestamp must be greater than zero", nameof(timestamp));
+
             _logger.LogLine($"Starting video download for event from URL: {eventLocalLink}");
             _logger.LogLine($"Trigger details - EventId: {trigger.eventId}, Device: {trigger.device}, DeviceName: {trigger.deviceName}");
 
@@ -69,6 +74,15 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                     Directory.CreateDirectory(downloadDirectory);
                     _logger.LogLine($"Created download directory: {downloadDirectory}");
                 }
+
+                // Verify credentials are available before attempting browser operations
+                _logger.LogLine("Validating Unifi credentials...");
+                var credentials = await _credentialsService.GetUnifiCredentialsAsync();
+                if (credentials == null || string.IsNullOrEmpty(credentials.username) || string.IsNullOrEmpty(credentials.password))
+                {
+                    throw new InvalidOperationException("Unifi credentials are not properly configured");
+                }
+                _logger.LogLine("Credentials validated successfully");
 
                 // This would call the headless browser logic (simplified for decomposition)
                 // In the actual implementation, this would contain all the browser automation code
