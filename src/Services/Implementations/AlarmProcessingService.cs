@@ -188,8 +188,20 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 _logger.LogLine($"Using credentials hostname: {credentials.hostname}");
 
                 // Download video using the Unifi Protect service
-                var tempVideoPath = await _unifiProtectService.DownloadVideoAsync(trigger, eventLocalLink);
+                var tempVideoPath = await _unifiProtectService.DownloadVideoAsync(trigger, eventLocalLink, alarm.timestamp);
                 _logger.LogLine($"Video downloaded to temporary file: {tempVideoPath}");
+                
+                // Verify the file exists and check its size
+                if (File.Exists(tempVideoPath))
+                {
+                    var fileInfo = new FileInfo(tempVideoPath);
+                    _logger.LogLine($"Temporary video file exists: {fileInfo.Length} bytes");
+                }
+                else
+                {
+                    _logger.LogLine($"ERROR: Temporary video file does not exist: {tempVideoPath}");
+                    return;
+                }
 
                 try
                 {
@@ -198,8 +210,14 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                     _logger.LogLine($"Generated S3 video key: {videoKey}");
 
                     // Store video in S3
+                    _logger.LogLine("About to upload video to S3...");
                     await _s3StorageService.StoreVideoFileAsync(tempVideoPath, videoKey);
-                    _logger.LogLine($"Video stored in S3 with key: {videoKey}");
+                    _logger.LogLine($"Video successfully stored in S3 with key: {videoKey}");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogLine($"ERROR uploading video to S3: {ex}");
+                    throw;
                 }
                 finally
                 {

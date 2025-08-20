@@ -23,8 +23,9 @@ namespace UnifiWebhookEventReceiver.Services
         /// </summary>
         /// <param name="trigger">The trigger containing event information</param>
         /// <param name="eventLocalLink">Direct URL to the event in Unifi Protect</param>
+        /// <param name="timestamp">The event timestamp for consistent S3 key generation</param>
         /// <returns>Path to the downloaded video file</returns>
-        Task<string> DownloadVideoAsync(Trigger trigger, string eventLocalLink);
+        Task<string> DownloadVideoAsync(Trigger trigger, string eventLocalLink, long timestamp);
 
         /// <summary>
         /// Cleans up temporary video files.

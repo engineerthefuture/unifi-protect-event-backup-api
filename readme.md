@@ -73,10 +73,11 @@ S3 Bucket Structure:
 │       ├── {eventId}_{deviceMac}_{timestamp}.json
 │       └── {eventId}_{deviceMac}_{timestamp}.mp4
 └── screenshots/
-    ├── login-screenshot.png
-    ├── pageload-screenshot.png
-    ├── firstclick-screenshot.png
-    └── secondclick-screenshot.png
+    └── YYYY-MM-DD/
+        ├── {eventId}_{deviceMac}_{timestamp}_login-screenshot.png
+        ├── {eventId}_{deviceMac}_{timestamp}_pageload-screenshot.png
+        ├── {eventId}_{deviceMac}_{timestamp}_firstclick-screenshot.png
+        └── {eventId}_{deviceMac}_{timestamp}_secondclick-screenshot.png
 ```
 
 ### Data Retention Policy
@@ -1177,20 +1178,25 @@ my-unifi-events-bucket/
 │   │   └── AA:BB:CC:DD:EE:FF_1704153600000.mp4
 │   └── ...
 └── screenshots/
-    ├── login-screenshot.png
-    ├── pageload-screenshot.png
-    ├── firstclick-screenshot.png
-    └── secondclick-screenshot.png
+    ├── 2024-01-01/
+    │   ├── AA:BB:CC:DD:EE:FF_1704067200000_login-screenshot.png
+    │   ├── AA:BB:CC:DD:EE:FF_1704067200000_pageload-screenshot.png
+    │   ├── AA:BB:CC:DD:EE:FF_1704067200000_firstclick-screenshot.png
+    │   ├── AA:BB:CC:DD:EE:FF_1704067200000_secondclick-screenshot.png
+    │   └── 11:22:33:44:55:66_1704070800000_login-screenshot.png
+    ├── 2024-01-02/
+    │   └── AA:BB:CC:DD:EE:FF_1704153600000_pageload-screenshot.png
+    └── ...
 ```
 
 **File Descriptions:**
 - **Event JSON files**: Webhook payload data with device mappings and timestamps
 - **Video MP4 files**: Downloaded surveillance footage corresponding to alarm events
-- **Diagnostic Screenshots**: Browser automation screenshots for debugging:
-  - `login-screenshot.png`: Unifi Protect login page state
-  - `pageload-screenshot.png`: Event page after navigation
-  - `firstclick-screenshot.png`: Archive button click state
-  - `secondclick-screenshot.png`: Download button click state
+- **Diagnostic Screenshots**: Browser automation screenshots for debugging, organized by date and event:
+  - `{eventId}_{deviceMac}_{timestamp}_login-screenshot.png`: Unifi Protect login page state
+  - `{eventId}_{deviceMac}_{timestamp}_pageload-screenshot.png`: Event page after navigation
+  - `{eventId}_{deviceMac}_{timestamp}_firstclick-screenshot.png`: Archive button click state
+  - `{eventId}_{deviceMac}_{timestamp}_secondclick-screenshot.png`: Download button click state
 
 ## Development
 

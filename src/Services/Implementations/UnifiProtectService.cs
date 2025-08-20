@@ -25,16 +25,20 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
     public class UnifiProtectService : IUnifiProtectService
     {
         private readonly ILambdaLogger _logger;
+        private readonly IS3StorageService _s3StorageService;
+        private readonly ICredentialsService _credentialsService;
 
         /// <summary>
         /// Initializes a new instance of the UnifiProtectService.
         /// </summary>
         /// <param name="logger">Lambda logger instance</param>
-        /// <param name="s3StorageService">S3 storage service for screenshot uploads (reserved for future use)</param>
-        public UnifiProtectService(ILambdaLogger logger, IS3StorageService s3StorageService)
+        /// <param name="s3StorageService">S3 storage service for screenshot uploads</param>
+        /// <param name="credentialsService">Credentials service for Unifi Protect authentication</param>
+        public UnifiProtectService(ILambdaLogger logger, IS3StorageService s3StorageService, ICredentialsService credentialsService)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            // s3StorageService reserved for future screenshot upload functionality
+            _s3StorageService = s3StorageService ?? throw new ArgumentNullException(nameof(s3StorageService));
+            _credentialsService = credentialsService ?? throw new ArgumentNullException(nameof(credentialsService));
         }
 
         /// <summary>
@@ -42,9 +46,10 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// </summary>
         /// <param name="trigger">The trigger containing event information</param>
         /// <param name="eventLocalLink">Direct URL to the event in Unifi Protect</param>
+        /// <param name="timestamp">The event timestamp for consistent S3 key generation</param>
         /// <returns>Path to the downloaded video file</returns>
         [ExcludeFromCodeCoverage] // Requires headless browser and external network connectivity
-        public async Task<string> DownloadVideoAsync(Trigger trigger, string eventLocalLink)
+        public async Task<string> DownloadVideoAsync(Trigger trigger, string eventLocalLink, long timestamp)
         {
             _logger.LogLine($"Starting video download for event from URL: {eventLocalLink}");
             _logger.LogLine($"Trigger details - EventId: {trigger.eventId}, Device: {trigger.device}, DeviceName: {trigger.deviceName}");
@@ -68,7 +73,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 // This would call the headless browser logic (simplified for decomposition)
                 // In the actual implementation, this would contain all the browser automation code
                 _logger.LogLine("About to call DownloadVideoFromUnifiProtect");
-                var videoData = await DownloadVideoFromUnifiProtect(eventLocalLink, trigger.deviceName ?? "", downloadDirectory);
+                var videoData = await DownloadVideoFromUnifiProtect(eventLocalLink, trigger.deviceName ?? "", downloadDirectory, trigger, timestamp);
                 _logger.LogLine($"DownloadVideoFromUnifiProtect completed, received {videoData.Length} bytes");
                 
                 // Save to temporary file
@@ -122,9 +127,11 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// <param name="eventLocalLink">Direct URL to the event in Unifi Protect web interface</param>
         /// <param name="deviceName">Name of the device to determine appropriate click coordinates</param>
         /// <param name="downloadDirectory">Directory to use for downloads</param>
+        /// <param name="trigger">The trigger information for screenshot naming</param>
+        /// <param name="timestamp">The event timestamp for screenshot naming</param>
         /// <returns>Byte array containing the downloaded video data</returns>
         [ExcludeFromCodeCoverage] // Requires headless browser and external network connectivity
-        private async Task<byte[]> DownloadVideoFromUnifiProtect(string eventLocalLink, string deviceName, string downloadDirectory)
+        private async Task<byte[]> DownloadVideoFromUnifiProtect(string eventLocalLink, string deviceName, string downloadDirectory, Trigger trigger, long timestamp)
         {
             try
             {
@@ -136,15 +143,15 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 await ConfigureDownloadBehavior(page, downloadDirectory);
 
                 // Navigate to the event link and handle authentication
-                await NavigateAndAuthenticate(page, eventLocalLink, downloadDirectory);
+                await NavigateAndAuthenticate(page, eventLocalLink, downloadDirectory, trigger, timestamp);
 
                 // Wait for page to be ready for interaction and get the event handler for cleanup
-                var downloadEventHandler = await WaitForPageReady(page, downloadDirectory);
+                var downloadEventHandler = await WaitForPageReady(page, downloadDirectory, trigger, timestamp);
 
                 try
                 {
                     // Perform video download actions
-                    await PerformVideoDownloadActions(page, deviceName, downloadDirectory);
+                    await PerformVideoDownloadActions(page, deviceName, downloadDirectory, trigger, timestamp);
 
                     // Wait for download to complete and return video data
                     return await WaitForDownloadAndGetVideoData(downloadDirectory);
@@ -317,7 +324,9 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// <param name="page">The browser page</param>
         /// <param name="eventLocalLink">The event URL</param>
         /// <param name="downloadDirectory">Download directory for screenshots</param>
-        private async Task NavigateAndAuthenticate(IPage page, string eventLocalLink, string downloadDirectory)
+        /// <param name="trigger">The trigger information for screenshot naming</param>
+        /// <param name="timestamp">The event timestamp for screenshot naming</param>
+        private async Task NavigateAndAuthenticate(IPage page, string eventLocalLink, string downloadDirectory, Trigger trigger, long timestamp)
         {
             _logger.LogLine($"Navigating to Unifi Protect: {eventLocalLink}");
 
@@ -333,17 +342,84 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             var usernameField = await page.QuerySelectorAsync("input[name='username'], input[type='email'], input[id*='username'], input[id*='email']");
             var passwordField = await page.QuerySelectorAsync("input[name='password'], input[type='password'], input[id*='password']");
 
-            // Take a screenshot of the page (simplified - would normally upload to S3)
+            // Take a screenshot of the page and upload to S3
             var screenshotPath = Path.Combine(downloadDirectory, "login-screenshot.png");
             await page.ScreenshotAsync(screenshotPath);
             _logger.LogLine($"Screenshot taken: {screenshotPath}");
+            
+            // Upload screenshot to S3
+            await UploadScreenshotToS3(screenshotPath, "login-screenshot.png", trigger, timestamp);
+            
+            // Clean up local screenshot file
+            if (File.Exists(screenshotPath))
+            {
+                File.Delete(screenshotPath);
+                _logger.LogLine($"Local screenshot file deleted: {screenshotPath}");
+            }
 
             // Check if username and password fields are present
             if (usernameField != null && passwordField != null)
             {
-                // For decomposition purposes, credentials would be injected via dependency injection
-                // This is a simplified version - in production, use the credentials service
-                _logger.LogLine("Login form detected, authentication would be performed here");
+                _logger.LogLine("Login form detected, retrieving credentials and performing authentication...");
+                
+                // Get Unifi credentials from AWS Secrets Manager
+                var credentials = await _credentialsService.GetUnifiCredentialsAsync();
+                
+                if (string.IsNullOrEmpty(credentials.username) || string.IsNullOrEmpty(credentials.password))
+                {
+                    _logger.LogLine("ERROR: Unifi credentials are empty or missing");
+                    throw new InvalidOperationException("Unifi credentials are not properly configured in AWS Secrets Manager");
+                }
+                
+                _logger.LogLine($"Filling login form with username: {credentials.username}");
+                
+                // Fill in the username field
+                await usernameField.ClickAsync();
+                await usernameField.TypeAsync(credentials.username);
+                _logger.LogLine("Username field filled");
+                
+                // Fill in the password field
+                await passwordField.ClickAsync();
+                await passwordField.TypeAsync(credentials.password);
+                _logger.LogLine("Password field filled");
+                
+                // Look for login button and submit
+                var loginButton = await page.QuerySelectorAsync("button[type='submit'], input[type='submit'], button:contains('Login'), button:contains('Sign In')");
+                if (loginButton != null)
+                {
+                    _logger.LogLine("Clicking login button...");
+                    await loginButton.ClickAsync();
+                    
+                    // Wait for navigation after login
+                    try
+                    {
+                        await page.WaitForNavigationAsync(new NavigationOptions
+                        {
+                            WaitUntil = new[] { WaitUntilNavigation.Networkidle0 },
+                            Timeout = 15000
+                        });
+                        _logger.LogLine("Login completed, page navigated");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogLine($"Navigation timeout after login (this may be normal): {ex.Message}");
+                    }
+                }
+                else
+                {
+                    // If no login button found, try pressing Enter on password field
+                    _logger.LogLine("No login button found, pressing Enter on password field");
+                    await passwordField.PressAsync("Enter");
+                    
+                    // Wait a moment for the form submission
+                    await Task.Delay(2000);
+                }
+                
+                _logger.LogLine("Authentication process completed");
+            }
+            else
+            {
+                _logger.LogLine("No login form detected, proceeding without authentication");
             }
         }
 
@@ -352,8 +428,10 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// </summary>
         /// <param name="page">The browser page</param>
         /// <param name="downloadDirectory">Download directory for screenshots</param>
+        /// <param name="trigger">The trigger information for screenshot naming</param>
+        /// <param name="timestamp">The event timestamp for screenshot naming</param>
         /// <returns>The download event handler that was attached</returns>
-        private async Task<EventHandler<MessageEventArgs>?> WaitForPageReady(IPage page, string downloadDirectory)
+        private async Task<EventHandler<MessageEventArgs>?> WaitForPageReady(IPage page, string downloadDirectory, Trigger trigger, long timestamp)
         {
             _logger.LogLine("Waiting for page to load after authentication...");
 
@@ -391,11 +469,21 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
 
             page.Client.MessageReceived += downloadEventHandler;
 
-            // Take a screenshot
+            // Take a screenshot and upload to S3
             await Task.Delay(3000);
             var screenshotPath = Path.Combine(downloadDirectory, "pageload-screenshot.png");
             await page.ScreenshotAsync(screenshotPath);
             _logger.LogLine($"Screenshot taken of the loaded page: {screenshotPath}");
+            
+            // Upload screenshot to S3
+            await UploadScreenshotToS3(screenshotPath, "pageload-screenshot.png", trigger, timestamp);
+            
+            // Clean up local screenshot file
+            if (File.Exists(screenshotPath))
+            {
+                File.Delete(screenshotPath);
+                _logger.LogLine($"Local screenshot file deleted: {screenshotPath}");
+            }
 
             return downloadEventHandler;
         }
@@ -406,7 +494,9 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// <param name="page">The browser page</param>
         /// <param name="deviceName">Device name for coordinate calculation</param>
         /// <param name="downloadDirectory">Download directory for screenshots</param>
-        private async Task PerformVideoDownloadActions(IPage page, string deviceName, string downloadDirectory)
+        /// <param name="trigger">The trigger information for screenshot naming</param>
+        /// <param name="timestamp">The event timestamp for screenshot naming</param>
+        private async Task PerformVideoDownloadActions(IPage page, string deviceName, string downloadDirectory, Trigger trigger, long timestamp)
         {
             var coordinates = GetDeviceSpecificCoordinates(deviceName);
             
@@ -425,6 +515,16 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             var screenshotPath = Path.Combine(downloadDirectory, "firstclick-screenshot.png");
             await page.ScreenshotAsync(screenshotPath);
             _logger.LogLine($"Screenshot taken of the clicked archive button: {screenshotPath}");
+            
+            // Upload screenshot to S3
+            await UploadScreenshotToS3(screenshotPath, "firstclick-screenshot.png", trigger, timestamp);
+            
+            // Clean up local screenshot file
+            if (File.Exists(screenshotPath))
+            {
+                File.Delete(screenshotPath);
+                _logger.LogLine($"Local screenshot file deleted: {screenshotPath}");
+            }
 
             // Click download button
             await page.Mouse.ClickAsync(clickCoordinates["downloadButton"].x, clickCoordinates["downloadButton"].y);
@@ -432,6 +532,17 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
 
             screenshotPath = Path.Combine(downloadDirectory, "secondclick-screenshot.png");
             await page.ScreenshotAsync(screenshotPath);
+            _logger.LogLine($"Screenshot taken of the clicked download button: {screenshotPath}");
+            
+            // Upload screenshot to S3
+            await UploadScreenshotToS3(screenshotPath, "secondclick-screenshot.png", trigger, timestamp);
+            
+            // Clean up local screenshot file
+            if (File.Exists(screenshotPath))
+            {
+                File.Delete(screenshotPath);
+                _logger.LogLine($"Local screenshot file deleted: {screenshotPath}");
+            }
             _logger.LogLine($"Screenshot taken of the clicked download button: {screenshotPath}");
         }
 
@@ -565,6 +676,48 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             return errorMessage.Contains("cannot access a disposed object") || 
                    errorMessage.Contains("disposed") ||
                    ex is ObjectDisposedException;
+        }
+
+        /// <summary>
+        /// Uploads a screenshot to S3 using consistent naming with event/video keys.
+        /// </summary>
+        /// <param name="screenshotPath">Local path to the screenshot file</param>
+        /// <param name="fileName">Base name for the file (e.g., "login-screenshot.png")</param>
+        /// <param name="trigger">The trigger information for consistent naming</param>
+        /// <param name="timestamp">The event timestamp</param>
+        private async Task UploadScreenshotToS3(string screenshotPath, string fileName, Trigger trigger, long timestamp)
+        {
+            try
+            {
+                if (!File.Exists(screenshotPath))
+                {
+                    _logger.LogLine($"Screenshot file not found for upload: {screenshotPath}");
+                    return;
+                }
+
+                // Generate S3 key for screenshots in the screenshots folder with date subfolder
+                DateTime dt = DateTimeOffset.FromUnixTimeMilliseconds(timestamp).LocalDateTime;
+                string dateFolder = $"{dt.Year}-{dt.Month:D2}-{dt.Day:D2}";
+                string basePrefix = $"{trigger.eventId}_{trigger.device}_{timestamp}";
+                
+                // Extract file extension from fileName
+                string extension = Path.GetExtension(fileName);
+                string baseName = Path.GetFileNameWithoutExtension(fileName);
+                
+                var s3Key = $"screenshots/{dateFolder}/{basePrefix}_{baseName}{extension}";
+                
+                _logger.LogLine($"Uploading screenshot to S3: {s3Key}");
+                
+                // Use the screenshot-specific upload method with proper content type
+                await _s3StorageService.StoreScreenshotFileAsync(screenshotPath, s3Key);
+                
+                _logger.LogLine($"Screenshot successfully uploaded to S3: {s3Key}");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogLine($"Error uploading screenshot to S3: {ex.Message}");
+                // Don't throw - screenshot upload failure shouldn't break the main process
+            }
         }
 
         #endregion
