@@ -64,6 +64,7 @@ namespace UnifiWebhookEventReceiverTests
         public async Task StoreAlarmEventAsync_WithValidData_ReturnsS3Key()
         {
             // Arrange
+            Environment.SetEnvironmentVariable("StorageBucket", "test-bucket");
             var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             var trigger = new Trigger
             {
@@ -265,6 +266,7 @@ namespace UnifiWebhookEventReceiverTests
         public async Task StoreAlarmEventAsync_WithS3Exception_ThrowsException()
         {
             // Arrange
+            Environment.SetEnvironmentVariable("STORAGE_BUCKET", "test-bucket");
             var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             var trigger = new Trigger
             {

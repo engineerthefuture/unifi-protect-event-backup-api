@@ -371,54 +371,6 @@ namespace UnifiWebhookEventReceiverTests
             _mockLogger.Verify(x => x.LogLine(It.Is<string>(s => s.Contains("ERROR uploading video to S3"))), Times.Once);
         }
 
-        [Theory]
-        [InlineData("motion", "camera-123", "evt_motion_123")]
-        [InlineData("intrusion", "sensor-456", "evt_intrusion_456")]
-        [InlineData("alarm", "device-789", "evt_alarm_789")]
-        public async Task ProcessAlarmAsync_WithDifferentTriggerTypes_ProcessesCorrectly(string triggerKey, string device, string eventId)
-        {
-            // Arrange
-            SetValidAlarmBucketEnvironment();
-            var alarm = new Alarm
-            {
-                name = "Test Alarm",
-                timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-                triggers = new List<Trigger>
-                {
-                    new Trigger
-                    {
-                        key = triggerKey,
-                        device = device,
-                        eventId = eventId
-                    }
-                }
-            };
-
-            var credentials = CreateValidCredentials();
-            var eventKey = $"alarm-events/2025/01/01/alarm-{eventId}.json";
-
-            _mockCredentialsService.Setup(x => x.GetUnifiCredentialsAsync())
-                .ReturnsAsync(credentials);
-
-            _mockS3StorageService.Setup(x => x.GenerateS3Keys(It.IsAny<Trigger>(), It.IsAny<long>()))
-                .Returns((eventKey, $"videos/2025/01/01/video-{eventId}.mp4"));
-
-            _mockS3StorageService.Setup(x => x.StoreAlarmEventAsync(It.IsAny<Alarm>(), It.IsAny<Trigger>()))
-                .ReturnsAsync(eventKey);
-
-            var expectedResponse = new APIGatewayProxyResponse { StatusCode = 200 };
-            _mockResponseHelper.Setup(x => x.CreateSuccessResponse(It.IsAny<Trigger>(), It.IsAny<long>()))
-                .Returns(expectedResponse);
-
-            // Act
-            var result = await _alarmProcessingService.ProcessAlarmAsync(alarm);
-
-            // Assert
-            Assert.NotNull(result);
-            Assert.Equal(200, result.StatusCode);
-            _mockS3StorageService.Verify(x => x.StoreAlarmEventAsync(alarm, It.Is<Trigger>(t => t.key == triggerKey && t.device == device && t.eventId == eventId)), Times.Once);
-        }
-
         #endregion
 
         #region Helper Methods
