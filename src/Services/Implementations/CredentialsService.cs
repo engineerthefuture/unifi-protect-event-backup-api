@@ -71,6 +71,22 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                     throw new InvalidOperationException("Failed to deserialize Unifi credentials from Secrets Manager");
                 }
 
+                // Validate required fields
+                if (string.IsNullOrEmpty(credentials.hostname))
+                {
+                    throw new InvalidOperationException("Hostname is required in Unifi credentials");
+                }
+
+                if (string.IsNullOrEmpty(credentials.username))
+                {
+                    throw new InvalidOperationException("Username is required in Unifi credentials");
+                }
+
+                if (string.IsNullOrEmpty(credentials.password))
+                {
+                    throw new InvalidOperationException("Password is required in Unifi credentials");
+                }
+
                 _cachedCredentials = credentials;
                 return credentials;
             }

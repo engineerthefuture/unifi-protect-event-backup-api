@@ -75,15 +75,15 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// <returns>API Gateway response with CORS headers</returns>
         public APIGatewayProxyResponse HandleOptionsRequest()
         {
+            var headers = _responseHelper.GetStandardHeaders();
+            headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS";
+            headers["Access-Control-Allow-Headers"] = "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token";
+            
             return new APIGatewayProxyResponse
             {
                 StatusCode = (int)HttpStatusCode.OK,
                 Body = null,
-                Headers = new Dictionary<string, string> {
-                    { "Access-Control-Allow-Methods", "GET,POST,OPTIONS" },
-                    { "Access-Control-Allow-Origin", "*" },
-                    { "Access-Control-Allow-Headers", "Content-Type,X-Amz-Date,Authorization,x-api-key,X-Api-Key,X-Amz-Security-Token,Origin,Access-Control-Allow-Origin,Access-Control-Allow-Methods"}
-                }
+                Headers = headers
             };
         }
 
@@ -135,6 +135,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 "POST" when routeInfo.Route == AppConfiguration.ROUTE_ALARM => await HandleAlarmWebhook(request),
                 "GET" when routeInfo.Route == AppConfiguration.ROUTE_LATEST_VIDEO => await HandleLatestVideoRequest(),
                 "GET" => await HandleVideoDownloadRequest(request),
+                "PUT" or "PATCH" or "HEAD" or "DELETE" => CreateMethodNotAllowedResponse(routeInfo.Method),
                 _ => CreateInvalidRouteResponse(routeInfo.Route, routeInfo.Method)
             };
         }
@@ -157,7 +158,15 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 return _responseHelper.CreateErrorResponse(HttpStatusCode.BadRequest, AppConfiguration.ERROR_MESSAGE_400 + "Invalid alarm object format");
             }
 
-            return await _sqsService.QueueAlarmForProcessingAsync(alarm);
+            try
+            {
+                return await _sqsService.QueueAlarmForProcessingAsync(alarm);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogLine($"Error queuing alarm for processing: {ex.Message}");
+                return _responseHelper.CreateErrorResponse(HttpStatusCode.InternalServerError, "Failed to queue alarm for processing");
+            }
         }
 
         /// <summary>
@@ -212,6 +221,15 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             }
 
             return await _s3StorageService.GetVideoByEventIdAsync(eventId);
+        }
+
+        /// <summary>
+        /// Creates a method not allowed response.
+        /// </summary>
+        private APIGatewayProxyResponse CreateMethodNotAllowedResponse(string method)
+        {
+            return _responseHelper.CreateErrorResponse(HttpStatusCode.MethodNotAllowed,
+                $"Method {method} is not allowed for this endpoint.");
         }
 
         /// <summary>

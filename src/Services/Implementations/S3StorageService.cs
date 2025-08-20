@@ -53,6 +53,9 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         [ExcludeFromCodeCoverage] // Requires AWS S3 connectivity
         public async Task<string> StoreAlarmEventAsync(Alarm alarm, Trigger trigger)
         {
+            ArgumentNullException.ThrowIfNull(alarm);
+            ArgumentNullException.ThrowIfNull(trigger);
+                
             if (string.IsNullOrEmpty(AppConfiguration.AlarmBucketName))
             {
                 throw new InvalidOperationException("StorageBucket environment variable is not configured");
@@ -101,7 +104,6 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// Retrieves the latest video file from S3.
         /// </summary>
         /// <returns>API Gateway response with the video file</returns>
-        [ExcludeFromCodeCoverage] // Requires AWS S3 connectivity
         public async Task<APIGatewayProxyResponse> GetLatestVideoAsync()
         {
             _logger.LogLine("Executing Get latest video function");
@@ -138,7 +140,6 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// </summary>
         /// <param name="eventId">The event ID to search for</param>
         /// <returns>API Gateway response with the video file</returns>
-        [ExcludeFromCodeCoverage] // Requires AWS S3 connectivity
         public async Task<APIGatewayProxyResponse> GetVideoByEventIdAsync(string eventId)
         {
             _logger.LogLine($"Executing Get video by eventId function for eventId: {eventId}");
