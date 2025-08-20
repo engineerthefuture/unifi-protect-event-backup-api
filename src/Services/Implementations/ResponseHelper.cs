@@ -64,7 +64,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             DateTime dt = DateTimeOffset.FromUnixTimeMilliseconds(timestamp).LocalDateTime;
             string date = string.Format("{0:s}", dt);
 
-            string bodyContent = AppConfiguration.FunctionName + "has successfully processed the Unifi alarm event webhook with key " + trigger.eventKey +
+            string bodyContent = AppConfiguration.FunctionName + " has successfully processed the Unifi alarm event webhook with key " + trigger.eventKey +
                 " for " + trigger.deviceName + " that occurred at " + date + ".";
 
             return CreateSuccessResponse(new { msg = bodyContent });
