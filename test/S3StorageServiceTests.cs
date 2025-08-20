@@ -109,18 +109,34 @@ namespace UnifiWebhookEventReceiverTests
         public async Task StoreVideoFileAsync_WithValidPath_UploadsSuccessfully()
         {
             // Arrange
-            var filePath = "/tmp/test-video.mp4";
+            var tempDir = Path.GetTempPath();
+            var filePath = Path.Combine(tempDir, $"test-video-{Guid.NewGuid()}.mp4");
             var s3Key = "videos/test-video.mp4";
 
-            _mockS3Client.Setup(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default))
-                .ReturnsAsync(new PutObjectResponse());
+            // Create a temporary test file
+            var testVideoData = new byte[] { 0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70 }; // MP4 header bytes
+            await File.WriteAllBytesAsync(filePath, testVideoData);
 
-            // Act
-            await _s3StorageService.StoreVideoFileAsync(filePath, s3Key);
+            try
+            {
+                _mockS3Client.Setup(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default))
+                    .ReturnsAsync(new PutObjectResponse());
 
-            // Assert
-            _mockS3Client.Verify(x => x.PutObjectAsync(It.Is<PutObjectRequest>(r => 
-                r.Key == s3Key && r.ContentType == "video/mp4"), default), Times.Once);
+                // Act
+                await _s3StorageService.StoreVideoFileAsync(filePath, s3Key);
+
+                // Assert
+                _mockS3Client.Verify(x => x.PutObjectAsync(It.Is<PutObjectRequest>(r => 
+                    r.Key == s3Key && r.ContentType == "video/mp4"), default), Times.Once);
+            }
+            finally
+            {
+                // Clean up the temporary file
+                if (File.Exists(filePath))
+                {
+                    File.Delete(filePath);
+                }
+            }
         }
 
         [Fact]
@@ -215,18 +231,34 @@ namespace UnifiWebhookEventReceiverTests
         public async Task StoreScreenshotFileAsync_WithValidPath_UploadsWithCorrectContentType()
         {
             // Arrange
-            var filePath = "/tmp/screenshot.jpg";
+            var tempDir = Path.GetTempPath();
+            var filePath = Path.Combine(tempDir, $"screenshot-{Guid.NewGuid()}.jpg");
             var s3Key = "screenshots/screenshot.jpg";
 
-            _mockS3Client.Setup(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default))
-                .ReturnsAsync(new PutObjectResponse());
+            // Create a temporary test file with JPEG header bytes
+            var testImageData = new byte[] { 0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46 }; // JPEG header bytes
+            await File.WriteAllBytesAsync(filePath, testImageData);
 
-            // Act
-            await _s3StorageService.StoreScreenshotFileAsync(filePath, s3Key);
+            try
+            {
+                _mockS3Client.Setup(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default))
+                    .ReturnsAsync(new PutObjectResponse());
 
-            // Assert
-            _mockS3Client.Verify(x => x.PutObjectAsync(It.Is<PutObjectRequest>(r => 
-                r.Key == s3Key && r.ContentType.StartsWith("image/")), default), Times.Once);
+                // Act
+                await _s3StorageService.StoreScreenshotFileAsync(filePath, s3Key);
+
+                // Assert
+                _mockS3Client.Verify(x => x.PutObjectAsync(It.Is<PutObjectRequest>(r => 
+                    r.Key == s3Key && r.ContentType.StartsWith("image/")), default), Times.Once);
+            }
+            finally
+            {
+                // Clean up the temporary file
+                if (File.Exists(filePath))
+                {
+                    File.Delete(filePath);
+                }
+            }
         }
 
         [Fact]
