@@ -196,26 +196,37 @@ namespace UnifiWebhookEventReceiverTests
         public async Task ProcessAlarmAsync_WithMissingStorageBucket_ReturnsInternalServerError()
         {
             // Arrange
-            // Clear bucket environment variable
-            Environment.SetEnvironmentVariable("StorageBucket", null);
+            // Save original environment variable value
+            var originalStorageBucket = Environment.GetEnvironmentVariable("StorageBucket");
+            
+            try
+            {
+                // Clear bucket environment variable
+                Environment.SetEnvironmentVariable("StorageBucket", null);
 
-            var alarm = CreateValidAlarm();
-            var credentials = CreateValidCredentials();
+                var alarm = CreateValidAlarm();
+                var credentials = CreateValidCredentials();
 
-            _mockCredentialsService.Setup(x => x.GetUnifiCredentialsAsync())
-                .ReturnsAsync(credentials);
+                _mockCredentialsService.Setup(x => x.GetUnifiCredentialsAsync())
+                    .ReturnsAsync(credentials);
 
-            var expectedResponse = new APIGatewayProxyResponse { StatusCode = 500 };
-            _mockResponseHelper.Setup(x => x.CreateErrorResponse(HttpStatusCode.InternalServerError, "Server configuration error: StorageBucket not configured"))
-                .Returns(expectedResponse);
+                var expectedResponse = new APIGatewayProxyResponse { StatusCode = 500 };
+                _mockResponseHelper.Setup(x => x.CreateErrorResponse(HttpStatusCode.InternalServerError, "Server configuration error: StorageBucket not configured"))
+                    .Returns(expectedResponse);
 
-            // Act
-            var result = await _alarmProcessingService.ProcessAlarmAsync(alarm);
+                // Act
+                var result = await _alarmProcessingService.ProcessAlarmAsync(alarm);
 
-            // Assert
-            Assert.Equal(expectedResponse, result);
-            _mockLogger.Verify(x => x.LogLine(It.Is<string>(s => s.Contains("StorageBucket environment variable is not configured"))), Times.Once);
-            _mockResponseHelper.Verify(x => x.CreateErrorResponse(HttpStatusCode.InternalServerError, "Server configuration error: StorageBucket not configured"), Times.Once);
+                // Assert
+                Assert.Equal(expectedResponse, result);
+                _mockLogger.Verify(x => x.LogLine(It.Is<string>(s => s.Contains("StorageBucket environment variable is not configured"))), Times.Once);
+                _mockResponseHelper.Verify(x => x.CreateErrorResponse(HttpStatusCode.InternalServerError, "Server configuration error: StorageBucket not configured"), Times.Once);
+            }
+            finally
+            {
+                // Restore original environment variable value
+                Environment.SetEnvironmentVariable("StorageBucket", originalStorageBucket);
+            }
         }
 
         [Fact]

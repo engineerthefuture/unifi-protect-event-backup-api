@@ -144,25 +144,33 @@ namespace UnifiWebhookEventReceiverTests
         public async Task GetLatestVideoAsync_WithMissingBucketConfiguration_ReturnsServerError()
         {
             // Arrange
-            // Clear the environment variable to trigger validation error
-            Environment.SetEnvironmentVariable("StorageBucket", null);
+            // Save original environment variable value
+            var originalStorageBucket = Environment.GetEnvironmentVariable("StorageBucket");
             
-            var expectedResponse = new APIGatewayProxyResponse
+            try
             {
-                StatusCode = 500,
-                Body = "Server configuration error: StorageBucket not configured"
-            };
-            _mockResponseHelper.Setup(x => x.CreateErrorResponse(HttpStatusCode.InternalServerError, "Server configuration error: StorageBucket not configured"))
-                .Returns(expectedResponse);
+                // Clear the environment variable to trigger validation error
+                Environment.SetEnvironmentVariable("StorageBucket", null);
+                
+                var expectedResponse = new APIGatewayProxyResponse
+                {
+                    StatusCode = 500,
+                    Body = "Server configuration error: StorageBucket not configured"
+                };
+                _mockResponseHelper.Setup(x => x.CreateErrorResponse(HttpStatusCode.InternalServerError, "Server configuration error: StorageBucket not configured"))
+                    .Returns(expectedResponse);
 
-            // Act
-            var result = await _s3StorageService.GetLatestVideoAsync();
+                // Act
+                var result = await _s3StorageService.GetLatestVideoAsync();
 
-            // Assert
-            Assert.Equal(500, result.StatusCode);
-            
-            // Restore environment variable
-            Environment.SetEnvironmentVariable("StorageBucket", "test-bucket");
+                // Assert
+                Assert.Equal(500, result.StatusCode);
+            }
+            finally
+            {
+                // Restore original environment variable value
+                Environment.SetEnvironmentVariable("StorageBucket", originalStorageBucket);
+            }
         }
 
         [Fact]
