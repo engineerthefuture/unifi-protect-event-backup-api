@@ -26,16 +26,19 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
     {
         private readonly ILambdaLogger _logger;
         private readonly IS3StorageService _s3StorageService;
+        private readonly ICredentialsService _credentialsService;
 
         /// <summary>
         /// Initializes a new instance of the UnifiProtectService.
         /// </summary>
         /// <param name="logger">Lambda logger instance</param>
         /// <param name="s3StorageService">S3 storage service for screenshot uploads</param>
-        public UnifiProtectService(ILambdaLogger logger, IS3StorageService s3StorageService)
+        /// <param name="credentialsService">Credentials service for Unifi Protect authentication</param>
+        public UnifiProtectService(ILambdaLogger logger, IS3StorageService s3StorageService, ICredentialsService credentialsService)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _s3StorageService = s3StorageService ?? throw new ArgumentNullException(nameof(s3StorageService));
+            _credentialsService = credentialsService ?? throw new ArgumentNullException(nameof(credentialsService));
         }
 
         /// <summary>
@@ -357,9 +360,66 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             // Check if username and password fields are present
             if (usernameField != null && passwordField != null)
             {
-                // For decomposition purposes, credentials would be injected via dependency injection
-                // This is a simplified version - in production, use the credentials service
-                _logger.LogLine("Login form detected, authentication would be performed here");
+                _logger.LogLine("Login form detected, retrieving credentials and performing authentication...");
+                
+                // Get Unifi credentials from AWS Secrets Manager
+                var credentials = await _credentialsService.GetUnifiCredentialsAsync();
+                
+                if (string.IsNullOrEmpty(credentials.username) || string.IsNullOrEmpty(credentials.password))
+                {
+                    _logger.LogLine("ERROR: Unifi credentials are empty or missing");
+                    throw new InvalidOperationException("Unifi credentials are not properly configured in AWS Secrets Manager");
+                }
+                
+                _logger.LogLine($"Filling login form with username: {credentials.username}");
+                
+                // Fill in the username field
+                await usernameField.ClickAsync();
+                await usernameField.TypeAsync(credentials.username);
+                _logger.LogLine("Username field filled");
+                
+                // Fill in the password field
+                await passwordField.ClickAsync();
+                await passwordField.TypeAsync(credentials.password);
+                _logger.LogLine("Password field filled");
+                
+                // Look for login button and submit
+                var loginButton = await page.QuerySelectorAsync("button[type='submit'], input[type='submit'], button:contains('Login'), button:contains('Sign In')");
+                if (loginButton != null)
+                {
+                    _logger.LogLine("Clicking login button...");
+                    await loginButton.ClickAsync();
+                    
+                    // Wait for navigation after login
+                    try
+                    {
+                        await page.WaitForNavigationAsync(new NavigationOptions
+                        {
+                            WaitUntil = new[] { WaitUntilNavigation.Networkidle0 },
+                            Timeout = 15000
+                        });
+                        _logger.LogLine("Login completed, page navigated");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogLine($"Navigation timeout after login (this may be normal): {ex.Message}");
+                    }
+                }
+                else
+                {
+                    // If no login button found, try pressing Enter on password field
+                    _logger.LogLine("No login button found, pressing Enter on password field");
+                    await passwordField.PressAsync("Enter");
+                    
+                    // Wait a moment for the form submission
+                    await Task.Delay(2000);
+                }
+                
+                _logger.LogLine("Authentication process completed");
+            }
+            else
+            {
+                _logger.LogLine("No login form detected, proceeding without authentication");
             }
         }
 

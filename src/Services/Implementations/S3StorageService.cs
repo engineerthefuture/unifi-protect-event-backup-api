@@ -74,7 +74,6 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         [ExcludeFromCodeCoverage] // Requires AWS S3 connectivity
         public async Task StoreVideoFileAsync(string videoFilePath, string s3Key)
         {
-            _logger.LogLine($"=== StoreVideoFileAsync START ===");
             _logger.LogLine($"Video file path: {videoFilePath}");
             _logger.LogLine($"S3 key: {s3Key}");
             _logger.LogLine($"Bucket name: {AppConfiguration.AlarmBucketName}");
@@ -96,7 +95,6 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             
             _logger.LogLine("About to upload video data to S3...");
             await UploadBinaryContentAsync(AppConfiguration.AlarmBucketName, s3Key, videoData, "video/mp4");
-            _logger.LogLine("=== StoreVideoFileAsync END ===");
         }
 
         /// <summary>
@@ -210,7 +208,6 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// <param name="s3Key">S3 key for the screenshot</param>
         public async Task StoreScreenshotFileAsync(string screenshotFilePath, string s3Key)
         {
-            _logger.LogLine($"=== StoreScreenshotFileAsync START ===");
             _logger.LogLine($"Screenshot file path: {screenshotFilePath}");
             _logger.LogLine($"S3 key: {s3Key}");
             _logger.LogLine($"Bucket name: {AppConfiguration.AlarmBucketName}");
@@ -243,7 +240,6 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             _logger.LogLine($"Using content type: {contentType}");
             _logger.LogLine("About to upload screenshot data to S3...");
             await UploadBinaryContentAsync(AppConfiguration.AlarmBucketName, s3Key, screenshotData, contentType);
-            _logger.LogLine("=== StoreScreenshotFileAsync END ===");
         }
 
         #region Private Helper Methods

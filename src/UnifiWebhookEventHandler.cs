@@ -166,7 +166,7 @@ namespace UnifiWebhookEventReceiver
             var responseHelper = new ResponseHelper();
             var credentialsService = new CredentialsService(secretsClient, logger);
             var s3StorageService = new S3StorageService(s3Client, responseHelper, logger);
-            var unifiProtectService = new UnifiProtectService(logger, s3StorageService);
+            var unifiProtectService = new UnifiProtectService(logger, s3StorageService, credentialsService);
             
             // Create services with resolved dependencies
             var alarmProcessingService = new AlarmProcessingService(s3StorageService, unifiProtectService, credentialsService, responseHelper, logger);
@@ -190,7 +190,7 @@ namespace UnifiWebhookEventReceiver
             var responseHelper = new ResponseHelper();
             var credentialsService = new CredentialsService(secretsClient, logger);
             var s3StorageService = new S3StorageService(s3Client, responseHelper, logger);
-            var unifiProtectService = new UnifiProtectService(logger, s3StorageService);
+            var unifiProtectService = new UnifiProtectService(logger, s3StorageService, credentialsService);
             
             // Create services with resolved dependencies
             var alarmProcessingService = new AlarmProcessingService(s3StorageService, unifiProtectService, credentialsService, responseHelper, logger);
@@ -205,7 +205,6 @@ namespace UnifiWebhookEventReceiver
         /// </summary>
         private static async Task<APIGatewayProxyResponse> ProcessSQSEventWithLogger(string requestBody, ISqsService sqsService, ILambdaLogger logger)
         {
-            logger.LogLine("=== ProcessSQSEvent START ===");
             logger.LogLine($"Request body null/empty: {string.IsNullOrEmpty(requestBody)}");
             
             if (string.IsNullOrEmpty(requestBody))

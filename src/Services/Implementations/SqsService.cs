@@ -189,8 +189,6 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 string eventId = trigger?.eventId ?? "unknown";
                 string device = trigger?.device ?? "unknown";
 
-                _logger.LogLine($"Successfully queued alarm event {eventId} for processing in {AppConfiguration.ProcessingDelaySeconds} seconds. MessageId: {messageId}");
-
                 // Return immediate success response
                 var responseData = new
                 {

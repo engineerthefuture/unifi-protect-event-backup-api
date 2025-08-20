@@ -48,7 +48,7 @@ namespace UnifiWebhookEventReceiver.Infrastructure
             var responseHelper = new ResponseHelper();
             var credentialsService = new CredentialsService(secretsClient, logger);
             var s3StorageService = new S3StorageService(s3Client, responseHelper, logger);
-            var unifiProtectService = new UnifiProtectService(logger, s3StorageService);
+            var unifiProtectService = new UnifiProtectService(logger, s3StorageService, credentialsService);
 
             // Create alarm processing service 
             var alarmProcessingService = new AlarmProcessingService(
