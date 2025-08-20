@@ -120,6 +120,23 @@ namespace UnifiWebhookEventReceiver
                 // Read the input stream
                 string requestBody = await ReadInputStreamAsync(input);
                 logger.LogLine("Request body: " + (requestBody?.Length > 0 ? "Present" : "Empty"));
+                
+                // Log the event source for debugging
+                if (!string.IsNullOrEmpty(requestBody))
+                {
+                    if (requestBody.Contains("\"eventSource\""))
+                    {
+                        logger.LogLine("Event contains eventSource field");
+                    }
+                    if (requestBody.Contains("\"Records\""))
+                    {
+                        logger.LogLine("Event contains Records field");
+                    }
+                    if (requestBody.Contains("httpMethod") || requestBody.Contains("HttpMethod"))
+                    {
+                        logger.LogLine("Event appears to be API Gateway request");
+                    }
+                }
 
                 // Check if this is an SQS event and process accordingly
                 var sqsResponse = await TryProcessSQSEvent(requestBody ?? "");
@@ -192,6 +209,7 @@ namespace UnifiWebhookEventReceiver
         {
             if (string.IsNullOrEmpty(requestBody) || !_sqsService.IsSqsEvent(requestBody))
             {
+                _logger.LogLine("Event is not an SQS event, will process as API Gateway event");
                 return null;
             }
 
@@ -209,11 +227,14 @@ namespace UnifiWebhookEventReceiver
         /// <returns>API Gateway proxy response</returns>
         private async Task<APIGatewayProxyResponse> ProcessAPIGatewayEvent(string requestBody)
         {
+            _logger.LogLine("Processing API Gateway event");
+            
             try
             {
                 // Handle scheduled events
                 if (!string.IsNullOrEmpty(requestBody) && requestBody.Contains(AppConfiguration.SOURCE_EVENT_TRIGGER))
                 {
+                    _logger.LogLine("Detected scheduled event trigger");
                     return HandleScheduledEvent();
                 }
 
@@ -224,6 +245,8 @@ namespace UnifiWebhookEventReceiver
                     return _responseHelper.CreateErrorResponse(HttpStatusCode.BadRequest, AppConfiguration.ERROR_MESSAGE_400 + AppConfiguration.ERROR_GENERAL);
                 }
 
+                _logger.LogLine("Parsing API Gateway request from request body");
+
                 // Parse the request
                 var request = ParseApiGatewayRequest(requestBody);
                 if (request == null)
@@ -231,6 +254,8 @@ namespace UnifiWebhookEventReceiver
                     _logger.LogLine(AppConfiguration.ERROR_MESSAGE_400 + AppConfiguration.ERROR_GENERAL);
                     return _responseHelper.CreateErrorResponse(HttpStatusCode.BadRequest, AppConfiguration.ERROR_MESSAGE_400 + AppConfiguration.ERROR_GENERAL);
                 }
+
+                _logger.LogLine("API Gateway request parsed successfully, routing to handler");
 
                 // Route the request
                 return await _requestRouter.RouteRequestAsync(request);

@@ -84,7 +84,29 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// <returns>True if this is an SQS event, false otherwise</returns>
         public bool IsSqsEvent(string requestBody)
         {
-            return requestBody.Contains("\"Records\"") && requestBody.Contains("\"eventSource\":\"aws:sqs\"");
+            _logger.LogLine("Checking if request is SQS event...");
+            _logger.LogLine($"Request body length: {requestBody?.Length ?? 0}");
+            
+            if (string.IsNullOrEmpty(requestBody))
+            {
+                _logger.LogLine("Request body is null or empty - not an SQS event");
+                return false;
+            }
+            
+            // Log a snippet of the request body for debugging (first 500 chars)
+            var snippet = requestBody.Length > 500 ? string.Concat(requestBody.AsSpan(0, 500), "...") : requestBody;
+            _logger.LogLine($"Request body snippet: {snippet}");
+            
+            bool hasRecords = requestBody.Contains("\"Records\"");
+            bool hasEventSource = requestBody.Contains("\"eventSource\":\"aws:sqs\"");
+            
+            _logger.LogLine($"Has 'Records': {hasRecords}");
+            _logger.LogLine($"Has 'eventSource:aws:sqs': {hasEventSource}");
+            
+            bool isSqsEvent = hasRecords && hasEventSource;
+            _logger.LogLine($"Is SQS event: {isSqsEvent}");
+            
+            return isSqsEvent;
         }
 
         /// <summary>

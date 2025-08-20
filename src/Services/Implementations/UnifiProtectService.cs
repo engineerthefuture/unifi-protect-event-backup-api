@@ -47,16 +47,29 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         public async Task<string> DownloadVideoAsync(Trigger trigger, string eventLocalLink)
         {
             _logger.LogLine($"Starting video download for event from URL: {eventLocalLink}");
+            _logger.LogLine($"Trigger details - EventId: {trigger.eventId}, Device: {trigger.device}, DeviceName: {trigger.deviceName}");
 
             // The downloaded video will be stored temporarily and then moved to S3
             var downloadDirectory = AppConfiguration.DownloadDirectory;
+            _logger.LogLine($"Using download directory: {downloadDirectory}");
+            
             var tempVideoFile = Path.Combine(downloadDirectory, $"temp_{trigger.eventId}_{DateTime.UtcNow.Ticks}.mp4");
+            _logger.LogLine($"Temporary video file path: {tempVideoFile}");
 
             try
             {
+                // Ensure download directory exists
+                if (!Directory.Exists(downloadDirectory))
+                {
+                    Directory.CreateDirectory(downloadDirectory);
+                    _logger.LogLine($"Created download directory: {downloadDirectory}");
+                }
+
                 // This would call the headless browser logic (simplified for decomposition)
                 // In the actual implementation, this would contain all the browser automation code
+                _logger.LogLine("About to call DownloadVideoFromUnifiProtect");
                 var videoData = await DownloadVideoFromUnifiProtect(eventLocalLink, trigger.deviceName ?? "", downloadDirectory);
+                _logger.LogLine($"DownloadVideoFromUnifiProtect completed, received {videoData.Length} bytes");
                 
                 // Save to temporary file
                 await File.WriteAllBytesAsync(tempVideoFile, videoData);
@@ -67,6 +80,8 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             catch (Exception ex)
             {
                 _logger.LogLine($"Error downloading video: {ex.Message}");
+                _logger.LogLine($"Exception type: {ex.GetType().Name}");
+                _logger.LogLine($"Stack trace: {ex.StackTrace}");
                 // Clean up any partial file
                 CleanupTempFile(tempVideoFile);
                 throw;
