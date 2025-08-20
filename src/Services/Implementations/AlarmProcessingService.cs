@@ -188,7 +188,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 _logger.LogLine($"Using credentials hostname: {credentials.hostname}");
 
                 // Download video using the Unifi Protect service
-                var tempVideoPath = await _unifiProtectService.DownloadVideoAsync(trigger, eventLocalLink);
+                var tempVideoPath = await _unifiProtectService.DownloadVideoAsync(trigger, eventLocalLink, alarm.timestamp);
                 _logger.LogLine($"Video downloaded to temporary file: {tempVideoPath}");
                 
                 // Verify the file exists and check its size
