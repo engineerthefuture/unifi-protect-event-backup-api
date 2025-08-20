@@ -128,6 +128,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             // Download and store video if event path is available
             if (!string.IsNullOrEmpty(alarm.eventPath))
             {
+                _logger.LogLine($"Event path found: {alarm.eventPath}, initiating video download");
                 await DownloadAndStoreVideo(alarm, credentials, trigger);
             }
             else
@@ -183,14 +184,18 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             {
                 string eventLocalLink = credentials.hostname + alarm.eventPath;
                 _logger.LogLine($"Starting video download for event: {trigger.eventId}");
+                _logger.LogLine($"Event local link: {eventLocalLink}");
+                _logger.LogLine($"Using credentials hostname: {credentials.hostname}");
 
                 // Download video using the Unifi Protect service
                 var tempVideoPath = await _unifiProtectService.DownloadVideoAsync(trigger, eventLocalLink);
+                _logger.LogLine($"Video downloaded to temporary file: {tempVideoPath}");
 
                 try
                 {
                     // Generate S3 key for video storage
                     var (_, videoKey) = _s3StorageService.GenerateS3Keys(trigger, alarm.timestamp);
+                    _logger.LogLine($"Generated S3 video key: {videoKey}");
 
                     // Store video in S3
                     await _s3StorageService.StoreVideoFileAsync(tempVideoPath, videoKey);
@@ -199,12 +204,14 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 finally
                 {
                     // Clean up temporary file
+                    _logger.LogLine($"Cleaning up temporary video file: {tempVideoPath}");
                     _unifiProtectService.CleanupTempFile(tempVideoPath);
                 }
             }
             catch (Exception ex)
             {
                 _logger.LogLine($"Error downloading or storing video for event {trigger.eventId}: {ex.Message}");
+                _logger.LogLine($"Exception details: {ex}");
                 // Don't fail the entire alarm processing if video download fails
                 // The event data is still valuable without the video
             }

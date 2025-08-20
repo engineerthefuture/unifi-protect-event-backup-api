@@ -152,6 +152,9 @@ Resources:
                 Action:
                   - sqs:SendMessage
                   - sqs:GetQueueAttributes
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueUrl
                 Resource: !GetAtt AlarmProcessingQueue.Arn
         - PolicyName: UnifiCredentialsSecretsPolicy
           PolicyDocument:
