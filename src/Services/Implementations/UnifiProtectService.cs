@@ -384,7 +384,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 _logger.LogLine("Password field filled");
                 
                 // Look for login button and submit
-                var loginButton = await page.QuerySelectorAsync("button[type='submit'], input[type='submit'], button:contains('Login'), button:contains('Sign In')");
+                var loginButton = await page.QuerySelectorAsync("button[type='submit']");
                 if (loginButton != null)
                 {
                     _logger.LogLine("Clicking login button...");
