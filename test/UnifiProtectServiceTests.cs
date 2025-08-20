@@ -148,7 +148,7 @@ namespace UnifiWebhookEventReceiverTests
             };
 
             _mockCredentialsService.Setup(x => x.GetUnifiCredentialsAsync())
-                .ReturnsAsync((UnifiCredentials?)null);
+                .ReturnsAsync(null as UnifiCredentials);
 
             // Act & Assert
             await Assert.ThrowsAsync<InvalidOperationException>(() => 

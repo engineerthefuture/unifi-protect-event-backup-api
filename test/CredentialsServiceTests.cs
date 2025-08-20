@@ -183,7 +183,7 @@ namespace UnifiWebhookEventReceiverTests
             // Arrange
             var secretResponse = new GetSecretValueResponse
             {
-                SecretString = ""
+                SecretString = " "
             };
 
             _mockSecretsClient.Setup(x => x.GetSecretValueAsync(It.IsAny<GetSecretValueRequest>(), default))
