@@ -233,7 +233,6 @@ namespace UnifiWebhookEventReceiver
                 };
             }
 
-            logger.LogLine("Detected SQS event, processing delayed alarm");
             return await sqsService.ProcessSqsEventAsync(requestBody);
         }
 
