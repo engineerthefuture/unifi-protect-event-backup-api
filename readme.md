@@ -554,6 +554,8 @@ Handles CORS preflight requests for web client support.
 
 ## Setup and Deployment
 
+**🚀 New to this project? Start with the [Quickstart Guide](docs/QUICKSTART.md) for step-by-step setup instructions.**
+
 This project supports multi-environment deployment with automated CI/CD via GitHub Actions. Deploy to development environments from feature branches and production from the main branch.
 
 ### Multi-Environment Support
@@ -1575,6 +1577,7 @@ aws cloudwatch get-metric-statistics \
 
 ## Documentation
 
+- **[Quickstart Guide](docs/QUICKSTART.md)** - Step-by-step setup for new AWS accounts
 - **[API Documentation](openapi.yaml)** - Complete OpenAPI 3.0 specification
 - **[Deployment Guide](docs/DEPLOYMENT.md)** - Multi-environment deployment instructions
 
