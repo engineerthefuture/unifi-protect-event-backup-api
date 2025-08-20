@@ -138,12 +138,33 @@ namespace UnifiWebhookEventReceiver
                     }
                 }
 
-                // Check if this is an SQS event and process accordingly
-                var sqsResponse = await TryProcessSQSEvent(requestBody ?? "");
-                if (sqsResponse != null)
+                // Manual SQS event check with proper logger
+                logger.LogLine("=== Manual SQS Event Check START ===");
+                logger.LogLine($"Request body null/empty: {string.IsNullOrEmpty(requestBody)}");
+                
+                if (!string.IsNullOrEmpty(requestBody))
                 {
-                    return sqsResponse;
+                    // Log a snippet of the request body for debugging (first 500 chars)
+                    var snippet = requestBody.Length > 500 ? string.Concat(requestBody.AsSpan(0, 500), "...") : requestBody;
+                    logger.LogLine($"Request body snippet: {snippet}");
+                    
+                    bool hasRecords = requestBody.Contains("\"Records\"");
+                    bool hasEventSource = requestBody.Contains("\"eventSource\":\"aws:sqs\"");
+                    
+                    logger.LogLine($"Has 'Records': {hasRecords}");
+                    logger.LogLine($"Has 'eventSource:aws:sqs': {hasEventSource}");
+                    
+                    bool isSqsEvent = hasRecords && hasEventSource;
+                    logger.LogLine($"Is SQS event: {isSqsEvent}");
+                    
+                    if (isSqsEvent)
+                    {
+                        logger.LogLine("Detected SQS event, processing delayed alarm");
+                        return await _sqsService.ProcessSqsEventAsync(requestBody);
+                    }
                 }
+                
+                logger.LogLine("=== Manual SQS Event Check END ===");
 
                 // Otherwise, process as API Gateway event
                 return await ProcessAPIGatewayEvent(requestBody ?? "");
@@ -198,36 +219,6 @@ namespace UnifiWebhookEventReceiver
             {
                 return await reader.ReadToEndAsync();
             }
-        }
-
-        /// <summary>
-        /// Attempts to process the request as an SQS event.
-        /// </summary>
-        /// <param name="requestBody">The request body to check and process</param>
-        /// <returns>API Gateway response if this was an SQS event, null otherwise</returns>
-        private async Task<APIGatewayProxyResponse?> TryProcessSQSEvent(string requestBody)
-        {
-            _logger.LogLine("=== TryProcessSQSEvent START ===");
-            _logger.LogLine($"Request body null/empty: {string.IsNullOrEmpty(requestBody)}");
-            
-            if (string.IsNullOrEmpty(requestBody))
-            {
-                _logger.LogLine("Request body is null/empty, not SQS event");
-                return null;
-            }
-            
-            _logger.LogLine("About to call _sqsService.IsSqsEvent()");
-            bool isSqsEvent = _sqsService.IsSqsEvent(requestBody);
-            _logger.LogLine($"_sqsService.IsSqsEvent() returned: {isSqsEvent}");
-            
-            if (!isSqsEvent)
-            {
-                _logger.LogLine("Event is not an SQS event, will process as API Gateway event");
-                return null;
-            }
-
-            _logger.LogLine("Detected SQS event, processing delayed alarm");
-            return await _sqsService.ProcessSqsEventAsync(requestBody);
         }
 
         /// <summary>
