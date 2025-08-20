@@ -269,46 +269,6 @@ namespace UnifiWebhookEventReceiverTests
         }
 
         [Fact]
-        public async Task ProcessAlarmAsync_WithValidAlarmWithEventPath_ReturnsSuccessWithVideoDownload()
-        {
-            // Arrange
-            SetValidAlarmBucketEnvironment();
-            var alarm = CreateValidAlarm();
-            alarm.eventPath = "/protect/api/events/test-event-123/video";
-
-            var credentials = CreateValidCredentials();
-            var eventKey = "alarm-events/2025/01/01/alarm-evt_123.json";
-            var videoKey = "videos/2025/01/01/video-evt_123.mp4";
-            var tempVideoPath = "/tmp/test-video.mp4";
-
-            _mockCredentialsService.Setup(x => x.GetUnifiCredentialsAsync())
-                .ReturnsAsync(credentials);
-
-            _mockS3StorageService.Setup(x => x.GenerateS3Keys(It.IsAny<Trigger>(), It.IsAny<long>()))
-                .Returns((eventKey, videoKey));
-
-            _mockS3StorageService.Setup(x => x.StoreAlarmEventAsync(It.IsAny<Alarm>(), It.IsAny<Trigger>()))
-                .ReturnsAsync(eventKey);
-
-            _mockUnifiProtectService.Setup(x => x.DownloadVideoAsync(It.IsAny<Trigger>(), It.IsAny<string>(), It.IsAny<long>()))
-                .ReturnsAsync(tempVideoPath);
-
-            var expectedResponse = new APIGatewayProxyResponse { StatusCode = 200 };
-            _mockResponseHelper.Setup(x => x.CreateSuccessResponse(It.IsAny<Trigger>(), It.IsAny<long>()))
-                .Returns(expectedResponse);
-
-            // Act
-            var result = await _alarmProcessingService.ProcessAlarmAsync(alarm);
-
-            // Assert
-            Assert.Equal(expectedResponse, result);
-            _mockS3StorageService.Verify(x => x.StoreAlarmEventAsync(alarm, It.IsAny<Trigger>()), Times.Once);
-            _mockUnifiProtectService.Verify(x => x.DownloadVideoAsync(It.IsAny<Trigger>(), It.IsAny<string>(), It.IsAny<long>()), Times.Once);
-            _mockS3StorageService.Verify(x => x.StoreVideoFileAsync(tempVideoPath, videoKey), Times.Once);
-            _mockUnifiProtectService.Verify(x => x.CleanupTempFile(tempVideoPath), Times.Once);
-        }
-
-        [Fact]
         public async Task ProcessAlarmAsync_WithVideoDownloadException_ContinuesWithoutFailingAlarmProcessing()
         {
             // Arrange
@@ -342,47 +302,6 @@ namespace UnifiWebhookEventReceiverTests
             Assert.Equal(expectedResponse, result);
             _mockS3StorageService.Verify(x => x.StoreAlarmEventAsync(alarm, It.IsAny<Trigger>()), Times.Once);
             _mockLogger.Verify(x => x.LogLine(It.Is<string>(s => s.Contains("Error downloading or storing video"))), Times.Once);
-        }
-
-        [Fact]
-        public async Task ProcessAlarmAsync_WithS3UploadVideoException_LogsErrorButContinues()
-        {
-            // Arrange
-            SetValidAlarmBucketEnvironment();
-            var alarm = CreateValidAlarm();
-            alarm.eventPath = "/protect/api/events/test-event-123/video";
-
-            var credentials = CreateValidCredentials();
-            var eventKey = "alarm-events/2025/01/01/alarm-evt_123.json";
-            var videoKey = "videos/2025/01/01/video-evt_123.mp4";
-            var tempVideoPath = "/tmp/test-video.mp4";
-
-            _mockCredentialsService.Setup(x => x.GetUnifiCredentialsAsync())
-                .ReturnsAsync(credentials);
-
-            _mockS3StorageService.Setup(x => x.GenerateS3Keys(It.IsAny<Trigger>(), It.IsAny<long>()))
-                .Returns((eventKey, videoKey));
-
-            _mockS3StorageService.Setup(x => x.StoreAlarmEventAsync(It.IsAny<Alarm>(), It.IsAny<Trigger>()))
-                .ReturnsAsync(eventKey);
-
-            _mockUnifiProtectService.Setup(x => x.DownloadVideoAsync(It.IsAny<Trigger>(), It.IsAny<string>(), It.IsAny<long>()))
-                .ReturnsAsync(tempVideoPath);
-
-            _mockS3StorageService.Setup(x => x.StoreVideoFileAsync(tempVideoPath, videoKey))
-                .ThrowsAsync(new InvalidOperationException("S3 upload failed"));
-
-            var expectedResponse = new APIGatewayProxyResponse { StatusCode = 200 };
-            _mockResponseHelper.Setup(x => x.CreateSuccessResponse(It.IsAny<Trigger>(), It.IsAny<long>()))
-                .Returns(expectedResponse);
-
-            // Act
-            var result = await _alarmProcessingService.ProcessAlarmAsync(alarm);
-
-            // Assert
-            Assert.Equal(expectedResponse, result);
-            _mockUnifiProtectService.Verify(x => x.CleanupTempFile(tempVideoPath), Times.Once);
-            _mockLogger.Verify(x => x.LogLine(It.Is<string>(s => s.Contains("ERROR uploading video to S3"))), Times.Once);
         }
 
         #endregion

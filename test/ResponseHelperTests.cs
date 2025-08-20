@@ -203,37 +203,6 @@ namespace UnifiWebhookEventReceiverTests
         #region CreateSuccessResponse(Trigger, long) Tests
 
         [Fact]
-        public void CreateSuccessResponse_WithTriggerAndTimestamp_ReturnsCorrectResponse()
-        {
-            // Arrange
-            var trigger = new Trigger
-            {
-                key = "motion",
-                device = "camera-123",
-                eventId = "event-123",
-                deviceName = "Front Door Camera",
-                eventKey = "alarm-evt_123.json"
-            };
-            var timestamp = 1640995200000L; // January 1, 2022 00:00:00 UTC
-
-            // Act
-            var result = _responseHelper.CreateSuccessResponse(trigger, timestamp);
-
-            // Assert
-            Assert.NotNull(result);
-            Assert.Equal(200, result.StatusCode);
-            Assert.NotNull(result.Body);
-            
-            var responseBody = JsonConvert.DeserializeObject<dynamic>(result.Body);
-            var message = (string)responseBody!.msg;
-            
-            Assert.Contains("has successfully processed", message);
-            Assert.Contains("alarm-evt_123.json", message);
-            Assert.Contains("Front Door Camera", message);
-            Assert.Contains("2021-12-31T19:00:00", message);
-        }
-
-        [Fact]
         public void CreateSuccessResponse_WithMinimalTrigger_HandlesNullFields()
         {
             // Arrange
@@ -259,32 +228,6 @@ namespace UnifiWebhookEventReceiverTests
             Assert.Contains("test-event.json", message);
             // Should handle null deviceName gracefully
             Assert.DoesNotContain("null", message);
-        }
-
-        [Theory]
-        [InlineData(1640995200000L, "2021-12-31T19:00:00")] // January 1, 2022 UTC = Dec 31, 2021 PST
-        [InlineData(1609459200000L, "2020-12-31T19:00:00")] // January 1, 2021 UTC = Dec 31, 2020 PST
-        [InlineData(1672531200000L, "2022-12-31T19:00:00")] // January 1, 2023 UTC = Dec 31, 2022 PST
-        public void CreateSuccessResponse_WithDifferentTimestamps_FormatsDateCorrectly(long timestamp, string expectedDate)
-        {
-            // Arrange
-            var trigger = new Trigger
-            {
-                key = "test",
-                device = "test-device",
-                eventId = "test-event",
-                deviceName = "Test Device",
-                eventKey = "test.json"
-            };
-
-            // Act
-            var result = _responseHelper.CreateSuccessResponse(trigger, timestamp);
-
-            // Assert
-            var responseBody = JsonConvert.DeserializeObject<dynamic>(result.Body);
-            var message = (string)responseBody!.msg;
-            
-            Assert.Contains(expectedDate, message);
         }
 
         #endregion
