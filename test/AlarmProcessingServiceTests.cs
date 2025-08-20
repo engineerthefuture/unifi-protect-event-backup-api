@@ -197,7 +197,6 @@ namespace UnifiWebhookEventReceiverTests
         {
             // Arrange
             // Clear bucket environment variable
-            Environment.SetEnvironmentVariable("STORAGE_BUCKET", null);
             Environment.SetEnvironmentVariable("StorageBucket", null);
 
             var alarm = CreateValidAlarm();
@@ -377,7 +376,7 @@ namespace UnifiWebhookEventReceiverTests
 
         private static void SetValidAlarmBucketEnvironment()
         {
-            Environment.SetEnvironmentVariable("STORAGE_BUCKET", "test-alarm-bucket");
+            Environment.SetEnvironmentVariable("StorageBucket", "test-alarm-bucket");
         }
 
         private static Alarm CreateValidAlarm()

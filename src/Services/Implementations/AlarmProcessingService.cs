@@ -217,7 +217,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 catch (Exception ex)
                 {
                     _logger.LogLine($"ERROR uploading video to S3: {ex}");
-                    throw;
+                    // Don't rethrow - let the outer catch handle all video-related failures
                 }
                 finally
                 {
