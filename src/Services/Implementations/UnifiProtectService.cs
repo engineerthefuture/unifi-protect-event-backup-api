@@ -635,7 +635,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                     return;
                 }
 
-                // Generate S3 key using the same pattern as event and video files
+                // Generate S3 key for screenshots in the screenshots folder with date subfolder
                 DateTime dt = DateTimeOffset.FromUnixTimeMilliseconds(timestamp).LocalDateTime;
                 string dateFolder = $"{dt.Year}-{dt.Month:D2}-{dt.Day:D2}";
                 string basePrefix = $"{trigger.eventId}_{trigger.device}_{timestamp}";
@@ -644,12 +644,12 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 string extension = Path.GetExtension(fileName);
                 string baseName = Path.GetFileNameWithoutExtension(fileName);
                 
-                var s3Key = $"{dateFolder}/{basePrefix}_{baseName}{extension}";
+                var s3Key = $"screenshots/{dateFolder}/{basePrefix}_{baseName}{extension}";
                 
                 _logger.LogLine($"Uploading screenshot to S3: {s3Key}");
                 
-                // Use the existing StoreVideoFileAsync method (it works for any binary file)
-                await _s3StorageService.StoreVideoFileAsync(screenshotPath, s3Key);
+                // Use the screenshot-specific upload method with proper content type
+                await _s3StorageService.StoreScreenshotFileAsync(screenshotPath, s3Key);
                 
                 _logger.LogLine($"Screenshot successfully uploaded to S3: {s3Key}");
             }

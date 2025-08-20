@@ -203,6 +203,49 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             return (eventKey, videoKey);
         }
 
+        /// <summary>
+        /// Uploads a screenshot file to S3 with appropriate content type.
+        /// </summary>
+        /// <param name="screenshotFilePath">Path to the local screenshot file</param>
+        /// <param name="s3Key">S3 key for the screenshot</param>
+        public async Task StoreScreenshotFileAsync(string screenshotFilePath, string s3Key)
+        {
+            _logger.LogLine($"=== StoreScreenshotFileAsync START ===");
+            _logger.LogLine($"Screenshot file path: {screenshotFilePath}");
+            _logger.LogLine($"S3 key: {s3Key}");
+            _logger.LogLine($"Bucket name: {AppConfiguration.AlarmBucketName}");
+            
+            if (string.IsNullOrEmpty(AppConfiguration.AlarmBucketName))
+            {
+                _logger.LogLine("ERROR: StorageBucket environment variable is not configured");
+                throw new InvalidOperationException("StorageBucket environment variable is not configured");
+            }
+
+            if (!File.Exists(screenshotFilePath))
+            {
+                _logger.LogLine($"ERROR: Screenshot file does not exist: {screenshotFilePath}");
+                throw new FileNotFoundException($"Screenshot file not found: {screenshotFilePath}");
+            }
+
+            var screenshotData = await File.ReadAllBytesAsync(screenshotFilePath);
+            _logger.LogLine($"Successfully read screenshot file: {screenshotData.Length} bytes");
+            
+            // Determine content type based on file extension
+            string contentType = Path.GetExtension(screenshotFilePath).ToLowerInvariant() switch
+            {
+                ".png" => "image/png",
+                ".jpg" or ".jpeg" => "image/jpeg",
+                ".gif" => "image/gif",
+                ".bmp" => "image/bmp",
+                _ => "application/octet-stream"
+            };
+            
+            _logger.LogLine($"Using content type: {contentType}");
+            _logger.LogLine("About to upload screenshot data to S3...");
+            await UploadBinaryContentAsync(AppConfiguration.AlarmBucketName, s3Key, screenshotData, contentType);
+            _logger.LogLine("=== StoreScreenshotFileAsync END ===");
+        }
+
         #region Private Helper Methods
 
         /// <summary>

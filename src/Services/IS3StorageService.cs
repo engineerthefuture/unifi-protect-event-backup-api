@@ -55,5 +55,12 @@ namespace UnifiWebhookEventReceiver.Services
         /// <param name="timestamp">The event timestamp</param>
         /// <returns>Tuple containing event key and video key</returns>
         (string eventKey, string videoKey) GenerateS3Keys(Trigger trigger, long timestamp);
+
+        /// <summary>
+        /// Uploads a screenshot file to S3 with appropriate content type.
+        /// </summary>
+        /// <param name="screenshotFilePath">Path to the local screenshot file</param>
+        /// <param name="s3Key">S3 key for the screenshot</param>
+        Task StoreScreenshotFileAsync(string screenshotFilePath, string s3Key);
     }
 }
