@@ -207,7 +207,20 @@ namespace UnifiWebhookEventReceiver
         /// <returns>API Gateway response if this was an SQS event, null otherwise</returns>
         private async Task<APIGatewayProxyResponse?> TryProcessSQSEvent(string requestBody)
         {
-            if (string.IsNullOrEmpty(requestBody) || !_sqsService.IsSqsEvent(requestBody))
+            _logger.LogLine("=== TryProcessSQSEvent START ===");
+            _logger.LogLine($"Request body null/empty: {string.IsNullOrEmpty(requestBody)}");
+            
+            if (string.IsNullOrEmpty(requestBody))
+            {
+                _logger.LogLine("Request body is null/empty, not SQS event");
+                return null;
+            }
+            
+            _logger.LogLine("About to call _sqsService.IsSqsEvent()");
+            bool isSqsEvent = _sqsService.IsSqsEvent(requestBody);
+            _logger.LogLine($"_sqsService.IsSqsEvent() returned: {isSqsEvent}");
+            
+            if (!isSqsEvent)
             {
                 _logger.LogLine("Event is not an SQS event, will process as API Gateway event");
                 return null;
