@@ -35,6 +35,10 @@ namespace UnifiWebhookEventReceiverTests
 
         public AlarmProcessingServiceTests()
         {
+            // Set up common environment variables for testing
+            Environment.SetEnvironmentVariable("FunctionName", "TestFunction");
+            SetValidAlarmBucketEnvironment(); // Ensure bucket is set by default
+            
             _mockS3StorageService = new Mock<IS3StorageService>();
             _mockUnifiProtectService = new Mock<IUnifiProtectService>();
             _mockCredentialsService = new Mock<ICredentialsService>();

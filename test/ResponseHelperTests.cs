@@ -11,6 +11,7 @@
 
 #nullable enable
 
+using System;
 using System.Net;
 using Amazon.Lambda.APIGatewayEvents;
 using Newtonsoft.Json;
@@ -26,6 +27,9 @@ namespace UnifiWebhookEventReceiverTests
 
         public ResponseHelperTests()
         {
+            // Set up environment variables needed for testing
+            Environment.SetEnvironmentVariable("FunctionName", "TestFunction");
+            
             _responseHelper = new ResponseHelper();
         }
 
