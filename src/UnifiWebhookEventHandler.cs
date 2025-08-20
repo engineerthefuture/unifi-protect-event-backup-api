@@ -120,33 +120,22 @@ namespace UnifiWebhookEventReceiver
                 // Read the input stream
                 string requestBody = await ReadInputStreamAsync(input);
                 logger.LogLine("Request body: " + (requestBody?.Length > 0 ? "Present" : "Empty"));
-                
-                // Log the event source for debugging
-                if (!string.IsNullOrEmpty(requestBody))
-                {
-                    if (requestBody.Contains("\"eventSource\""))
-                    {
-                        logger.LogLine("Event contains eventSource field");
-                    }
-                    if (requestBody.Contains("\"Records\""))
-                    {
-                        logger.LogLine("Event contains Records field");
-                    }
-                    if (requestBody.Contains("httpMethod") || requestBody.Contains("HttpMethod"))
-                    {
-                        logger.LogLine("Event appears to be API Gateway request");
-                    }
-                }
+
+                // Create services with proper logger for this execution
+                logger.LogLine("Creating services with context logger");
+                var servicesWithLogger = CreateServicesWithLogger(logger);
 
                 // Check if this is an SQS event and process accordingly
-                var sqsResponse = await TryProcessSQSEvent(requestBody ?? "");
-                if (sqsResponse != null)
+                if (!string.IsNullOrEmpty(requestBody) && requestBody.Contains("\"eventSource\"") && requestBody.Contains("\"Records\""))
                 {
-                    return sqsResponse;
+                    return await ProcessSQSEventWithLogger(requestBody, servicesWithLogger.sqsService, logger);
                 }
-
-                // Otherwise, process as API Gateway event
-                return await ProcessAPIGatewayEvent(requestBody ?? "");
+                else
+                {
+                    // Process as an API Gateway event
+                    logger.LogLine("Processing as an API Gateway event");
+                    return await ProcessAPIGatewayEventWithServices(requestBody ?? "", servicesWithLogger.requestRouter, logger);
+                }  
             }
             catch (Exception e)
             {
@@ -188,6 +177,113 @@ namespace UnifiWebhookEventReceiver
         }
 
         /// <summary>
+        /// Creates service instances with the provided logger (used for proper logging).
+        /// </summary>
+        private static (IRequestRouter requestRouter, ISqsService sqsService, IResponseHelper responseHelper) CreateServicesWithLogger(ILambdaLogger logger)
+        {
+            // Create AWS clients
+            var s3Client = new AmazonS3Client(AppConfiguration.AwsRegion);
+            var sqsClient = new AmazonSQSClient(AppConfiguration.AwsRegion);
+            var secretsClient = new AmazonSecretsManagerClient(AppConfiguration.AwsRegion);
+
+            // Create service instances with proper logger
+            var responseHelper = new ResponseHelper();
+            var credentialsService = new CredentialsService(secretsClient, logger);
+            var s3StorageService = new S3StorageService(s3Client, responseHelper, logger);
+            var unifiProtectService = new UnifiProtectService(logger, s3StorageService);
+            
+            // Create services with resolved dependencies
+            var alarmProcessingService = new AlarmProcessingService(s3StorageService, unifiProtectService, credentialsService, responseHelper, logger);
+            var sqsService = new SqsService(sqsClient, alarmProcessingService, responseHelper, logger);
+            var requestRouter = new RequestRouter(sqsService, s3StorageService, responseHelper, logger);
+
+            return (requestRouter, sqsService, responseHelper);
+        }
+
+        /// <summary>
+        /// Processes the request as an SQS event.
+        /// </summary>
+        private static async Task<APIGatewayProxyResponse> ProcessSQSEventWithLogger(string requestBody, ISqsService sqsService, ILambdaLogger logger)
+        {
+            logger.LogLine("=== ProcessSQSEvent START ===");
+            logger.LogLine($"Request body null/empty: {string.IsNullOrEmpty(requestBody)}");
+            
+            if (string.IsNullOrEmpty(requestBody))
+            {
+                logger.LogLine("Request body is null/empty for SQS event");
+                return new APIGatewayProxyResponse
+                {
+                    StatusCode = 400,
+                    Body = "Bad Request: Empty request body for SQS event",
+                    Headers = new Dictionary<string, string> { { "Content-Type", "application/json" } }
+                };
+            }
+            
+            logger.LogLine("About to call sqsService.IsSqsEvent()");
+            bool isSqsEvent = sqsService.IsSqsEvent(requestBody);
+            logger.LogLine($"sqsService.IsSqsEvent() returned: {isSqsEvent}");
+            
+            if (!isSqsEvent)
+            {
+                logger.LogLine("Event is not a valid SQS event format");
+                return new APIGatewayProxyResponse
+                {
+                    StatusCode = 400,
+                    Body = "Bad Request: Invalid SQS event format",
+                    Headers = new Dictionary<string, string> { { "Content-Type", "application/json" } }
+                };
+            }
+
+            logger.LogLine("Detected SQS event, processing delayed alarm");
+            return await sqsService.ProcessSqsEventAsync(requestBody);
+        }
+
+        /// <summary>
+        /// Processes API Gateway HTTP requests with provided services.
+        /// </summary>
+        private async Task<APIGatewayProxyResponse> ProcessAPIGatewayEventWithServices(string requestBody, IRequestRouter requestRouter, ILambdaLogger logger)
+        {
+            logger.LogLine("Processing API Gateway event");
+            
+            try
+            {
+                // Handle scheduled events
+                if (!string.IsNullOrEmpty(requestBody) && requestBody.Contains(AppConfiguration.SOURCE_EVENT_TRIGGER))
+                {
+                    logger.LogLine("Detected scheduled event trigger");
+                    return HandleScheduledEvent();
+                }
+
+                // Handle empty request body as bad request
+                if (string.IsNullOrEmpty(requestBody))
+                {
+                    logger.LogLine(AppConfiguration.ERROR_MESSAGE_400 + AppConfiguration.ERROR_GENERAL);
+                    return _responseHelper.CreateErrorResponse(HttpStatusCode.BadRequest, AppConfiguration.ERROR_MESSAGE_400 + AppConfiguration.ERROR_GENERAL);
+                }
+
+                logger.LogLine("Parsing API Gateway request from request body");
+
+                // Parse the request
+                var request = ParseApiGatewayRequest(requestBody);
+                if (request == null)
+                {
+                    logger.LogLine(AppConfiguration.ERROR_MESSAGE_400 + AppConfiguration.ERROR_GENERAL);
+                    return _responseHelper.CreateErrorResponse(HttpStatusCode.BadRequest, AppConfiguration.ERROR_MESSAGE_400 + AppConfiguration.ERROR_GENERAL);
+                }
+
+                logger.LogLine("API Gateway request parsed successfully, routing to handler");
+
+                // Route the request with the properly configured service
+                return await requestRouter.RouteRequestAsync(request);
+            }
+            catch (Exception e)
+            {
+                logger.LogLine(e.ToString());
+                return _responseHelper.CreateErrorResponse(HttpStatusCode.InternalServerError, AppConfiguration.ERROR_MESSAGE_500 + e.Message);
+            }
+        }
+
+        /// <summary>
         /// Reads the input stream asynchronously.
         /// </summary>
         /// <param name="input">The input stream to read</param>
@@ -201,78 +297,10 @@ namespace UnifiWebhookEventReceiver
         }
 
         /// <summary>
-        /// Attempts to process the request as an SQS event.
-        /// </summary>
-        /// <param name="requestBody">The request body to check and process</param>
-        /// <returns>API Gateway response if this was an SQS event, null otherwise</returns>
-        private async Task<APIGatewayProxyResponse?> TryProcessSQSEvent(string requestBody)
-        {
-            if (string.IsNullOrEmpty(requestBody) || !_sqsService.IsSqsEvent(requestBody))
-            {
-                _logger.LogLine("Event is not an SQS event, will process as API Gateway event");
-                return null;
-            }
-
-            _logger.LogLine("Detected SQS event, processing delayed alarm");
-            return await _sqsService.ProcessSqsEventAsync(requestBody);
-        }
-
-        /// <summary>
-        /// Processes API Gateway HTTP requests.
-        /// 
-        /// This method handles the original HTTP request processing logic including
-        /// webhook receipt, event retrieval, and CORS support.
-        /// </summary>
-        /// <param name="requestBody">JSON string containing the API Gateway request</param>
-        /// <returns>API Gateway proxy response</returns>
-        private async Task<APIGatewayProxyResponse> ProcessAPIGatewayEvent(string requestBody)
-        {
-            _logger.LogLine("Processing API Gateway event");
-            
-            try
-            {
-                // Handle scheduled events
-                if (!string.IsNullOrEmpty(requestBody) && requestBody.Contains(AppConfiguration.SOURCE_EVENT_TRIGGER))
-                {
-                    _logger.LogLine("Detected scheduled event trigger");
-                    return HandleScheduledEvent();
-                }
-
-                // Handle empty request body as bad request
-                if (string.IsNullOrEmpty(requestBody))
-                {
-                    _logger.LogLine(AppConfiguration.ERROR_MESSAGE_400 + AppConfiguration.ERROR_GENERAL);
-                    return _responseHelper.CreateErrorResponse(HttpStatusCode.BadRequest, AppConfiguration.ERROR_MESSAGE_400 + AppConfiguration.ERROR_GENERAL);
-                }
-
-                _logger.LogLine("Parsing API Gateway request from request body");
-
-                // Parse the request
-                var request = ParseApiGatewayRequest(requestBody);
-                if (request == null)
-                {
-                    _logger.LogLine(AppConfiguration.ERROR_MESSAGE_400 + AppConfiguration.ERROR_GENERAL);
-                    return _responseHelper.CreateErrorResponse(HttpStatusCode.BadRequest, AppConfiguration.ERROR_MESSAGE_400 + AppConfiguration.ERROR_GENERAL);
-                }
-
-                _logger.LogLine("API Gateway request parsed successfully, routing to handler");
-
-                // Route the request
-                return await _requestRouter.RouteRequestAsync(request);
-            }
-            catch (Exception e)
-            {
-                _logger.LogLine(e.ToString());
-                return _responseHelper.CreateErrorResponse(HttpStatusCode.InternalServerError, AppConfiguration.ERROR_MESSAGE_500 + e.Message);
-            }
-        }
-
-        /// <summary>
         /// Handles scheduled event triggers.
         /// </summary>
         private APIGatewayProxyResponse HandleScheduledEvent()
         {
-            _logger.LogLine("Scheduled event trigger received.");
             return _responseHelper.CreateSuccessResponse(new { msg = AppConfiguration.MESSAGE_202 });
         }
 
