@@ -74,13 +74,29 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         [ExcludeFromCodeCoverage] // Requires AWS S3 connectivity
         public async Task StoreVideoFileAsync(string videoFilePath, string s3Key)
         {
+            _logger.LogLine($"=== StoreVideoFileAsync START ===");
+            _logger.LogLine($"Video file path: {videoFilePath}");
+            _logger.LogLine($"S3 key: {s3Key}");
+            _logger.LogLine($"Bucket name: {AppConfiguration.AlarmBucketName}");
+            
             if (string.IsNullOrEmpty(AppConfiguration.AlarmBucketName))
             {
+                _logger.LogLine("ERROR: StorageBucket environment variable is not configured");
                 throw new InvalidOperationException("StorageBucket environment variable is not configured");
             }
 
+            if (!File.Exists(videoFilePath))
+            {
+                _logger.LogLine($"ERROR: Video file does not exist: {videoFilePath}");
+                throw new FileNotFoundException($"Video file not found: {videoFilePath}");
+            }
+
             var videoData = await File.ReadAllBytesAsync(videoFilePath);
+            _logger.LogLine($"Successfully read video file: {videoData.Length} bytes");
+            
+            _logger.LogLine("About to upload video data to S3...");
             await UploadBinaryContentAsync(AppConfiguration.AlarmBucketName, s3Key, videoData, "video/mp4");
+            _logger.LogLine("=== StoreVideoFileAsync END ===");
         }
 
         /// <summary>
