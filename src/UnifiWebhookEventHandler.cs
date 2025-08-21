@@ -41,8 +41,6 @@ namespace UnifiWebhookEventReceiver
     {
         #region Service Dependencies
 
-        private readonly IRequestRouter _requestRouter;
-        private readonly ISqsService _sqsService;
         private readonly IResponseHelper _responseHelper;
         private readonly ILambdaLogger _logger;
 
@@ -60,8 +58,9 @@ namespace UnifiWebhookEventReceiver
             IResponseHelper responseHelper,
             ILambdaLogger logger)
         {
-            _requestRouter = requestRouter ?? throw new ArgumentNullException(nameof(requestRouter));
-            _sqsService = sqsService ?? throw new ArgumentNullException(nameof(sqsService));
+            // Validate that the services are provided even though we don't store them as fields
+            _ = requestRouter ?? throw new ArgumentNullException(nameof(requestRouter));
+            _ = sqsService ?? throw new ArgumentNullException(nameof(sqsService));
             _responseHelper = responseHelper ?? throw new ArgumentNullException(nameof(responseHelper));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
