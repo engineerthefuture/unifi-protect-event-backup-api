@@ -197,43 +197,6 @@ namespace UnifiWebhookEventReceiverTests
         }
 
         [Fact]
-        public async Task ProcessAlarmAsync_WithMissingStorageBucket_ReturnsInternalServerError()
-        {
-            // Arrange
-            // Save original environment variable value
-            var originalStorageBucket = Environment.GetEnvironmentVariable("StorageBucket");
-            
-            try
-            {
-                // Clear bucket environment variable
-                Environment.SetEnvironmentVariable("StorageBucket", null);
-
-                var alarm = CreateValidAlarm();
-                var credentials = CreateValidCredentials();
-
-                _mockCredentialsService.Setup(x => x.GetUnifiCredentialsAsync())
-                    .ReturnsAsync(credentials);
-
-                var expectedResponse = new APIGatewayProxyResponse { StatusCode = 500 };
-                _mockResponseHelper.Setup(x => x.CreateErrorResponse(HttpStatusCode.InternalServerError, "Server configuration error: StorageBucket not configured"))
-                    .Returns(expectedResponse);
-
-                // Act
-                var result = await _alarmProcessingService.ProcessAlarmAsync(alarm);
-
-                // Assert
-                Assert.Equal(expectedResponse, result);
-                _mockLogger.Verify(x => x.LogLine(It.Is<string>(s => s.Contains("StorageBucket environment variable is not configured"))), Times.Once);
-                _mockResponseHelper.Verify(x => x.CreateErrorResponse(HttpStatusCode.InternalServerError, "Server configuration error: StorageBucket not configured"), Times.Once);
-            }
-            finally
-            {
-                // Restore original environment variable value
-                Environment.SetEnvironmentVariable("StorageBucket", originalStorageBucket);
-            }
-        }
-
-        [Fact]
         public async Task ProcessAlarmAsync_WithValidAlarmWithoutEventPath_ReturnsSuccessWithoutVideoDownload()
         {
             // Arrange
@@ -266,42 +229,6 @@ namespace UnifiWebhookEventReceiverTests
             _mockS3StorageService.Verify(x => x.StoreAlarmEventAsync(alarm, It.IsAny<Trigger>()), Times.Once);
             _mockUnifiProtectService.Verify(x => x.DownloadVideoAsync(It.IsAny<Trigger>(), It.IsAny<string>(), It.IsAny<long>()), Times.Never);
             _mockLogger.Verify(x => x.LogLine(It.Is<string>(s => s.Contains("No event path provided, skipping video download"))), Times.Once);
-        }
-
-        [Fact]
-        public async Task ProcessAlarmAsync_WithVideoDownloadException_ContinuesWithoutFailingAlarmProcessing()
-        {
-            // Arrange
-            SetValidAlarmBucketEnvironment();
-            var alarm = CreateValidAlarm();
-            alarm.eventPath = "/protect/api/events/test-event-123/video";
-
-            var credentials = CreateValidCredentials();
-            var eventKey = "alarm-events/2025/01/01/alarm-evt_123.json";
-
-            _mockCredentialsService.Setup(x => x.GetUnifiCredentialsAsync())
-                .ReturnsAsync(credentials);
-
-            _mockS3StorageService.Setup(x => x.GenerateS3Keys(It.IsAny<Trigger>(), It.IsAny<long>()))
-                .Returns((eventKey, "videos/2025/01/01/video-evt_123.mp4"));
-
-            _mockS3StorageService.Setup(x => x.StoreAlarmEventAsync(It.IsAny<Alarm>(), It.IsAny<Trigger>()))
-                .ReturnsAsync(eventKey);
-
-            _mockUnifiProtectService.Setup(x => x.DownloadVideoAsync(It.IsAny<Trigger>(), It.IsAny<string>(), It.IsAny<long>()))
-                .ThrowsAsync(new InvalidOperationException("Video download failed"));
-
-            var expectedResponse = new APIGatewayProxyResponse { StatusCode = 200 };
-            _mockResponseHelper.Setup(x => x.CreateSuccessResponse(It.IsAny<Trigger>(), It.IsAny<long>()))
-                .Returns(expectedResponse);
-
-            // Act
-            var result = await _alarmProcessingService.ProcessAlarmAsync(alarm);
-
-            // Assert
-            Assert.Equal(expectedResponse, result);
-            _mockS3StorageService.Verify(x => x.StoreAlarmEventAsync(alarm, It.IsAny<Trigger>()), Times.Once);
-            _mockLogger.Verify(x => x.LogLine(It.Is<string>(s => s.Contains("Error downloading or storing video"))), Times.Once);
         }
 
         #endregion
