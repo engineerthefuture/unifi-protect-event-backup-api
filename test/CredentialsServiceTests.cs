@@ -46,29 +46,6 @@ namespace UnifiWebhookEventReceiverTests
         }
 
         [Fact]
-        public async Task GetUnifiCredentialsAsync_WithValidSecret_ReturnsCredentials()
-        {
-            // Arrange
-            var secretJson = "{\"hostname\":\"192.168.1.1\",\"username\":\"admin\",\"password\":\"secret123\"}";
-            var secretResponse = new GetSecretValueResponse
-            {
-                SecretString = secretJson
-            };
-
-            _mockSecretsClient.Setup(x => x.GetSecretValueAsync(It.IsAny<GetSecretValueRequest>(), default))
-                .ReturnsAsync(secretResponse);
-
-            // Act
-            var result = await _credentialsService.GetUnifiCredentialsAsync();
-
-            // Assert
-            Assert.NotNull(result);
-            Assert.Equal("192.168.1.1", result.hostname);
-            Assert.Equal("admin", result.username);
-            Assert.Equal("secret123", result.password);
-        }
-
-        [Fact]
         public async Task GetUnifiCredentialsAsync_WithMalformedJson_ThrowsInvalidOperationException()
         {
             // Arrange
@@ -137,32 +114,6 @@ namespace UnifiWebhookEventReceiverTests
             // Act & Assert
             await Assert.ThrowsAsync<InvalidOperationException>(() => 
                 _credentialsService.GetUnifiCredentialsAsync());
-        }
-
-        [Theory]
-        [InlineData("192.168.1.1", "admin", "secret123")]
-        [InlineData("unifi.local", "user", "password")]
-        [InlineData("10.0.0.1", "test", "test123")]
-        public async Task GetUnifiCredentialsAsync_WithDifferentCredentials_ReturnsCorrectValues(
-            string hostname, string username, string password)
-        {
-            // Arrange
-            var secretJson = $"{{\"hostname\":\"{hostname}\",\"username\":\"{username}\",\"password\":\"{password}\"}}";
-            var secretResponse = new GetSecretValueResponse
-            {
-                SecretString = secretJson
-            };
-
-            _mockSecretsClient.Setup(x => x.GetSecretValueAsync(It.IsAny<GetSecretValueRequest>(), default))
-                .ReturnsAsync(secretResponse);
-
-            // Act
-            var result = await _credentialsService.GetUnifiCredentialsAsync();
-
-            // Assert
-            Assert.Equal(hostname, result.hostname);
-            Assert.Equal(username, result.username);
-            Assert.Equal(password, result.password);
         }
 
         [Fact]

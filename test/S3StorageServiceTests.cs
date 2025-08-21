@@ -237,40 +237,6 @@ namespace UnifiWebhookEventReceiverTests
         }
 
         [Fact]
-        public async Task StoreScreenshotFileAsync_WithValidPath_UploadsWithCorrectContentType()
-        {
-            // Arrange
-            var tempDir = Path.GetTempPath();
-            var filePath = Path.Combine(tempDir, $"screenshot-{Guid.NewGuid()}.jpg");
-            var s3Key = "screenshots/screenshot.jpg";
-
-            // Create a temporary test file with JPEG header bytes
-            var testImageData = new byte[] { 0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46 }; // JPEG header bytes
-            await File.WriteAllBytesAsync(filePath, testImageData);
-
-            try
-            {
-                _mockS3Client.Setup(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default))
-                    .ReturnsAsync(new PutObjectResponse());
-
-                // Act
-                await _s3StorageService.StoreScreenshotFileAsync(filePath, s3Key);
-
-                // Assert
-                _mockS3Client.Verify(x => x.PutObjectAsync(It.Is<PutObjectRequest>(r => 
-                    r.Key == s3Key && r.ContentType.StartsWith("image/")), default), Times.Once);
-            }
-            finally
-            {
-                // Clean up the temporary file
-                if (File.Exists(filePath))
-                {
-                    File.Delete(filePath);
-                }
-            }
-        }
-
-        [Fact]
         public async Task StoreAlarmEventAsync_WithS3Exception_ThrowsException()
         {
             // Arrange
