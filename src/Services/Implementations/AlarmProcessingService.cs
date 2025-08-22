@@ -283,6 +283,14 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                     _logger.LogLine("About to upload video to S3...");
                     await _s3StorageService.StoreVideoFileAsync(tempVideoPath, videoKey);
                     _logger.LogLine($"Video successfully stored in S3 with key: {videoKey}");
+                    
+                    // Update alarm in S3 with the original filename information
+                    if (!string.IsNullOrEmpty(trigger.originalFileName))
+                    {
+                        _logger.LogLine($"Updating alarm in S3 with original filename: {trigger.originalFileName}");
+                        await _s3StorageService.StoreAlarmEventAsync(alarm, trigger);
+                        _logger.LogLine("Alarm updated in S3 with original filename information");
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -305,7 +313,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 if (ex.InnerException is FileNotFoundException fileNotFound && 
                     fileNotFound.Message.Contains("No video files were downloaded"))
                 {
-                    _logger.LogLine("Detected 'No video files were downloaded' error - this may require retry");
+                    _logger.LogLine("Detected 'No video files were downloaded'");
                     // Throw a specific exception that can be caught by SqsService
                     throw new InvalidOperationException("NoVideoFilesDownloaded", ex);
                 }
