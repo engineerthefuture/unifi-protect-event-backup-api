@@ -698,6 +698,50 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             }
         }
 
+        /// <summary>
+        /// Retrieves a binary file from S3.
+        /// </summary>
+        /// <param name="s3Key">The S3 key of the file to retrieve</param>
+        /// <returns>The file data as byte array, or null if not found</returns>
+        [ExcludeFromCodeCoverage] // Requires AWS S3 connectivity
+        public async Task<byte[]?> GetFileAsync(string s3Key)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(AppConfiguration.AlarmBucketName))
+                {
+                    _logger.LogLine("StorageBucket environment variable is not configured");
+                    return null;
+                }
+
+                _logger.LogLine($"Attempting to get binary file: {s3Key} from {AppConfiguration.AlarmBucketName}");
+
+                var getObjectRequest = new GetObjectRequest
+                {
+                    BucketName = AppConfiguration.AlarmBucketName,
+                    Key = s3Key,
+                };
+
+                using var response = await _s3Client.GetObjectAsync(getObjectRequest);
+                using var ms = new MemoryStream();
+                await response.ResponseStream.CopyToAsync(ms);
+                
+                var fileBytes = ms.ToArray();
+                _logger.LogLine($"Successfully retrieved binary file from S3: {s3Key} ({fileBytes.Length} bytes)");
+                return fileBytes;
+            }
+            catch (AmazonS3Exception e) when (e.ErrorCode == "NoSuchKey")
+            {
+                _logger.LogLine($"Binary file not found in S3: {s3Key}");
+                return null;
+            }
+            catch (Exception e)
+            {
+                _logger.LogLine($"Error retrieving binary file from S3 {s3Key}: {e.Message}");
+                return null;
+            }
+        }
+
         #endregion
     }
 }

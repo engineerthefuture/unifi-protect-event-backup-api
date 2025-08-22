@@ -13,6 +13,7 @@ using Amazon.Lambda.Core;
 using Amazon.S3;
 using Amazon.SecretsManager;
 using Amazon.SimpleEmail;
+using Amazon.CloudWatchLogs;
 using Amazon.SQS;
 using UnifiWebhookEventReceiver.Configuration;
 using UnifiWebhookEventReceiver.Services;
@@ -46,12 +47,13 @@ namespace UnifiWebhookEventReceiver.Infrastructure
             var sqsClient = new AmazonSQSClient(AppConfiguration.AwsRegion);
             var secretsClient = new AmazonSecretsManagerClient(AppConfiguration.AwsRegion);
             var sesClient = new AmazonSimpleEmailServiceClient(AppConfiguration.AwsRegion);
+            var cloudWatchLogsClient = new AmazonCloudWatchLogsClient(AppConfiguration.AwsRegion);
 
             // Create foundational services
             var responseHelper = new ResponseHelper();
             var credentialsService = new CredentialsService(secretsClient, logger);
             var s3StorageService = new S3StorageService(s3Client, responseHelper, logger);
-            var emailService = new EmailService(sesClient, logger, s3StorageService);
+            var emailService = new EmailService(sesClient, cloudWatchLogsClient, logger, s3StorageService);
             var unifiProtectService = new UnifiProtectService(logger, s3StorageService, credentialsService);
 
             // Create alarm processing service 

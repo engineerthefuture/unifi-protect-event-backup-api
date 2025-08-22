@@ -9,6 +9,8 @@ using Amazon;
 using Amazon.Lambda.Core;
 using Amazon.SimpleEmail;
 using Amazon.SimpleEmail.Model;
+using Amazon.CloudWatchLogs;
+using Amazon.CloudWatchLogs.Model;
 
 namespace UnifiWebhookEventReceiverTests
 {
@@ -21,10 +23,11 @@ namespace UnifiWebhookEventReceiverTests
             Environment.SetEnvironmentVariable("SupportEmail", null);
             
             var mockSesClient = new Mock<AmazonSimpleEmailServiceClient>(Amazon.RegionEndpoint.USEast1);
+            var mockCloudWatchLogsClient = new Mock<AmazonCloudWatchLogsClient>(Amazon.RegionEndpoint.USEast1);
             var mockLogger = new Mock<ILambdaLogger>();
             var mockS3Service = new Mock<IS3StorageService>();
 
-            var emailService = new EmailService(mockSesClient.Object, mockLogger.Object, mockS3Service.Object);
+            var emailService = new EmailService(mockSesClient.Object, mockCloudWatchLogsClient.Object, mockLogger.Object, mockS3Service.Object);
             
             var alarm = new Alarm
             {
@@ -47,7 +50,7 @@ namespace UnifiWebhookEventReceiverTests
             Assert.False(result);
             
             // Verify SES client was never called
-            mockSesClient.Verify(x => x.SendEmailAsync(It.IsAny<SendEmailRequest>(), It.IsAny<System.Threading.CancellationToken>()), Times.Never);
+            mockSesClient.Verify(x => x.SendRawEmailAsync(It.IsAny<SendRawEmailRequest>(), It.IsAny<System.Threading.CancellationToken>()), Times.Never);
         }
 
         [Fact]
@@ -57,20 +60,24 @@ namespace UnifiWebhookEventReceiverTests
             Environment.SetEnvironmentVariable("SupportEmail", "support@example.com");
             
             var mockSesClient = new Mock<AmazonSimpleEmailServiceClient>(Amazon.RegionEndpoint.USEast1);
+            var mockCloudWatchLogsClient = new Mock<AmazonCloudWatchLogsClient>(Amazon.RegionEndpoint.USEast1);
             var mockLogger = new Mock<ILambdaLogger>();
             var mockS3Service = new Mock<IS3StorageService>();
 
-            var sendEmailResponse = new SendEmailResponse
+            var sendRawEmailResponse = new SendRawEmailResponse
             {
                 MessageId = "ses-message-id",
                 HttpStatusCode = System.Net.HttpStatusCode.OK
             };
 
-            mockSesClient
-                .Setup(x => x.SendEmailAsync(It.IsAny<SendEmailRequest>(), It.IsAny<System.Threading.CancellationToken>()))
-                .ReturnsAsync(sendEmailResponse);
+            // Mock the CloudWatch Logs and S3 service calls
+            mockS3Service.Setup(x => x.GetFileAsync(It.IsAny<string>())).ReturnsAsync((byte[]?)null);
 
-            var emailService = new EmailService(mockSesClient.Object, mockLogger.Object, mockS3Service.Object);
+            mockSesClient
+                .Setup(x => x.SendRawEmailAsync(It.IsAny<SendRawEmailRequest>(), It.IsAny<System.Threading.CancellationToken>()))
+                .ReturnsAsync(sendRawEmailResponse);
+
+            var emailService = new EmailService(mockSesClient.Object, mockCloudWatchLogsClient.Object, mockLogger.Object, mockS3Service.Object);
             
             var alarm = new Alarm
             {
@@ -92,12 +99,10 @@ namespace UnifiWebhookEventReceiverTests
             // Assert
             Assert.True(result);
             
-            // Verify SES client was called
-            mockSesClient.Verify(x => x.SendEmailAsync(It.Is<SendEmailRequest>(req =>
+            // Verify SES client was called with raw email
+            mockSesClient.Verify(x => x.SendRawEmailAsync(It.Is<SendRawEmailRequest>(req =>
                 req.Source == "support@example.com" &&
-                req.Destination.ToAddresses.Contains("support@example.com") &&
-                req.Message.Subject.Data.Contains("Unifi Protect Video Download Failure") &&
-                req.Message.Body.Html.Data.Contains("NoVideoFilesDownloaded")
+                req.Destinations.Contains("support@example.com")
             ), It.IsAny<System.Threading.CancellationToken>()), Times.Once);
         }
     }
