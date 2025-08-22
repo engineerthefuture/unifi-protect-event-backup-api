@@ -591,13 +591,6 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// <returns>The sign out element if found, null otherwise</returns>
         private async Task<IElementHandle?> FindSignOutElement(IPage page)
         {
-            // Try direct sign out selectors first
-            var signOutElement = await TryDirectSignOutSelectors(page);
-            if (signOutElement != null)
-            {
-                return signOutElement;
-            }
-
             // If not found, try user menu approach
             return await TryUserMenuSignOut(page);
         }
@@ -612,17 +605,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             var signOutSelectors = new[]
             {
                 // Specific Unifi Protect sign out button
-                "button[data-testid='LogOutButton']",
-                "button.button__7vyLR6Ac.button-light__7vyLR6Ac.width-full__7vyLR6Ac.size-medium__7vyLR6Ac.shape-default__7vyLR6Ac.fillColor-transparent-neutral__7vyLR6Ac.textColor-neutral__7vyLR6Ac.borderColor-none__7vyLR6Ac",
-                "button[data-uic-component='Button'][data-testid='LogOutButton']",
-                // Generic fallback selectors
-                "button[aria-label*='sign out' i]", "button[aria-label*='logout' i]",
-                "a[aria-label*='sign out' i]", "a[aria-label*='logout' i]",
-                "button:has-text('Sign Out')", "button:has-text('Logout')",
-                "a:has-text('Sign Out')", "a:has-text('Logout')",
-                "[data-testid*='signout']", "[data-testid*='logout']",
-                "button[title*='sign out' i]", "button[title*='logout' i]",
-                "a[title*='sign out' i]", "a[title*='logout' i]"
+                "button[data-testid='LogOutButton']"
             };
 
             foreach (var selector in signOutSelectors)
@@ -657,14 +640,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             var userMenuSelectors = new[]
             {
                 // Specific Unifi Protect user avatar button
-                "button.unifi-portal-1bmvzvc.eqfginb7.button__qx3Rmpxb.button__RNxIH278.button-light__RNxIH278.large__RNxIH278.circle__RNxIH278",
-                "button.button__qx3Rmpxb.button__RNxIH278.button-light__RNxIH278.large__RNxIH278.circle__RNxIH278",
-                "button[alt*='Automated User' i]",
-                "button img[alt*='Automated User' i]",
-                // Generic fallback selectors
-                "button[aria-label*='user' i]", "button[aria-label*='profile' i]", "button[aria-label*='account' i]",
-                "[data-testid*='user']", "[data-testid*='profile']", "[data-testid*='account']",
-                ".user-menu", ".profile-menu", ".account-menu"
+                "button.unifi-portal-1bmvzvc.eqfginb7.button__qx3Rmpxb.button__RNxIH278.button-light__RNxIH278.large__RNxIH278.circle__RNxIH278"
             };
 
             foreach (var selector in userMenuSelectors)
