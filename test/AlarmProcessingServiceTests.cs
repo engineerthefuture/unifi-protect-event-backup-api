@@ -231,6 +231,134 @@ namespace UnifiWebhookEventReceiverTests
             _mockLogger.Verify(x => x.LogLine(It.Is<string>(s => s.Contains("No event path provided, skipping video download"))), Times.Once);
         }
 
+        [Fact]
+        public async Task ProcessAlarmAsync_WithMissingStorageBucket_ReturnsServerError()
+        {
+            // Arrange
+            var originalBucket = Environment.GetEnvironmentVariable("StorageBucket");
+            Environment.SetEnvironmentVariable("StorageBucket", "");
+            
+            var alarm = CreateValidAlarm();
+            var expectedResponse = new APIGatewayProxyResponse { StatusCode = 500 };
+            _mockResponseHelper.Setup(x => x.CreateErrorResponse(HttpStatusCode.InternalServerError, "Server configuration error: StorageBucket not configured"))
+                .Returns(expectedResponse);
+
+            try
+            {
+                // Act
+                var result = await _alarmProcessingService.ProcessAlarmAsync(alarm);
+
+                // Assert
+                Assert.Equal(500, result.StatusCode);
+                _mockResponseHelper.Verify(x => x.CreateErrorResponse(HttpStatusCode.InternalServerError, "Server configuration error: StorageBucket not configured"), Times.Once);
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable("StorageBucket", originalBucket);
+            }
+        }
+
+        [Fact]
+        public async Task ProcessAlarmAsync_WithValidAlarmAndEventPath_DownloadsVideo()
+        {
+            // Arrange
+            var alarm = CreateValidAlarm();
+            alarm.eventPath = "/protect/api/events/test-event-id/video";
+            
+            _mockCredentialsService.Setup(x => x.GetUnifiCredentialsAsync())
+                .ReturnsAsync(CreateValidCredentials());
+            _mockS3StorageService.Setup(x => x.StoreAlarmEventAsync(It.IsAny<Alarm>(), It.IsAny<Trigger>()))
+                .ReturnsAsync("test-event-key");
+            _mockUnifiProtectService.Setup(x => x.DownloadVideoAsync(It.IsAny<Trigger>(), It.IsAny<string>(), It.IsAny<long>()))
+                .ReturnsAsync("/tmp/test-video.mp4");
+            
+            var expectedResponse = new APIGatewayProxyResponse { StatusCode = 200 };
+            _mockResponseHelper.Setup(x => x.CreateSuccessResponse(It.IsAny<Trigger>(), It.IsAny<long>()))
+                .Returns(expectedResponse);
+
+            // Act
+            var result = await _alarmProcessingService.ProcessAlarmAsync(alarm);
+
+            // Assert
+            Assert.Equal(200, result.StatusCode);
+            _mockUnifiProtectService.Verify(x => x.DownloadVideoAsync(It.IsAny<Trigger>(), It.IsAny<string>(), It.IsAny<long>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task ProcessAlarmAsync_WithValidAlarmButNoEventPath_SkipsVideoDownload()
+        {
+            // Arrange
+            var alarm = CreateValidAlarm();
+            alarm.eventPath = null; // No event path
+            
+            _mockCredentialsService.Setup(x => x.GetUnifiCredentialsAsync())
+                .ReturnsAsync(CreateValidCredentials());
+            _mockS3StorageService.Setup(x => x.StoreAlarmEventAsync(It.IsAny<Alarm>(), It.IsAny<Trigger>()))
+                .ReturnsAsync("test-event-key");
+            
+            var expectedResponse = new APIGatewayProxyResponse { StatusCode = 200 };
+            _mockResponseHelper.Setup(x => x.CreateSuccessResponse(It.IsAny<Trigger>(), It.IsAny<long>()))
+                .Returns(expectedResponse);
+
+            // Act
+            var result = await _alarmProcessingService.ProcessAlarmAsync(alarm);
+
+            // Assert
+            Assert.Equal(200, result.StatusCode);
+            _mockUnifiProtectService.Verify(x => x.DownloadVideoAsync(It.IsAny<Trigger>(), It.IsAny<string>(), It.IsAny<long>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ProcessAlarmAsync_WithEmptyEventPath_SkipsVideoDownload()
+        {
+            // Arrange
+            var alarm = CreateValidAlarm();
+            alarm.eventPath = ""; // Empty event path
+            
+            _mockCredentialsService.Setup(x => x.GetUnifiCredentialsAsync())
+                .ReturnsAsync(CreateValidCredentials());
+            _mockS3StorageService.Setup(x => x.StoreAlarmEventAsync(It.IsAny<Alarm>(), It.IsAny<Trigger>()))
+                .ReturnsAsync("test-event-key");
+            
+            var expectedResponse = new APIGatewayProxyResponse { StatusCode = 200 };
+            _mockResponseHelper.Setup(x => x.CreateSuccessResponse(It.IsAny<Trigger>(), It.IsAny<long>()))
+                .Returns(expectedResponse);
+
+            // Act
+            var result = await _alarmProcessingService.ProcessAlarmAsync(alarm);
+
+            // Assert
+            Assert.Equal(200, result.StatusCode);
+            _mockUnifiProtectService.Verify(x => x.DownloadVideoAsync(It.IsAny<Trigger>(), It.IsAny<string>(), It.IsAny<long>()), Times.Never);
+        }
+
+        [Theory]
+        [InlineData("12704E113C44")] // Test device MAC mapping
+        [InlineData("UNKNOWN_DEVICE")] // Test unknown device
+        [InlineData("")] // Test empty device
+        public async Task ProcessAlarmAsync_WithDifferentDeviceNames_MapsCorrectly(string deviceMac)
+        {
+            // Arrange
+            var alarm = CreateValidAlarm();
+            alarm.triggers[0].device = deviceMac;
+            
+            _mockCredentialsService.Setup(x => x.GetUnifiCredentialsAsync())
+                .ReturnsAsync(CreateValidCredentials());
+            _mockS3StorageService.Setup(x => x.StoreAlarmEventAsync(It.IsAny<Alarm>(), It.IsAny<Trigger>()))
+                .ReturnsAsync("test-event-key");
+            
+            var expectedResponse = new APIGatewayProxyResponse { StatusCode = 200 };
+            _mockResponseHelper.Setup(x => x.CreateSuccessResponse(It.IsAny<Trigger>(), It.IsAny<long>()))
+                .Returns(expectedResponse);
+
+            // Act
+            var result = await _alarmProcessingService.ProcessAlarmAsync(alarm);
+
+            // Assert
+            Assert.Equal(200, result.StatusCode);
+            _mockS3StorageService.Verify(x => x.StoreAlarmEventAsync(It.IsAny<Alarm>(), It.Is<Trigger>(t => t.device == deviceMac)), Times.Once);
+        }
+
         #endregion
 
         #region Helper Methods

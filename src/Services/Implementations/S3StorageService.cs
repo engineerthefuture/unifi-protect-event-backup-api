@@ -551,7 +551,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 return _responseHelper.CreateErrorResponse(HttpStatusCode.InternalServerError, "Server configuration error: StorageBucket not configured");
             }
 
-            if (string.IsNullOrEmpty(eventId))
+            if (string.IsNullOrWhiteSpace(eventId))
             {
                 _logger.LogLine("EventId parameter is required");
                 return _responseHelper.CreateErrorResponse(HttpStatusCode.BadRequest, "EventId parameter is required");

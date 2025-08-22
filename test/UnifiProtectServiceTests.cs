@@ -274,5 +274,27 @@ namespace UnifiWebhookEventReceiverTests
             // Act & Assert - should not throw
             _unifiProtectService.CleanupTempFile(nonexistentPath);
         }
+
+        [Fact]
+        public async Task DownloadVideoAsync_WithEmptyEventLocalLink_ThrowsArgumentException()
+        {
+            // Arrange
+            var trigger = new Trigger { key = "test-key", eventId = "test", device = "device1" };
+
+            // Act & Assert
+            await Assert.ThrowsAsync<ArgumentException>(() => 
+                _unifiProtectService.DownloadVideoAsync(trigger, "", 12345));
+        }
+
+        [Fact]
+        public async Task DownloadVideoAsync_WithWhitespaceEventLocalLink_ThrowsArgumentException()
+        {
+            // Arrange
+            var trigger = new Trigger { key = "test-key", eventId = "test", device = "device1" };
+
+            // Act & Assert
+            await Assert.ThrowsAsync<ArgumentException>(() => 
+                _unifiProtectService.DownloadVideoAsync(trigger, "   ", 12345));
+        }
     }
 }
