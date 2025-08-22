@@ -59,7 +59,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 var subject = $"[{environment.ToUpper()}] Unifi Protect Video Download Failure - {deviceName} - Event {trigger?.eventId ?? "Unknown"}";
                 
                 // Get CloudWatch logs for the failure
-                var cloudWatchLogs = await GetRecentCloudWatchLogs();
+                var cloudWatchLogs = await GetRecentCloudWatchLogs(alarm);
                 
                 // Get screenshots from S3
                 var screenshots = await GetScreenshotsFromS3(alarm);
@@ -68,7 +68,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 var body = GenerateEmailBodyWithAttachments(alarm, failureReason, messageId, retryAttempt, cloudWatchLogs, screenshots);
                 
                 // Send email with attachments using SendRawEmail
-                var success = await SendRawEmailWithAttachments(supportEmail, subject, body, cloudWatchLogs, screenshots, alarm);
+                var success = await SendRawEmailWithAttachments(supportEmail, subject, body, cloudWatchLogs, alarm);
                 
                 return success;
             }
@@ -80,9 +80,10 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         }
 
         /// <summary>
-        /// Retrieves recent CloudWatch logs for the Lambda function.
+        /// Retrieves recent CloudWatch logs for the Lambda function around the time of the alarm event.
         /// </summary>
-        private async Task<string> GetRecentCloudWatchLogs()
+        [SuppressMessage("SonarQube", "S1541:Methods should not be too complex", Justification = "CloudWatch logs retrieval requires multiple conditional checks and pagination logic")]
+        private async Task<string> GetRecentCloudWatchLogs(Alarm alarm)
         {
             try
             {
@@ -93,32 +94,78 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 }
 
                 var logGroupName = $"/aws/lambda/{functionName}";
-                var endTime = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                var startTime = endTime - (30 * 60 * 1000); // Last 30 minutes
-
-                var filterRequest = new FilterLogEventsRequest
-                {
-                    LogGroupName = logGroupName,
-                    StartTime = startTime,
-                    EndTime = endTime,
-                    Limit = 100
-                };
-
-                _logger.LogLine($"Retrieving CloudWatch logs from {logGroupName}");
-                var response = await _cloudWatchLogsClient.FilterLogEventsAsync(filterRequest);
                 
-                if (response.Events?.Count > 0)
+                // Use alarm timestamp to get logs from the relevant time period
+                // Expanded window: 15 minutes before the alarm to 60 minutes after
+                var alarmTime = alarm.timestamp > 0 
+                    ? DateTimeOffset.FromUnixTimeMilliseconds(alarm.timestamp)
+                    : DateTimeOffset.UtcNow.AddMinutes(-30);
+                
+                var startTime = alarmTime.AddMinutes(-15).ToUnixTimeMilliseconds();
+                var endTime = alarmTime.AddMinutes(60).ToUnixTimeMilliseconds();
+
+                _logger.LogLine($"Retrieving CloudWatch logs from {logGroupName} for alarm time {alarmTime:yyyy-MM-dd HH:mm:ss UTC}");
+                
+                // Get logs with pagination to retrieve more comprehensive data
+                var allEvents = new List<FilteredLogEvent>();
+                string? nextToken = null;
+                int maxPages = 3; // Limit to prevent excessive API calls
+                int pageCount = 0;
+
+                do
                 {
-                    var logEvents = response.Events
+                    var filterRequest = new FilterLogEventsRequest
+                    {
+                        LogGroupName = logGroupName,
+                        StartTime = startTime,
+                        EndTime = endTime,
+                        Limit = 1000,  // Maximum allowed per request
+                        NextToken = nextToken
+                    };
+
+                    var response = await _cloudWatchLogsClient.FilterLogEventsAsync(filterRequest);
+                    
+                    if (response.Events != null && response.Events.Count > 0)
+                    {
+                        allEvents.AddRange(response.Events);
+                    }
+                    
+                    nextToken = response.NextToken;
+                    pageCount++;
+                    
+                } while (!string.IsNullOrEmpty(nextToken) && pageCount < maxPages);
+
+                if (allEvents.Count > 0)
+                {
+                    // Prioritize error and warning messages, but include all logs
+                    var allLogEvents = allEvents
                         .OrderByDescending(e => e.Timestamp)
-                        .Take(50) // Get last 50 log entries
+                        .Select(e => new { 
+                            Timestamp = e.Timestamp, 
+                            Message = e.Message,
+                            IsError = e.Message.Contains("ERROR", StringComparison.OrdinalIgnoreCase) || 
+                                     e.Message.Contains("FAIL", StringComparison.OrdinalIgnoreCase) ||
+                                     e.Message.Contains("Exception", StringComparison.OrdinalIgnoreCase),
+                            IsWarning = e.Message.Contains("WARN", StringComparison.OrdinalIgnoreCase) ||
+                                       e.Message.Contains("WARNING", StringComparison.OrdinalIgnoreCase)
+                        })
+                        .ToList();
+                    
+                    // Take up to 75 error/warning logs and fill remaining with other logs (increased coverage)
+                    var errorWarningLogs = allLogEvents.Where(e => e.IsError || e.IsWarning).Take(75);
+                    var otherLogs = allLogEvents.Where(e => !e.IsError && !e.IsWarning).Take(75);
+                    
+                    var selectedLogs = errorWarningLogs.Concat(otherLogs)
+                        .OrderByDescending(e => e.Timestamp)
+                        .Take(150) // Increased from 100
                         .Select(e => $"{DateTimeOffset.FromUnixTimeMilliseconds(e.Timestamp):yyyy-MM-dd HH:mm:ss UTC} - {e.Message}")
                         .ToList();
                     
-                    return string.Join("\n", logEvents);
+                    _logger.LogLine($"Retrieved {allEvents.Count} total log events across {pageCount} pages (using {selectedLogs.Count} selected logs)");
+                    return string.Join("\n", selectedLogs);
                 }
                 
-                return "No recent log events found";
+                return $"No log events found for alarm time {alarmTime:yyyy-MM-dd HH:mm:ss UTC}";
             }
             catch (Exception ex)
             {
@@ -248,8 +295,8 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             sb.AppendLine("a:hover { text-decoration: underline; }");
             sb.AppendLine("</style></head><body>");
 
-            sb.AppendLine("<h1>🚨 Unifi Protect Video Download Failure</h1>");
-            sb.AppendLine($"<p class='failure'>A video download has failed and been sent to the Dead Letter Queue for retry.</p>");
+            sb.AppendLine("<h1>🚨 Unifi Protect Video Backup Failure</h1>");
+            sb.AppendLine($"<p class='failure'>A video download has failed and has been sent to the Dead Letter Queue for manual intervention.</p>");
         }
 
         /// <summary>
@@ -330,11 +377,15 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 foreach (var screenshot in screenshots)
                 {
                     var description = GetScreenshotDescription(screenshot.name);
+                    var base64Image = Convert.ToBase64String(screenshot.data);
+                    
                     sb.AppendLine("<div style='margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px;'>");
                     sb.AppendLine($"<h4 style='margin-top: 0; color: #1976d2;'>{description}</h4>");
                     sb.AppendLine($"<p><strong>File:</strong> {screenshot.name}</p>");
                     sb.AppendLine($"<p><strong>Size:</strong> {screenshot.data.Length:N0} bytes</p>");
-                    sb.AppendLine($"<p><em>This screenshot is attached to this email and can be viewed in your email client.</em></p>");
+                    sb.AppendLine($"<div style='text-align: center; margin: 15px 0;'>");
+                    sb.AppendLine($"<img src='data:image/png;base64,{base64Image}' alt='{description}' style='max-width: 100%; max-height: 600px; border: 1px solid #ccc; border-radius: 4px;' />");
+                    sb.AppendLine("</div>");
                     sb.AppendLine("</div>");
                 }
             }
@@ -418,7 +469,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// <summary>
         /// Sends raw email with attachments using SES SendRawEmail.
         /// </summary>
-        private async Task<bool> SendRawEmailWithAttachments(string supportEmail, string subject, string htmlBody, string cloudWatchLogs, List<(string name, byte[] data)> screenshots, Alarm alarm)
+        private async Task<bool> SendRawEmailWithAttachments(string supportEmail, string subject, string htmlBody, string cloudWatchLogs, Alarm alarm)
         {
             try
             {
@@ -459,18 +510,6 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 rawMessage.AppendLine();
                 rawMessage.AppendLine(Convert.ToBase64String(Encoding.UTF8.GetBytes(alarmJson)));
                 rawMessage.AppendLine();
-
-                // Screenshot attachments
-                foreach (var screenshot in screenshots)
-                {
-                    rawMessage.AppendLine($"--{boundary}");
-                    rawMessage.AppendLine("Content-Type: image/png");
-                    rawMessage.AppendLine("Content-Transfer-Encoding: base64");
-                    rawMessage.AppendLine($"Content-Disposition: attachment; filename=\"{screenshot.name}\"");
-                    rawMessage.AppendLine();
-                    rawMessage.AppendLine(Convert.ToBase64String(screenshot.data));
-                    rawMessage.AppendLine();
-                }
 
                 // End boundary
                 rawMessage.AppendLine($"--{boundary}--");

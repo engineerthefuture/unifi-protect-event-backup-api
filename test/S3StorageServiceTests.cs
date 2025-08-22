@@ -266,13 +266,23 @@ namespace UnifiWebhookEventReceiverTests
         [Fact]
         public async Task StoreVideoFileAsync_WithFileNotFound_ThrowsFileNotFoundException()
         {
-            // Arrange
-            var filePath = "/nonexistent/path/video.mp4";
-            var s3Key = "videos/video.mp4";
+            // Arrange - ensure environment variable is set
+            var originalBucket = Environment.GetEnvironmentVariable("StorageBucket");
+            Environment.SetEnvironmentVariable("StorageBucket", "test-bucket");
+            
+            try
+            {
+                var filePath = "/nonexistent/path/video.mp4";
+                var s3Key = "videos/video.mp4";
 
-            // Act & Assert
-            await Assert.ThrowsAsync<FileNotFoundException>(() => 
-                _s3StorageService.StoreVideoFileAsync(filePath, s3Key));
+                // Act & Assert
+                await Assert.ThrowsAsync<FileNotFoundException>(() => 
+                    _s3StorageService.StoreVideoFileAsync(filePath, s3Key));
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable("StorageBucket", originalBucket);
+            }
         }
     }
 }

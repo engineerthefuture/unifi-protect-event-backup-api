@@ -105,19 +105,30 @@ namespace UnifiWebhookEventReceiver.Tests
         [Fact]
         public void AppConfiguration_IntegerProperties_HaveDefaultValues()
         {
-            // Test that integer properties have reasonable default values
-            Assert.True(AppConfiguration.ArchiveButtonX > 0);
-            Assert.True(AppConfiguration.ArchiveButtonY > 0);
-            Assert.True(AppConfiguration.DownloadButtonX > 0);
-            Assert.True(AppConfiguration.DownloadButtonY > 0);
-            Assert.True(AppConfiguration.ProcessingDelaySeconds >= 0);
+            // Clear any environment variables that might affect the test
+            var originalProcessingDelay = Environment.GetEnvironmentVariable("ProcessingDelaySeconds");
+            Environment.SetEnvironmentVariable("ProcessingDelaySeconds", null);
             
-            // Test specific default values
-            Assert.Equal(1274, AppConfiguration.ArchiveButtonX);
-            Assert.Equal(257, AppConfiguration.ArchiveButtonY);
-            Assert.Equal(1095, AppConfiguration.DownloadButtonX);
-            Assert.Equal(275, AppConfiguration.DownloadButtonY);
-            Assert.Equal(120, AppConfiguration.ProcessingDelaySeconds);
+            try
+            {
+                // Test that integer properties have reasonable default values
+                Assert.True(AppConfiguration.ArchiveButtonX > 0);
+                Assert.True(AppConfiguration.ArchiveButtonY > 0);
+                Assert.True(AppConfiguration.DownloadButtonX > 0);
+                Assert.True(AppConfiguration.DownloadButtonY > 0);
+                Assert.True(AppConfiguration.ProcessingDelaySeconds >= 0);
+                
+                // Test specific default values
+                Assert.Equal(1274, AppConfiguration.ArchiveButtonX);
+                Assert.Equal(257, AppConfiguration.ArchiveButtonY);
+                Assert.Equal(1095, AppConfiguration.DownloadButtonX);
+                Assert.Equal(275, AppConfiguration.DownloadButtonY);
+                Assert.Equal(120, AppConfiguration.ProcessingDelaySeconds);
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable("ProcessingDelaySeconds", originalProcessingDelay);
+            }
         }
 
         [Fact]

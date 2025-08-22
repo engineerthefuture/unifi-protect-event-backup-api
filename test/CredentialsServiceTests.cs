@@ -150,27 +150,37 @@ namespace UnifiWebhookEventReceiverTests
         [Fact]
         public async Task GetUnifiCredentialsAsync_CalledTwice_ReturnsCachedCredentials()
         {
-            // Arrange
-            var secretJson = "{\"hostname\":\"192.168.1.1\",\"username\":\"admin\",\"password\":\"secret123\"}";
-            var secretResponse = new GetSecretValueResponse
-            {
-                SecretString = secretJson
-            };
-
-            _mockSecretsClient.Setup(x => x.GetSecretValueAsync(It.IsAny<GetSecretValueRequest>(), default))
-                .ReturnsAsync(secretResponse);
-
-            // Act
-            var result1 = await _credentialsService.GetUnifiCredentialsAsync();
-            var result2 = await _credentialsService.GetUnifiCredentialsAsync();
-
-            // Assert
-            Assert.Equal(result1.hostname, result2.hostname);
-            Assert.Equal(result1.username, result2.username);
-            Assert.Equal(result1.password, result2.password);
+            // Arrange - ensure environment variable is set
+            var originalArn = Environment.GetEnvironmentVariable("UnifiCredentialsSecretArn");
+            Environment.SetEnvironmentVariable("UnifiCredentialsSecretArn", "arn:aws:secretsmanager:us-east-1:123456789012:secret:test-secret");
             
-            // Verify the secrets manager was only called once due to caching
-            _mockSecretsClient.Verify(x => x.GetSecretValueAsync(It.IsAny<GetSecretValueRequest>(), default), Times.Once);
+            try
+            {
+                var secretJson = "{\"hostname\":\"192.168.1.1\",\"username\":\"admin\",\"password\":\"secret123\"}";
+                var secretResponse = new GetSecretValueResponse
+                {
+                    SecretString = secretJson
+                };
+
+                _mockSecretsClient.Setup(x => x.GetSecretValueAsync(It.IsAny<GetSecretValueRequest>(), default))
+                    .ReturnsAsync(secretResponse);
+
+                // Act
+                var result1 = await _credentialsService.GetUnifiCredentialsAsync();
+                var result2 = await _credentialsService.GetUnifiCredentialsAsync();
+
+                // Assert
+                Assert.Equal(result1.hostname, result2.hostname);
+                Assert.Equal(result1.username, result2.username);
+                Assert.Equal(result1.password, result2.password);
+                
+                // Verify the secrets manager was only called once due to caching
+                _mockSecretsClient.Verify(x => x.GetSecretValueAsync(It.IsAny<GetSecretValueRequest>(), default), Times.Once);
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable("UnifiCredentialsSecretArn", originalArn);
+            }
         }
     }
 }

@@ -13,6 +13,8 @@ Metadata:
         Value: !Ref EnvPrefix
       - Key: AppName
         Value: !Ref AppName
+      - Key: SupportEmail
+        Value: !Ref SupportEmail
 
 # Parameters
 Parameters:
