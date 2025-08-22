@@ -230,6 +230,16 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             {
                 _logger.LogLine($"Error downloading or storing video for event {trigger.eventId}: {ex.Message}");
                 _logger.LogLine($"Exception details: {ex}");
+                
+                // Check if this is the "No video files were downloaded" error
+                if (ex.InnerException is FileNotFoundException fileNotFound && 
+                    fileNotFound.Message.Contains("No video files were downloaded"))
+                {
+                    _logger.LogLine("Detected 'No video files were downloaded' error - this may require retry");
+                    // Throw a specific exception that can be caught by SqsService
+                    throw new InvalidOperationException("NoVideoFilesDownloaded", ex);
+                }
+                
                 // Don't fail the entire alarm processing if video download fails
                 // The event data is still valuable without the video
             }

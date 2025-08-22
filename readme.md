@@ -4,6 +4,9 @@ An AWS Lambda function that receives and processes webhook events from Unifi Dre
 
 ## Recent Updates
 
+- **Dead Letter Queue Integration**: Added comprehensive fault tolerance with automatic retry for "No video files were downloaded" errors
+- **Enhanced Error Handling**: Failed video downloads now send original messages to DLQ for later retry with rich failure metadata
+- **Improved Processing Reliability**: SQS DLQ integration provides automatic retry mechanisms for transient failures
 - **Comprehensive Test Coverage Reporting**: Enhanced GitHub Actions workflow with detailed code coverage, branch coverage, and cyclomatic complexity analysis
 - **Video Download Integration**: Automated video retrieval from Unifi Protect using HeadlessChromium browser automation optimized for AWS Lambda
 - **Configurable UI Automation**: Environment variable-based coordinate configuration for browser automation click targets
@@ -20,6 +23,7 @@ This serverless application provides a comprehensive backup and retrieval system
 ### Core Functionality
 - **Webhook Processing**: Receives real-time alarm events from Unifi Dream Machine
 - **Asynchronous Processing**: SQS-based delayed processing for improved reliability
+- **Dead Letter Queue**: Automatic retry mechanism for failed video downloads with rich failure metadata
 - **Automated Video Download**: Browser automation for video retrieval using HeadlessChromium optimized for AWS Lambda
 - **Data Storage**: Stores event data and videos in S3 with organized folder structure
 - **Device Mapping**: Maps device MAC addresses to human-readable names via environment variables
@@ -28,10 +32,10 @@ This serverless application provides a comprehensive backup and retrieval system
 ### Technical Features
 - **Multi-Environment Deployment**: Separate development and production environments
 - **CORS Support**: Cross-origin resource sharing for web client integration
-- **Comprehensive Error Handling**: Detailed logging and error management
+- **Comprehensive Error Handling**: Detailed logging and error management with DLQ retry mechanisms
 - **Scalable Architecture**: Serverless design that scales automatically
 - **Configurable UI Automation**: Environment variable-based coordinate configuration for browser interactions
-- **Enterprise Test Coverage**: 76 unit tests with line, branch, and method coverage analysis plus complexity metrics
+- **Enterprise Test Coverage**: 78 unit tests with line, branch, and method coverage analysis plus complexity metrics
 
 ## Video Download Capabilities
 
@@ -135,6 +139,7 @@ graph TB
         subgraph "SQS Processing"
             QUEUE[Alarm Processing Queue<br/>DelaySeconds via message<br/>2-minute default]
             DLQ[Dead Letter Queue<br/>maxReceiveCount: 3<br/>14-day retention]
+            RETRY_DLQ[Alarm Processing DLQ<br/>Failed video downloads<br/>Original message + metadata]
             ESM[Event Source Mapping<br/>BatchSize: 1<br/>Auto-scaling]
         end
         
@@ -219,6 +224,9 @@ graph TB
     %% Error handling
     QUEUE -->|Failed Messages<br/>After 3 Retries| DLQ
     DLQ -->|Manual Investigation<br/>14-day Retention| METRICS
+    DELAYED -->|Video Download Failure<br/>"No video files were downloaded"| RETRY_DLQ
+    RETRY_DLQ -->|Original Message + Metadata<br/>FailureReason, OriginalTimestamp| METRICS
+    RETRY_DLQ -.->|Manual Retry<br/>Re-queue to Main Queue| QUEUE
     
     %% Security flows
     SECRETS --> KMS
@@ -274,6 +282,14 @@ graph TB
 
 ### Key Architectural Components
 
+#### **Dead Letter Queue (DLQ) Integration**
+- **Automatic Retry Mechanism**: Failed video downloads automatically send original alarm messages to dedicated DLQ
+- **Rich Failure Metadata**: DLQ messages include `FailureReason`, `OriginalTimestamp`, and `RetryAttempt` attributes
+- **Exact Message Preservation**: Original alarm event preserved in DLQ for perfect retry scenarios
+- **Specific Error Handling**: "No video files were downloaded" errors trigger DLQ processing
+- **Manual Retry Support**: DLQ messages can be manually re-queued to main processing queue
+- **Fault Tolerance**: Ensures no alarm events are lost due to temporary video availability issues
+
 #### **SQS Delayed Processing Architecture**
 - **Immediate Webhook Response**: API Gateway responds instantly (HTTP 200) after queuing the event
 - **Configurable Delay**: Default 2-minute delay ensures video availability before processing
@@ -317,8 +333,10 @@ graph TB
 11. **Video Extraction**: Extracts blob URL and downloads video content as MP4
 12. **Video Storage**: MP4 files stored in S3 under organized date-based folders
 13. **Screenshot Capture**: Diagnostic screenshots captured at key automation stages for debugging
-14. **Monitoring**: All operations logged to CloudWatch for observability
-15. **Retrieval**: GET endpoints allow querying events and generating video presigned URLs
+14. **Error Handling**: Failed video downloads trigger DLQ with original message and failure metadata
+15. **Retry Capability**: DLQ messages can be manually re-queued for retry processing
+16. **Monitoring**: All operations logged to CloudWatch for observability
+17. **Retrieval**: GET endpoints allow querying events and generating video presigned URLs
 
 ## File Structure
 
@@ -761,6 +779,8 @@ The CloudFormation template automatically configures these Lambda environment va
 | `DeployedEnv` | CloudFormation parameter | Environment identifier |
 | `StorageBucket` | S3 bucket name | Event storage location |
 | `ApiKey` | Generated API key | API Gateway authentication |
+| `AlarmProcessingQueueUrl` | SQS queue URL | Delayed alarm processing queue |
+| `AlarmProcessingDlqUrl` | SQS DLQ URL | Dead letter queue for failed video downloads |
 | `DevicePrefix` | Fixed value: `DeviceMac` | Device mapping prefix |
 | `DeviceMac{MacAddress}` | Template values | Device name mappings |
 | `UnifiHost` | CloudFormation parameter | Unifi Protect hostname/IP |
@@ -1352,6 +1372,13 @@ The Lambda execution role includes only necessary permissions:
    - Monitor failed authentication attempts
    - Alert on unusual API usage patterns
 
+5. **Dead Letter Queue Management**
+   - Monitor DLQ message count regularly via CloudWatch alarms
+   - Review failed messages weekly to identify patterns
+   - Set up notifications when messages enter DLQ
+   - Implement automated retry for transient failures
+   - Document manual retry procedures for operations team
+
 ### Compliance Considerations
 
 - **Data retention**: Configure S3 lifecycle policies
@@ -1380,7 +1407,11 @@ Key metrics to monitor:
    - Request count, Error rates (4XX/5XX)
    - Integration latency, Client errors
 
-3. **S3 Metrics**:
+3. **SQS Metrics**:
+   - Messages sent, Messages received, Messages visible
+   - Dead letter queue message count, Age of oldest message
+
+4. **S3 Metrics**:
    - Object count, Bucket size
    - Request metrics, Error rates
 
@@ -1410,6 +1441,18 @@ aws cloudwatch put-metric-alarm \
   --period 300 \
   --threshold 1 \
   --comparison-operator GreaterThanThreshold
+
+# Dead Letter Queue monitoring
+aws cloudwatch put-metric-alarm \
+  --alarm-name "SQS-DLQ-MessagesVisible" \
+  --alarm-description "Messages in Dead Letter Queue" \
+  --metric-name ApproximateNumberOfVisibleMessages \
+  --namespace AWS/SQS \
+  --statistic Maximum \
+  --period 300 \
+  --threshold 1 \
+  --comparison-operator GreaterThanOrEqualToThreshold \
+  --dimensions Name=QueueName,Value=AlarmProcessingDeadLetterQueue
 ```
 
 ## Troubleshooting
@@ -1478,6 +1521,26 @@ aws cloudwatch put-metric-alarm \
    ERROR: Access Denied when writing to S3
    ```
    - Verify Lambda execution role has S3 permissions
+   - Check S3 bucket policy allows Lambda function access
+   - Ensure bucket exists and is in the correct region
+
+3. **Video Download Failures**
+   ```
+   ERROR: No video files were downloaded
+   ```
+   - Check Dead Letter Queue for failed messages
+   - Verify Unifi Protect credentials are correct
+   - Check browser automation coordinates are accurate for your UI version
+   - Review CloudWatch logs for browser automation errors
+
+4. **Dead Letter Queue Messages**
+   ```
+   WARNING: Messages found in DLQ
+   ```
+   - Monitor DLQ message count in CloudWatch
+   - Review message attributes: `FailureReason`, `OriginalTimestamp`, `RetryAttempt`
+   - Manually re-queue messages to main processing queue after resolving issues
+   - Investigate root cause using Lambda execution logs
    - Check bucket name matches environment variable
    - Ensure bucket exists and is in the correct region
 
@@ -1551,6 +1614,23 @@ aws cloudwatch get-metric-statistics \
   --end-time 2024-01-02T00:00:00Z \
   --period 3600 \
   --statistics Sum
+
+# Check Dead Letter Queue messages
+aws sqs get-queue-attributes \
+  --queue-url https://sqs.us-east-1.amazonaws.com/123456789012/AlarmProcessingDeadLetterQueue \
+  --attribute-names All
+
+# Receive messages from DLQ (for inspection)
+aws sqs receive-message \
+  --queue-url https://sqs.us-east-1.amazonaws.com/123456789012/AlarmProcessingDeadLetterQueue \
+  --max-number-of-messages 10 \
+  --message-attribute-names All
+
+# Re-queue DLQ message to main processing queue (manual retry)
+aws sqs send-message \
+  --queue-url https://sqs.us-east-1.amazonaws.com/123456789012/AlarmProcessingQueue \
+  --message-body '{"original":"alarm","data":"here"}' \
+  --delay-seconds 0
 ```
 
 ### Support Resources
