@@ -91,6 +91,18 @@ namespace UnifiWebhookEventReceiver.Configuration
         /// <summary>Delay in seconds before processing alarm events (defaults to 2 minutes)</summary>
         public static int ProcessingDelaySeconds => int.TryParse(Environment.GetEnvironmentVariable("ProcessingDelaySeconds"), out var delay) ? delay : 120;
 
+        /// <summary>Support email address for failure notifications</summary>
+        public static string? SupportEmail => Environment.GetEnvironmentVariable("SupportEmail");
+
+        /// <summary>Deployed environment prefix (dev, prod, staging)</summary>
+        public static string? DeployedEnv => Environment.GetEnvironmentVariable("DeployedEnv");
+
+        /// <summary>Git commit SHA for the current build</summary>
+        public static string? BuildSha => Environment.GetEnvironmentVariable("BuildSha");
+
+        /// <summary>Timestamp when the current build was created</summary>
+        public static string? BuildTimestamp => Environment.GetEnvironmentVariable("BuildTimestamp");
+
         #endregion
 
         #region AWS Configuration

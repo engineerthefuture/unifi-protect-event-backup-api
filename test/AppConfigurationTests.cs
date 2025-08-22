@@ -17,19 +17,32 @@ namespace UnifiWebhookEventReceiverTests
     {
         public AppConfigurationTests()
         {
-            // Clean up environment variables before each test
-            Environment.SetEnvironmentVariable("StorageBucket", null);
-            Environment.SetEnvironmentVariable("DevicePrefix", null);
-            Environment.SetEnvironmentVariable("FunctionName", null);
-            Environment.SetEnvironmentVariable("UnifiCredentialsSecretArn", null);
-            Environment.SetEnvironmentVariable("DownloadDirectory", null);
-            Environment.SetEnvironmentVariable("ArchiveButtonX", null);
-            Environment.SetEnvironmentVariable("ArchiveButtonY", null);
-            Environment.SetEnvironmentVariable("DownloadButtonX", null);
-            Environment.SetEnvironmentVariable("DownloadButtonY", null);
-            Environment.SetEnvironmentVariable("ProcessingDelaySeconds", null);
-            Environment.SetEnvironmentVariable("AlarmProcessingQueueUrl", null);
-            Environment.SetEnvironmentVariable("AWS_REGION", null);
+            // Clean up environment variables before each test in this class only
+            // Don't restore them to avoid conflicts with other test classes
+            var variablesToClean = new[] 
+            {
+                "StorageBucket", "DevicePrefix", "FunctionName", "UnifiCredentialsSecretArn",
+                "DownloadDirectory", "ArchiveButtonX", "ArchiveButtonY", "DownloadButtonX", 
+                "DownloadButtonY", "ProcessingDelaySeconds", "AlarmProcessingQueueUrl", 
+                "AWS_REGION", "DeployedEnv", "BuildSha", "BuildTimestamp"
+            };
+            
+            foreach (var variable in variablesToClean)
+            {
+                Environment.SetEnvironmentVariable(variable, null);
+            }
+            
+            // Also clean up any device-specific environment variables that might have been set
+            var deviceMacVariables = new[] 
+            {
+                "DeviceMac28704E113F64", "DeviceMac28704E113C44", "DevicMac28704E113F33",
+                "DeviceMacF4E2C67A2FE8", "DeviceMacF4E2C677E20F", "DeviceMacUNKNOWN123456", "DeviceMac123456789ABC"
+            };
+            
+            foreach (var varName in deviceMacVariables)
+            {
+                Environment.SetEnvironmentVariable(varName, null);
+            }
         }
 
         [Fact]
@@ -526,6 +539,77 @@ namespace UnifiWebhookEventReceiverTests
 
             // Assert
             Assert.Equal(specialValue, result);
+        }
+
+        [Fact]
+        public void DeployedEnv_WithEnvironmentVariable_ReturnsValue()
+        {
+            // Arrange
+            Environment.SetEnvironmentVariable("DeployedEnv", "prod");
+
+            // Act
+            var result = AppConfiguration.DeployedEnv;
+
+            // Assert
+            Assert.Equal("prod", result);
+        }
+
+        [Fact]
+        public void DeployedEnv_WithoutEnvironmentVariable_ReturnsNull()
+        {
+            // Act
+            var result = AppConfiguration.DeployedEnv;
+
+            // Assert
+            Assert.Null(result);
+        }
+
+        [Fact]
+        public void BuildSha_WithEnvironmentVariable_ReturnsValue()
+        {
+            // Arrange
+            var sha = "abc123def456";
+            Environment.SetEnvironmentVariable("BuildSha", sha);
+
+            // Act
+            var result = AppConfiguration.BuildSha;
+
+            // Assert
+            Assert.Equal(sha, result);
+        }
+
+        [Fact]
+        public void BuildSha_WithoutEnvironmentVariable_ReturnsNull()
+        {
+            // Act
+            var result = AppConfiguration.BuildSha;
+
+            // Assert
+            Assert.Null(result);
+        }
+
+        [Fact]
+        public void BuildTimestamp_WithEnvironmentVariable_ReturnsValue()
+        {
+            // Arrange
+            var timestamp = "2025-01-01T12:00:00Z";
+            Environment.SetEnvironmentVariable("BuildTimestamp", timestamp);
+
+            // Act
+            var result = AppConfiguration.BuildTimestamp;
+
+            // Assert
+            Assert.Equal(timestamp, result);
+        }
+
+        [Fact]
+        public void BuildTimestamp_WithoutEnvironmentVariable_ReturnsNull()
+        {
+            // Act
+            var result = AppConfiguration.BuildTimestamp;
+
+            // Assert
+            Assert.Null(result);
         }
     }
 }

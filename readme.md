@@ -63,10 +63,10 @@ The system includes asynchronous browser automation to download video content di
 ### Technical Implementation
 
 - **AWS Lambda Optimization**: Uses HeadlessChromium.Puppeteer.Lambda.Dotnet for Lambda-optimized browser automation
-- **Configurable UI Interaction**: Click coordinates for archive and download buttons configurable via environment variables
+- **Configurable UI Interaction**: Click coordinates for archive button configurable via environment variables
 - **Enhanced Download Configuration**: Chrome DevTools Protocol (CDP) integration for reliable download handling
 - **Comprehensive Error Handling**: Detailed logging and retry mechanisms for browser automation
-- **Performance Monitoring**: Four diagnostic screenshots captured at key stages (login, page load, archive click, download click) for debugging
+- **Performance Monitoring**: Three diagnostic screenshots captured at key stages (login, page load, archive click) for debugging
 
 ### Storage Organization
 
@@ -80,8 +80,7 @@ S3 Bucket Structure:
     └── YYYY-MM-DD/
         ├── {eventId}_{deviceMac}_{timestamp}_login-screenshot.png
         ├── {eventId}_{deviceMac}_{timestamp}_pageload-screenshot.png
-        ├── {eventId}_{deviceMac}_{timestamp}_firstclick-screenshot.png
-        └── {eventId}_{deviceMac}_{timestamp}_secondclick-screenshot.png
+        └── {eventId}_{deviceMac}_{timestamp}_afterarchivebuttonclick-screenshot.png
 ```
 
 ### Data Retention Policy
@@ -789,8 +788,6 @@ The CloudFormation template automatically configures these Lambda environment va
 | `DownloadDirectory` | CloudFormation parameter | Download directory (default: `/tmp`) |
 | `ArchiveButtonX` | CloudFormation parameter | X coordinate for archive button (default: 1274) |
 | `ArchiveButtonY` | CloudFormation parameter | Y coordinate for archive button (default: 257) |
-| `DownloadButtonX` | CloudFormation parameter | X coordinate for download button (default: 1095) |
-| `DownloadButtonY` | CloudFormation parameter | Y coordinate for download button (default: 275) |
 
 #### Pre-configured Device Mappings
 
@@ -909,8 +906,6 @@ If deploying manually, configure these environment variables in your Lambda func
 | `DownloadDirectory` | Download directory path | `/tmp` |
 | `ArchiveButtonX` | X coordinate for archive button click | `1274` |
 | `ArchiveButtonY` | Y coordinate for archive button click | `257` |
-| `DownloadButtonX` | X coordinate for download button click | `1095` |
-| `DownloadButtonY` | Y coordinate for download button click | `275` |
 
 ### Device Name Mapping
 
@@ -1203,8 +1198,7 @@ my-unifi-events-bucket/
     ├── 2024-01-01/
     │   ├── AA:BB:CC:DD:EE:FF_1704067200000_login-screenshot.png
     │   ├── AA:BB:CC:DD:EE:FF_1704067200000_pageload-screenshot.png
-    │   ├── AA:BB:CC:DD:EE:FF_1704067200000_firstclick-screenshot.png
-    │   ├── AA:BB:CC:DD:EE:FF_1704067200000_secondclick-screenshot.png
+    │   ├── AA:BB:CC:DD:EE:FF_1704067200000_afterarchivebuttonclick-screenshot.png
     │   └── 11:22:33:44:55:66_1704070800000_login-screenshot.png
     ├── 2024-01-02/
     │   └── AA:BB:CC:DD:EE:FF_1704153600000_pageload-screenshot.png
@@ -1217,8 +1211,7 @@ my-unifi-events-bucket/
 - **Diagnostic Screenshots**: Browser automation screenshots for debugging, organized by date and event:
   - `{eventId}_{deviceMac}_{timestamp}_login-screenshot.png`: Unifi Protect login page state
   - `{eventId}_{deviceMac}_{timestamp}_pageload-screenshot.png`: Event page after navigation
-  - `{eventId}_{deviceMac}_{timestamp}_firstclick-screenshot.png`: Archive button click state
-  - `{eventId}_{deviceMac}_{timestamp}_secondclick-screenshot.png`: Download button click state
+  - `{eventId}_{deviceMac}_{timestamp}_afterarchivebuttonclick-screenshot.png`: Archive button click state
 
 ## Development
 

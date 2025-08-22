@@ -62,5 +62,12 @@ namespace UnifiWebhookEventReceiver.Services
         /// <param name="screenshotFilePath">Path to the local screenshot file</param>
         /// <param name="s3Key">S3 key for the screenshot</param>
         Task StoreScreenshotFileAsync(string screenshotFilePath, string s3Key);
+
+        /// <summary>
+        /// Retrieves a binary file from S3.
+        /// </summary>
+        /// <param name="s3Key">The S3 key of the file to retrieve</param>
+        /// <returns>The file data as byte array, or null if not found</returns>
+        Task<byte[]?> GetFileAsync(string s3Key);
     }
 }

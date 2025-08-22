@@ -63,31 +63,40 @@ namespace UnifiWebhookEventReceiverTests
         [Fact]
         public async Task StoreAlarmEventAsync_WithValidData_ReturnsS3Key()
         {
-            // Arrange
+            // Arrange - ensure environment variable is set
+            var originalBucket = Environment.GetEnvironmentVariable("StorageBucket");
             Environment.SetEnvironmentVariable("StorageBucket", "test-bucket");
-            var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            var trigger = new Trigger
+            
+            try
             {
-                key = "test-key",
-                device = "test-device",
-                eventId = "test-event-id"
-            };
-            var alarm = new Alarm
+                var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                var trigger = new Trigger
+                {
+                    key = "test-key",
+                    device = "test-device",
+                    eventId = "test-event-id"
+                };
+                var alarm = new Alarm
+                {
+                    timestamp = timestamp,
+                    triggers = new List<Trigger> { trigger }
+                };
+
+                _mockS3Client.Setup(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default))
+                    .ReturnsAsync(new PutObjectResponse());
+
+                // Act
+                var result = await _s3StorageService.StoreAlarmEventAsync(alarm, trigger);
+
+                // Assert
+                Assert.NotNull(result);
+                Assert.Contains("test-event-id", result);
+                _mockS3Client.Verify(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default), Times.Once);
+            }
+            finally
             {
-                timestamp = timestamp,
-                triggers = new List<Trigger> { trigger }
-            };
-
-            _mockS3Client.Setup(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default))
-                .ReturnsAsync(new PutObjectResponse());
-
-            // Act
-            var result = await _s3StorageService.StoreAlarmEventAsync(alarm, trigger);
-
-            // Assert
-            Assert.NotNull(result);
-            Assert.Contains("test-event-id", result);
-            _mockS3Client.Verify(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default), Times.Once);
+                Environment.SetEnvironmentVariable("StorageBucket", originalBucket);
+            }
         }
 
         [Fact]
@@ -266,13 +275,23 @@ namespace UnifiWebhookEventReceiverTests
         [Fact]
         public async Task StoreVideoFileAsync_WithFileNotFound_ThrowsFileNotFoundException()
         {
-            // Arrange
-            var filePath = "/nonexistent/path/video.mp4";
-            var s3Key = "videos/video.mp4";
+            // Arrange - ensure environment variable is set
+            var originalBucket = Environment.GetEnvironmentVariable("StorageBucket");
+            Environment.SetEnvironmentVariable("StorageBucket", "test-bucket");
+            
+            try
+            {
+                var filePath = "/nonexistent/path/video.mp4";
+                var s3Key = "videos/video.mp4";
 
-            // Act & Assert
-            await Assert.ThrowsAsync<FileNotFoundException>(() => 
-                _s3StorageService.StoreVideoFileAsync(filePath, s3Key));
+                // Act & Assert
+                await Assert.ThrowsAsync<FileNotFoundException>(() => 
+                    _s3StorageService.StoreVideoFileAsync(filePath, s3Key));
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable("StorageBucket", originalBucket);
+            }
         }
     }
 }

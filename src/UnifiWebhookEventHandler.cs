@@ -18,6 +18,7 @@ using Amazon.SecretsManager;
 using Amazon.SQS;
 using Newtonsoft.Json;
 using UnifiWebhookEventReceiver.Configuration;
+using UnifiWebhookEventReceiver.Infrastructure;
 using UnifiWebhookEventReceiver.Services;
 using UnifiWebhookEventReceiver.Services.Implementations;
 
@@ -158,23 +159,8 @@ namespace UnifiWebhookEventReceiver
             // Create a null logger for initialization (will be replaced with context logger in FunctionHandler)
             ILambdaLogger logger = new NullLogger();
 
-            // Create AWS clients
-            var s3Client = new AmazonS3Client(AppConfiguration.AwsRegion);
-            var sqsClient = new AmazonSQSClient(AppConfiguration.AwsRegion);
-            var secretsClient = new AmazonSecretsManagerClient(AppConfiguration.AwsRegion);
-
-            // Create service instances
-            var responseHelper = new ResponseHelper();
-            var credentialsService = new CredentialsService(secretsClient, logger);
-            var s3StorageService = new S3StorageService(s3Client, responseHelper, logger);
-            var unifiProtectService = new UnifiProtectService(logger, s3StorageService, credentialsService);
-            
-            // Create services with resolved dependencies
-            var alarmProcessingService = new AlarmProcessingService(s3StorageService, unifiProtectService, credentialsService, responseHelper, logger);
-            var sqsService = new SqsService(sqsClient, alarmProcessingService, responseHelper, logger);
-            var requestRouter = new RequestRouter(sqsService, s3StorageService, responseHelper, logger);
-
-            return (requestRouter, sqsService, responseHelper, logger);
+            var services = ServiceFactory.CreateServices(logger);
+            return (services.RequestRouter, services.SqsService, services.ResponseHelper, logger);
         }
 
         /// <summary>
@@ -182,23 +168,8 @@ namespace UnifiWebhookEventReceiver
         /// </summary>
         private static (IRequestRouter requestRouter, ISqsService sqsService, IResponseHelper responseHelper) CreateServicesWithLogger(ILambdaLogger logger)
         {
-            // Create AWS clients
-            var s3Client = new AmazonS3Client(AppConfiguration.AwsRegion);
-            var sqsClient = new AmazonSQSClient(AppConfiguration.AwsRegion);
-            var secretsClient = new AmazonSecretsManagerClient(AppConfiguration.AwsRegion);
-
-            // Create service instances with proper logger
-            var responseHelper = new ResponseHelper();
-            var credentialsService = new CredentialsService(secretsClient, logger);
-            var s3StorageService = new S3StorageService(s3Client, responseHelper, logger);
-            var unifiProtectService = new UnifiProtectService(logger, s3StorageService, credentialsService);
-            
-            // Create services with resolved dependencies
-            var alarmProcessingService = new AlarmProcessingService(s3StorageService, unifiProtectService, credentialsService, responseHelper, logger);
-            var sqsService = new SqsService(sqsClient, alarmProcessingService, responseHelper, logger);
-            var requestRouter = new RequestRouter(sqsService, s3StorageService, responseHelper, logger);
-
-            return (requestRouter, sqsService, responseHelper);
+            var services = ServiceFactory.CreateServices(logger);
+            return (services.RequestRouter, services.SqsService, services.ResponseHelper);
         }
 
         /// <summary>

@@ -13,6 +13,8 @@ Metadata:
         Value: !Ref EnvPrefix
       - Key: AppName
         Value: !Ref AppName
+      - Key: SupportEmail
+        Value: !Ref SupportEmail
 
 # Parameters
 Parameters:
@@ -77,20 +79,24 @@ Parameters:
     Type: Number
     Description: Y coordinate for archive button click in Unifi Protect UI
     Default: 257
-  DownloadButtonX:
-    Type: Number
-    Description: X coordinate for download button click in Unifi Protect UI
-    Default: 1095
-  DownloadButtonY:
-    Type: Number
-    Description: Y coordinate for download button click in Unifi Protect UI
-    Default: 275
   ProcessingDelaySeconds:
     Type: Number
     Description: Delay in seconds before processing alarm events (default 2 minutes)
     Default: 120
     MinValue: 0
     MaxValue: 900
+  SupportEmail:
+    Type: String
+    Description: Email address for support notifications
+    Default: "support@example.com"
+  BuildSha:
+    Type: String
+    Description: Git commit SHA for this build
+    Default: "unknown"
+  BuildTimestamp:
+    Type: String
+    Description: Timestamp when this build was created
+    Default: "unknown"
 
 # Resources
 Resources: 
@@ -143,6 +149,8 @@ Resources:
         - arn:aws:iam::aws:policy/AmazonAPIGatewayInvokeFullAccess
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
         - arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole
+        - arn:aws:iam::aws:policy/AmazonSESFullAccess
+        - arn:aws:iam::aws:policy/CloudWatchLogsReadOnlyAccess
       Policies:
         - PolicyName: SQSAlarmProcessingPolicy
           PolicyDocument:
@@ -434,7 +442,7 @@ Resources:
       Description: !Sub "${EnvPrefix} - ${AppName}"
               #AssemblyName::NameSpace.ClassName::FunctionHandlerName
       Handler: UnifiWebhookEventReceiver::UnifiWebhookEventReceiver.UnifiWebhookEventHandler::FunctionHandler
-      MemorySize: 2056
+      MemorySize: 1536
       Timeout: 150
       Runtime: dotnet8
       Role: !GetAtt LambdaRole.Arn
@@ -454,11 +462,12 @@ Resources:
           DownloadDirectory: !Ref DownloadDirectory
           ArchiveButtonX: !Ref ArchiveButtonX
           ArchiveButtonY: !Ref ArchiveButtonY
-          DownloadButtonX: !Ref DownloadButtonX
-          DownloadButtonY: !Ref DownloadButtonY
           AlarmProcessingQueueUrl: !Ref AlarmProcessingQueue
           AlarmProcessingDlqUrl: !Ref AlarmProcessingDeadLetterQueue
           ProcessingDelaySeconds: !Ref ProcessingDelaySeconds
+          SupportEmail: !Ref SupportEmail
+          BuildSha: !Ref BuildSha
+          BuildTimestamp: !Ref BuildTimestamp
       Tags: 
         - Key: "FunctionName"
           Value: !Sub "${FunctionName}"
