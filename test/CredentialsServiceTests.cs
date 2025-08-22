@@ -117,9 +117,11 @@ namespace UnifiWebhookEventReceiverTests
         }
 
         [Fact]
-        public async Task GetUnifiCredentialsAsync_WithSecretsManagerException_ThrowsInvalidOperationException()
+        public async Task GetUnifiCredentialsAsync_WithSecretsManagerException_ThrowsResourceNotFoundException()
         {
             // Arrange
+            Environment.SetEnvironmentVariable("UnifiCredentialsSecretArn", "arn:aws:secretsmanager:us-east-1:123456789012:secret:test-secret");
+            
             _mockSecretsClient.Setup(x => x.GetSecretValueAsync(It.IsAny<GetSecretValueRequest>(), default))
                 .ThrowsAsync(new ResourceNotFoundException("Secret not found"));
 

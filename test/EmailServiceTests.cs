@@ -5,6 +5,7 @@ using UnifiWebhookEventReceiver.Services;
 using UnifiWebhookEventReceiver.Services.Implementations;
 using Xunit;
 using Moq;
+using Amazon;
 using Amazon.Lambda.Core;
 using Amazon.SimpleEmail;
 using Amazon.SimpleEmail.Model;
@@ -19,7 +20,7 @@ namespace UnifiWebhookEventReceiverTests
             // Arrange
             Environment.SetEnvironmentVariable("SupportEmail", null);
             
-            var mockSesClient = new Mock<AmazonSimpleEmailServiceClient>();
+            var mockSesClient = new Mock<AmazonSimpleEmailServiceClient>(Amazon.RegionEndpoint.USEast1);
             var mockLogger = new Mock<ILambdaLogger>();
             var mockS3Service = new Mock<IS3StorageService>();
 
@@ -55,7 +56,7 @@ namespace UnifiWebhookEventReceiverTests
             // Arrange
             Environment.SetEnvironmentVariable("SupportEmail", "support@example.com");
             
-            var mockSesClient = new Mock<AmazonSimpleEmailServiceClient>();
+            var mockSesClient = new Mock<AmazonSimpleEmailServiceClient>(Amazon.RegionEndpoint.USEast1);
             var mockLogger = new Mock<ILambdaLogger>();
             var mockS3Service = new Mock<IS3StorageService>();
 
