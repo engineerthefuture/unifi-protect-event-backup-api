@@ -298,10 +298,9 @@ namespace UnifiWebhookEventReceiverTests
         }
 
         [Fact]
-        public async Task PerformSignOutAndCapture_ShouldNotThrow_WhenCalled()
+        public void PerformSignOutAndCapture_ShouldNotThrow_WhenCalled()
         {
             // Arrange
-            var downloadDirectory = "/tmp";
             var trigger = new Trigger { key = "test-key", eventId = "test", device = "device1" };
             var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 

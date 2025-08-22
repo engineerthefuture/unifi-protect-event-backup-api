@@ -250,26 +250,38 @@ namespace UnifiWebhookEventReceiverTests
         public async Task StoreAlarmEventAsync_WithS3Exception_ThrowsException()
         {
             // Arrange
+            var originalBucket = Environment.GetEnvironmentVariable("StorageBucket");
             Environment.SetEnvironmentVariable("StorageBucket", "test-bucket");
-            var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            var trigger = new Trigger
+            
+            try
             {
-                key = "test-key",
-                device = "test-device",
-                eventId = "test-event-id"
-            };
-            var alarm = new Alarm
+                var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                var trigger = new Trigger
+                {
+                    key = "test-key",
+                    device = "test-device",
+                    eventId = "test-event-id"
+                };
+                var alarm = new Alarm
+                {
+                    timestamp = timestamp,
+                    triggers = new List<Trigger> { trigger }
+                };
+
+                _mockS3Client.Setup(x => x.PutObjectAsync(It.Is<PutObjectRequest>(req => 
+                    req.BucketName == "test-bucket" &&
+                    req.ContentType == "application/json" &&
+                    req.StorageClass == S3StorageClass.StandardInfrequentAccess), default))
+                    .ThrowsAsync(new Exception("S3 error"));
+
+                // Act & Assert
+                await Assert.ThrowsAsync<Exception>(() => 
+                    _s3StorageService.StoreAlarmEventAsync(alarm, trigger));
+            }
+            finally
             {
-                timestamp = timestamp,
-                triggers = new List<Trigger> { trigger }
-            };
-
-            _mockS3Client.Setup(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default))
-                .ThrowsAsync(new Exception("S3 error"));
-
-            // Act & Assert
-            await Assert.ThrowsAsync<Exception>(() => 
-                _s3StorageService.StoreAlarmEventAsync(alarm, trigger));
+                Environment.SetEnvironmentVariable("StorageBucket", originalBucket);
+            }
         }
 
         [Fact]
@@ -318,7 +330,9 @@ namespace UnifiWebhookEventReceiverTests
                     It.Is<PutObjectRequest>(req => 
                         req.BucketName == "test-bucket" &&
                         req.Key == s3Key &&
-                        req.ContentType == "image/png"), 
+                        req.ContentType == "image/png" &&
+                        req.StorageClass == S3StorageClass.StandardInfrequentAccess &&
+                        req.InputStream != null), 
                     default), Times.Once);
             }
             finally
