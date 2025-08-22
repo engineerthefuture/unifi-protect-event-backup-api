@@ -509,7 +509,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         private async Task<APIGatewayProxyResponse> BuildLatestVideoResponse(string videoKey, long timestamp, object? eventData)
         {
             DateTime dt = DateTimeOffset.FromUnixTimeMilliseconds(timestamp).DateTime;
-            string suggestedFilename = $"latest_video_{dt:yyyy-MM-dd_HH-mm-ss}.mp4";
+            string suggestedFilename = Path.GetFileName(videoKey);
             string eventKey = videoKey.Replace(".mp4", ".json");
 
             var presignedRequest = new GetPreSignedUrlRequest
@@ -658,7 +658,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             try
             {
                 DateTime dt = timestamp > 0 ? DateTimeOffset.FromUnixTimeMilliseconds(timestamp).DateTime : DateTime.UtcNow;
-                string suggestedFilename = $"event_{eventId}_{dt:yyyy-MM-dd_HH-mm-ss}.mp4";
+                string suggestedFilename = Path.GetFileName(videoKey);
 
                 var presignedRequest = new GetPreSignedUrlRequest
                 {
