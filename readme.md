@@ -223,7 +223,7 @@ graph TB
     %% Error handling
     QUEUE -->|Failed Messages<br/>After 3 Retries| DLQ
     DLQ -->|Manual Investigation<br/>14-day Retention| METRICS
-    DELAYED -->|Video Download Failure<br/>"No video files were downloaded"| RETRY_DLQ
+    DELAYED -->|Video Download Failure<br/>No video files were downloaded| RETRY_DLQ
     RETRY_DLQ -->|Original Message + Metadata<br/>FailureReason, OriginalTimestamp| METRICS
     RETRY_DLQ -.->|Manual Retry<br/>Re-queue to Main Queue| QUEUE
     
