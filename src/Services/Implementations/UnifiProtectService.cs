@@ -558,7 +558,6 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             {
                 _logger.LogLine("Starting sign out process...");
 
-                /*
                 // Try to find and click the sign out button
                 var signOutElement = await FindSignOutElement(page);
 
@@ -570,7 +569,6 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 {
                     _logger.LogLine("Sign out button not found, proceeding without sign out");
                 }
-                */
                 
                 var screenshotPath = Path.Combine(downloadDirectory, "signout-screenshot.png");
                 await page.ScreenshotAsync(screenshotPath);
@@ -613,6 +611,11 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         {
             var signOutSelectors = new[]
             {
+                // Specific Unifi Protect sign out button
+                "button[data-testid='LogOutButton']",
+                "button.button__7vyLR6Ac.button-light__7vyLR6Ac.width-full__7vyLR6Ac.size-medium__7vyLR6Ac.shape-default__7vyLR6Ac.fillColor-transparent-neutral__7vyLR6Ac.textColor-neutral__7vyLR6Ac.borderColor-none__7vyLR6Ac",
+                "button[data-uic-component='Button'][data-testid='LogOutButton']",
+                // Generic fallback selectors
                 "button[aria-label*='sign out' i]", "button[aria-label*='logout' i]",
                 "a[aria-label*='sign out' i]", "a[aria-label*='logout' i]",
                 "button:has-text('Sign Out')", "button:has-text('Logout')",
@@ -653,6 +656,12 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             
             var userMenuSelectors = new[]
             {
+                // Specific Unifi Protect user avatar button
+                "button.unifi-portal-1bmvzvc.eqfginb7.button__qx3Rmpxb.button__RNxIH278.button-light__RNxIH278.large__RNxIH278.circle__RNxIH278",
+                "button.button__qx3Rmpxb.button__RNxIH278.button-light__RNxIH278.large__RNxIH278.circle__RNxIH278",
+                "button[alt*='Automated User' i]",
+                "button img[alt*='Automated User' i]",
+                // Generic fallback selectors
                 "button[aria-label*='user' i]", "button[aria-label*='profile' i]", "button[aria-label*='account' i]",
                 "[data-testid*='user']", "[data-testid*='profile']", "[data-testid*='account']",
                 ".user-menu", ".profile-menu", ".account-menu"
@@ -680,7 +689,30 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         {
             try
             {
-                var userMenuElement = await page.QuerySelectorAsync(selector);
+                IElementHandle? userMenuElement = null;
+                
+                // Special handling for image-based selectors
+                if (selector.Contains("img[alt*='Automated User'"))
+                {
+                    var imageElement = await page.QuerySelectorAsync(selector);
+                    if (imageElement != null)
+                    {
+                        // Find the parent button
+                        var parentHandle = await page.EvaluateFunctionHandleAsync(@"(img) => {
+                            let parent = img.parentElement;
+                            while (parent && parent.tagName !== 'BUTTON') {
+                                parent = parent.parentElement;
+                            }
+                            return parent;
+                        }", imageElement);
+                        userMenuElement = parentHandle as IElementHandle;
+                    }
+                }
+                else
+                {
+                    userMenuElement = await page.QuerySelectorAsync(selector);
+                }
+                
                 if (userMenuElement == null)
                 {
                     return null;
