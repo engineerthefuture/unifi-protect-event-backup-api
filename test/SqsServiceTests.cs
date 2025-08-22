@@ -328,26 +328,39 @@ namespace UnifiWebhookEventReceiverTests
         [Fact]
         public async Task QueueAlarmForProcessingAsync_WithValidAlarm_ReturnsSuccess()
         {
-            // Arrange
-            var alarm = new Alarm
+            // Arrange - ensure environment variables are set
+            var originalQueueUrl = Environment.GetEnvironmentVariable("AlarmProcessingQueueUrl");
+            var originalProcessingDelay = Environment.GetEnvironmentVariable("ProcessingDelaySeconds");
+            Environment.SetEnvironmentVariable("AlarmProcessingQueueUrl", "https://sqs.us-east-1.amazonaws.com/123456789012/test-queue");
+            Environment.SetEnvironmentVariable("ProcessingDelaySeconds", "120");
+            
+            try
             {
-                name = "Motion Detection",
-                timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-                triggers = new List<Trigger>
+                var alarm = new Alarm
                 {
-                    new Trigger { key = "motion", eventId = "test-event-id", device = "test-device" }
-                }
-            };
+                    name = "Motion Detection",
+                    timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                    triggers = new List<Trigger>
+                    {
+                        new Trigger { key = "motion", eventId = "test-event-id", device = "test-device" }
+                    }
+                };
 
-            _mockSqsClient.Setup(x => x.SendMessageAsync(It.IsAny<SendMessageRequest>(), default))
-                .ReturnsAsync(new SendMessageResponse { MessageId = "test-message-id" });
+                _mockSqsClient.Setup(x => x.SendMessageAsync(It.IsAny<SendMessageRequest>(), default))
+                    .ReturnsAsync(new SendMessageResponse { MessageId = "test-message-id" });
 
-            // Act
-            var result = await _sqsService.QueueAlarmForProcessingAsync(alarm);
+                // Act
+                var result = await _sqsService.QueueAlarmForProcessingAsync(alarm);
 
-            // Assert
-            Assert.Equal(200, result.StatusCode);
-            _mockResponseHelper.Verify(x => x.CreateSuccessResponse(It.IsAny<object>()), Times.Once);
+                // Assert
+                Assert.Equal(200, result.StatusCode);
+                _mockResponseHelper.Verify(x => x.CreateSuccessResponse(It.IsAny<object>()), Times.Once);
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable("AlarmProcessingQueueUrl", originalQueueUrl);
+                Environment.SetEnvironmentVariable("ProcessingDelaySeconds", originalProcessingDelay);
+            }
         }
 
         [Fact]

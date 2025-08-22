@@ -195,7 +195,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 string dateFolder = $"{dt.Year}-{dt.Month:D2}-{dt.Day:D2}";
                 string basePrefix = $"{trigger.eventId}_{trigger.device}_{alarm.timestamp}";
                 
-                var screenshotTypes = new[] { "login-screenshot", "pageload-screenshot", "firstclick-screenshot", "secondclick-screenshot" };
+                var screenshotTypes = new[] { "login-screenshot", "pageload-screenshot", "afterarchivebuttonclick-screenshot" };
                 
                 foreach (var screenshotType in screenshotTypes)
                 {
@@ -236,6 +236,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// <summary>
         /// Generates email body with embedded JSON and attachment information.
         /// </summary>
+        [SuppressMessage("SonarQube", "S1541:Methods should not be too complex", Justification = "Email generation requires multiple conditional checks and formatting logic")]
         private static string GenerateEmailBodyWithAttachments(Alarm alarm, string failureReason, string messageId, string retryAttempt, string cloudWatchLogs, List<(string name, byte[] data)> screenshots)
         {
             var trigger = alarm.triggers?.FirstOrDefault();
@@ -261,7 +262,8 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             // Add event information
             var eventKeyType = GetEventKeyType(eventKey);
             var deviceMacAddress = trigger?.device ?? "Unknown";
-            AddEventInformation(sb, eventKey, deviceName, eventTime, eventPath, eventKeyType, deviceMacAddress);
+            var triggerKey = trigger?.key ?? "Unknown";
+            AddEventInformation(sb, eventKey, deviceName, eventTime, eventPath, eventKeyType, deviceMacAddress, triggerKey);
             
             // Add alarm JSON and logs
             AddAlarmDataAndLogs(sb, alarm, cloudWatchLogs);
@@ -327,12 +329,13 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// <summary>
         /// Adds event information section to the email body.
         /// </summary>
-        private static void AddEventInformation(StringBuilder sb, string eventKey, string deviceName, string eventTime, string eventPath, string eventKeyType, string deviceMacAddress)
+        private static void AddEventInformation(StringBuilder sb, string eventKey, string deviceName, string eventTime, string eventPath, string eventKeyType, string deviceMacAddress, string triggerKey)
         {
             sb.AppendLine("<h2>🏠 Event Information</h2>");
             sb.AppendLine("<table>");
             sb.AppendLine($"<tr><th>Event ID</th><td>{eventKey}</td></tr>");
             sb.AppendLine($"<tr><th>Event Type</th><td>{eventKeyType}</td></tr>");
+            sb.AppendLine($"<tr><th>Trigger Key</th><td>{triggerKey}</td></tr>");
             sb.AppendLine($"<tr><th>Device Name</th><td>{deviceName}</td></tr>");
             sb.AppendLine($"<tr><th>Device MAC</th><td>{deviceMacAddress}</td></tr>");
             sb.AppendLine($"<tr><th>Event Time</th><td>{eventTime}</td></tr>");
@@ -406,8 +409,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             {
                 var name when name.Contains("login-screenshot") => "🔐 Login Page Screenshot",
                 var name when name.Contains("pageload-screenshot") => "📄 Page Load Screenshot", 
-                var name when name.Contains("firstclick-screenshot") => "🖱️ First Click Screenshot (Archive Button)",
-                var name when name.Contains("secondclick-screenshot") => "💾 Second Click Screenshot (Download Button)",
+                var name when name.Contains("afterarchivebuttonclick-screenshot") => "🖱️ After Archive Button Click Screenshot",
                 _ => "📸 Process Screenshot"
             };
         }

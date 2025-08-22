@@ -525,12 +525,12 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             await page.Mouse.ClickAsync(coordinates.archiveButton.x, coordinates.archiveButton.y);
             _logger.LogLine("Clicked on archive button at coordinates: " + coordinates.archiveButton);
 
-            var screenshotPath = Path.Combine(downloadDirectory, "firstclick-screenshot.png");
+            var screenshotPath = Path.Combine(downloadDirectory, "afterarchivebuttonclick-screenshot.png");
             await page.ScreenshotAsync(screenshotPath);
             _logger.LogLine($"Screenshot taken of the clicked archive button: {screenshotPath}");
             
             // Upload screenshot to S3
-            await UploadScreenshotToS3(screenshotPath, "firstclick-screenshot.png", trigger, timestamp);
+            await UploadScreenshotToS3(screenshotPath, "afterarchivebuttonclick-screenshot.png", trigger, timestamp);
             
             // Clean up local screenshot file
             if (File.Exists(screenshotPath))

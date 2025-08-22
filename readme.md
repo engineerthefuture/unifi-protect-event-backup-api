@@ -80,7 +80,7 @@ S3 Bucket Structure:
     └── YYYY-MM-DD/
         ├── {eventId}_{deviceMac}_{timestamp}_login-screenshot.png
         ├── {eventId}_{deviceMac}_{timestamp}_pageload-screenshot.png
-        └── {eventId}_{deviceMac}_{timestamp}_firstclick-screenshot.png
+        └── {eventId}_{deviceMac}_{timestamp}_afterarchivebuttonclick-screenshot.png
 ```
 
 ### Data Retention Policy
@@ -1198,7 +1198,7 @@ my-unifi-events-bucket/
     ├── 2024-01-01/
     │   ├── AA:BB:CC:DD:EE:FF_1704067200000_login-screenshot.png
     │   ├── AA:BB:CC:DD:EE:FF_1704067200000_pageload-screenshot.png
-    │   ├── AA:BB:CC:DD:EE:FF_1704067200000_firstclick-screenshot.png
+    │   ├── AA:BB:CC:DD:EE:FF_1704067200000_afterarchivebuttonclick-screenshot.png
     │   └── 11:22:33:44:55:66_1704070800000_login-screenshot.png
     ├── 2024-01-02/
     │   └── AA:BB:CC:DD:EE:FF_1704153600000_pageload-screenshot.png
@@ -1211,7 +1211,7 @@ my-unifi-events-bucket/
 - **Diagnostic Screenshots**: Browser automation screenshots for debugging, organized by date and event:
   - `{eventId}_{deviceMac}_{timestamp}_login-screenshot.png`: Unifi Protect login page state
   - `{eventId}_{deviceMac}_{timestamp}_pageload-screenshot.png`: Event page after navigation
-  - `{eventId}_{deviceMac}_{timestamp}_firstclick-screenshot.png`: Archive button click state
+  - `{eventId}_{deviceMac}_{timestamp}_afterarchivebuttonclick-screenshot.png`: Archive button click state
 
 ## Development
 
