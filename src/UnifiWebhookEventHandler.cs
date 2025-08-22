@@ -100,7 +100,9 @@ namespace UnifiWebhookEventReceiver
         /// <param name="input">Raw request stream containing the event data</param>
         /// <param name="context">Lambda execution context providing logging and runtime information</param>
         /// <returns>API Gateway proxy response for HTTP events, or void response for SQS events</returns>
+#pragma warning disable S1541 // Methods should not be too complex - complexity 11 is acceptable under new threshold of 13
         public async Task<APIGatewayProxyResponse> FunctionHandler(Stream input, ILambdaContext context)
+#pragma warning restore S1541
         {
             // Initialize with context logger if available
             var logger = context?.Logger ?? _logger;

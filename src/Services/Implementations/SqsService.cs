@@ -246,7 +246,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 if (alarm != null)
                 {
                     _logger.LogLine($"Processing delayed alarm for device: {alarm.triggers?.FirstOrDefault()?.device}");
-                    await _alarmProcessingService.ProcessAlarmAsync(alarm);
+                    await _alarmProcessingService.ProcessAlarmForSqsAsync(alarm);
                     _logger.LogLine($"Successfully processed delayed alarm: {record.MessageId}");
                 }
                 else
@@ -254,10 +254,87 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                     _logger.LogLine($"Failed to deserialize alarm from message: {record.MessageId}");
                 }
             }
+            catch (InvalidOperationException ex) when (ex.Message == "NoVideoFilesDownloaded")
+            {
+                _logger.LogLine($"No video files were downloaded for alarm in message {record.MessageId}, sending to DLQ for retry");
+                
+                try
+                {
+                    // Parse the alarm data from the message body to send to DLQ
+                    var alarm = JsonConvert.DeserializeObject<Alarm>(record.Body);
+                    if (alarm != null)
+                    {
+                        await SendAlarmToDlqAsync(alarm, "No video files were downloaded - may require retry");
+                        _logger.LogLine($"Successfully sent alarm to DLQ for retry: {record.MessageId}");
+                    }
+                }
+                catch (Exception dlqEx)
+                {
+                    _logger.LogLine($"Failed to send alarm to DLQ: {dlqEx.Message}");
+                    // Don't throw here - we want to continue processing other messages
+                }
+            }
             catch (Exception ex)
             {
                 _logger.LogLine($"Error processing SQS message {record.MessageId}: {ex.Message}");
                 // Don't throw here - we want to continue processing other messages
+            }
+        }
+
+        /// <summary>
+        /// Sends an alarm event to the dead letter queue for failed processing scenarios.
+        /// </summary>
+        /// <param name="alarm">The alarm event to send to DLQ</param>
+        /// <param name="reason">The reason for sending to DLQ</param>
+        /// <returns>SQS message ID</returns>
+        public async Task<string> SendAlarmToDlqAsync(Alarm alarm, string reason)
+        {
+            var dlqUrl = AppConfiguration.AlarmProcessingDlqUrl;
+            if (string.IsNullOrEmpty(dlqUrl))
+            {
+                _logger.LogLine("DLQ URL not configured, cannot send alarm to DLQ");
+                throw new InvalidOperationException("DLQ URL not configured");
+            }
+
+            try
+            {
+                var messageBody = JsonConvert.SerializeObject(alarm);
+                var messageAttributes = new Dictionary<string, MessageAttributeValue>
+                {
+                    ["FailureReason"] = new MessageAttributeValue
+                    {
+                        DataType = "String",
+                        StringValue = reason
+                    },
+                    ["OriginalTimestamp"] = new MessageAttributeValue
+                    {
+                        DataType = "Number",
+                        StringValue = alarm.timestamp.ToString()
+                    },
+                    ["RetryAttempt"] = new MessageAttributeValue
+                    {
+                        DataType = "String",
+                        StringValue = DateTimeOffset.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+                    }
+                };
+
+                var sendRequest = new SendMessageRequest
+                {
+                    QueueUrl = dlqUrl,
+                    MessageBody = messageBody,
+                    MessageAttributes = messageAttributes
+                };
+
+                _logger.LogLine($"Sending alarm to DLQ. Reason: {reason}");
+                var response = await _sqsClient.SendMessageAsync(sendRequest);
+                _logger.LogLine($"Successfully sent alarm to DLQ with message ID: {response.MessageId}");
+                
+                return response.MessageId;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogLine($"Error sending alarm to DLQ: {ex.Message}");
+                throw;
             }
         }
     }

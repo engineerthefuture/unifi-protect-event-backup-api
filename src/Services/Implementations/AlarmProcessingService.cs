@@ -77,6 +77,39 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             }
         }
 
+        /// <summary>
+        /// Processes a Unifi Protect alarm event for SQS context.
+        /// Throws exceptions instead of returning HTTP responses to allow SQS error handling.
+        /// </summary>
+        /// <param name="alarm">The alarm event to process</param>
+        /// <returns>Task that completes when processing is done</returns>
+        /// <exception cref="InvalidOperationException">Thrown when video download fails with "NoVideoFilesDownloaded"</exception>
+        public async Task ProcessAlarmForSqsAsync(Alarm alarm)
+        {
+            _logger.LogLine("Executing SQS alarm processing function.");
+
+            // Get Unifi credentials from Secrets Manager
+            var credentials = await _credentialsService.GetUnifiCredentialsAsync();
+
+            // Validate the alarm object
+            if (alarm == null)
+            {
+                _logger.LogLine("Error: " + AppConfiguration.ERROR_GENERAL);
+                throw new ArgumentException(AppConfiguration.ERROR_GENERAL);
+            }
+
+            _logger.LogLine("Alarm: " + JsonConvert.SerializeObject(alarm));
+
+            if (alarm.triggers == null || alarm.triggers.Count == 0)
+            {
+                _logger.LogLine("Error: " + AppConfiguration.ERROR_TRIGGERS);
+                throw new ArgumentException(AppConfiguration.ERROR_TRIGGERS);
+            }
+
+            // Process the alarm - this will throw exceptions if there are issues
+            await ProcessValidAlarmForSqs(alarm, credentials);
+        }
+
         #region Private Helper Methods
 
         /// <summary>
@@ -138,6 +171,43 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
 
             // Return success response
             return _responseHelper.CreateSuccessResponse(trigger, alarm.timestamp);
+        }
+
+        /// <summary>
+        /// Processes a valid alarm for SQS context - throws exceptions instead of returning responses.
+        /// </summary>
+        /// <param name="alarm">The validated alarm object</param>
+        /// <param name="credentials">Unifi credentials for video download</param>
+        /// <returns>Task that completes when processing is done</returns>
+        /// <exception cref="InvalidOperationException">Thrown when video download fails or configuration is invalid</exception>
+        private async Task ProcessValidAlarmForSqs(Alarm alarm, UnifiCredentials credentials)
+        {
+            // Extract and enhance trigger information
+            var trigger = ExtractAndEnhanceTriggerDetails(alarm);
+            
+            // Validate storage configuration
+            if (string.IsNullOrEmpty(AppConfiguration.AlarmBucketName))
+            {
+                _logger.LogLine("StorageBucket environment variable is not configured");
+                throw new InvalidOperationException("Server configuration error: StorageBucket not configured");
+            }
+
+            // Store alarm data in S3
+            var eventKey = await _s3StorageService.StoreAlarmEventAsync(alarm, trigger);
+            _logger.LogLine($"Alarm event stored in S3 with key: {eventKey}");
+
+            // Download and store video if event path is available
+            if (!string.IsNullOrEmpty(alarm.eventPath))
+            {
+                _logger.LogLine($"Event path found: {alarm.eventPath}, initiating video download");
+                await DownloadAndStoreVideo(alarm, credentials, trigger);
+            }
+            else
+            {
+                _logger.LogLine("No event path provided, skipping video download");
+            }
+
+            _logger.LogLine("SQS alarm processing completed successfully");
         }
 
         /// <summary>
@@ -230,6 +300,16 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             {
                 _logger.LogLine($"Error downloading or storing video for event {trigger.eventId}: {ex.Message}");
                 _logger.LogLine($"Exception details: {ex}");
+                
+                // Check if this is the "No video files were downloaded" error
+                if (ex.InnerException is FileNotFoundException fileNotFound && 
+                    fileNotFound.Message.Contains("No video files were downloaded"))
+                {
+                    _logger.LogLine("Detected 'No video files were downloaded' error - this may require retry");
+                    // Throw a specific exception that can be caught by SqsService
+                    throw new InvalidOperationException("NoVideoFilesDownloaded", ex);
+                }
+                
                 // Don't fail the entire alarm processing if video download fails
                 // The event data is still valuable without the video
             }

@@ -46,5 +46,13 @@ namespace UnifiWebhookEventReceiver.Services
         /// <param name="alarm">The alarm event to queue</param>
         /// <returns>API Gateway response indicating the event has been queued</returns>
         Task<APIGatewayProxyResponse> QueueAlarmForProcessingAsync(Alarm alarm);
+
+        /// <summary>
+        /// Sends an alarm event to the dead letter queue for failed processing scenarios.
+        /// </summary>
+        /// <param name="alarm">The alarm event to send to DLQ</param>
+        /// <param name="reason">The reason for sending to DLQ</param>
+        /// <returns>SQS message ID</returns>
+        Task<string> SendAlarmToDlqAsync(Alarm alarm, string reason);
     }
 }

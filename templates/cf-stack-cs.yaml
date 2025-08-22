@@ -455,6 +455,7 @@ Resources:
           DownloadButtonX: !Ref DownloadButtonX
           DownloadButtonY: !Ref DownloadButtonY
           AlarmProcessingQueueUrl: !Ref AlarmProcessingQueue
+          AlarmProcessingDlqUrl: !Ref AlarmProcessingDeadLetterQueue
           ProcessingDelaySeconds: !Ref ProcessingDelaySeconds
       Tags: 
         - Key: "FunctionName"

@@ -217,7 +217,7 @@ namespace UnifiWebhookEventReceiverTests
 
             // Assert
             Assert.Equal(200, result.StatusCode);
-            _mockAlarmProcessingService.Verify(x => x.ProcessAlarmAsync(It.IsAny<Alarm>()), Times.Once);
+            _mockAlarmProcessingService.Verify(x => x.ProcessAlarmForSqsAsync(It.IsAny<Alarm>()), Times.Once);
         }
 
         [Fact]
@@ -246,7 +246,7 @@ namespace UnifiWebhookEventReceiverTests
 
             // Assert
             Assert.Equal(200, result.StatusCode);
-            _mockAlarmProcessingService.Verify(x => x.ProcessAlarmAsync(It.IsAny<Alarm>()), Times.Never);
+            _mockAlarmProcessingService.Verify(x => x.ProcessAlarmForSqsAsync(It.IsAny<Alarm>()), Times.Never);
         }
 
         [Fact]
@@ -261,7 +261,7 @@ namespace UnifiWebhookEventReceiverTests
 
             // Assert
             Assert.Equal(200, result.StatusCode);
-            _mockAlarmProcessingService.Verify(x => x.ProcessAlarmAsync(It.IsAny<Alarm>()), Times.Never);
+            _mockAlarmProcessingService.Verify(x => x.ProcessAlarmForSqsAsync(It.IsAny<Alarm>()), Times.Never);
         }
 
         [Fact]
@@ -297,9 +297,9 @@ namespace UnifiWebhookEventReceiverTests
             };
 
             // Setup first alarm to throw exception, second should still process
-            _mockAlarmProcessingService.SetupSequence(x => x.ProcessAlarmAsync(It.IsAny<Alarm>()))
+            _mockAlarmProcessingService.SetupSequence(x => x.ProcessAlarmForSqsAsync(It.IsAny<Alarm>()))
                 .ThrowsAsync(new Exception("Test exception"))
-                .ReturnsAsync(new APIGatewayProxyResponse { StatusCode = 200 });
+                .Returns(Task.CompletedTask);
 
             var sqsEventJson = JsonConvert.SerializeObject(sqsEvent);
 
@@ -308,7 +308,7 @@ namespace UnifiWebhookEventReceiverTests
 
             // Assert
             Assert.Equal(200, result.StatusCode);
-            _mockAlarmProcessingService.Verify(x => x.ProcessAlarmAsync(It.IsAny<Alarm>()), Times.Exactly(2));
+            _mockAlarmProcessingService.Verify(x => x.ProcessAlarmForSqsAsync(It.IsAny<Alarm>()), Times.Exactly(2));
         }
 
         [Fact]

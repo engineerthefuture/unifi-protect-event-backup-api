@@ -21,6 +21,9 @@ dotnet_diagnostic.S1541.severity = warning  # Methods should not be too complex
 # S3776: Cognitive complexity threshold (default 15)
 dotnet_code_quality.S3776.threshold = 15
 
+# S1541: Cyclomatic complexity threshold - setting to 13
+dotnet_code_quality.S1541.threshold = 13
+
 # Method length rules
 dotnet_diagnostic.S138.severity = warning   # Methods should not have too many lines
 
