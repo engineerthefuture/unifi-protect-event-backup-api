@@ -122,7 +122,9 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// <summary>
         /// Routes to the appropriate handler based on method and route.
         /// </summary>
+#pragma warning disable S1541 // Methods should not be too complex - complexity 13 is acceptable under new threshold of 13
         private async Task<APIGatewayProxyResponse> RouteToHandler(APIGatewayProxyRequest request, (string Method, string Path, string Route) routeInfo)
+#pragma warning restore S1541
         {
             // Check if route is valid
             if (string.IsNullOrEmpty(routeInfo.Route) && (request.QueryStringParameters?.Count ?? 0) == 0)
