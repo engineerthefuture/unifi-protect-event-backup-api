@@ -558,7 +558,6 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             {
                 _logger.LogLine("Starting sign out process...");
 
-                /*
                 // Try to find and click the sign out button
                 var signOutElement = await FindSignOutElement(page);
 
@@ -570,7 +569,6 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 {
                     _logger.LogLine("Sign out button not found, proceeding without sign out");
                 }
-                */
                 
                 var screenshotPath = Path.Combine(downloadDirectory, "signout-screenshot.png");
                 await page.ScreenshotAsync(screenshotPath);
@@ -593,13 +591,6 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// <returns>The sign out element if found, null otherwise</returns>
         private async Task<IElementHandle?> FindSignOutElement(IPage page)
         {
-            // Try direct sign out selectors first
-            var signOutElement = await TryDirectSignOutSelectors(page);
-            if (signOutElement != null)
-            {
-                return signOutElement;
-            }
-
             // If not found, try user menu approach
             return await TryUserMenuSignOut(page);
         }
@@ -613,13 +604,8 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         {
             var signOutSelectors = new[]
             {
-                "button[aria-label*='sign out' i]", "button[aria-label*='logout' i]",
-                "a[aria-label*='sign out' i]", "a[aria-label*='logout' i]",
-                "button:has-text('Sign Out')", "button:has-text('Logout')",
-                "a:has-text('Sign Out')", "a:has-text('Logout')",
-                "[data-testid*='signout']", "[data-testid*='logout']",
-                "button[title*='sign out' i]", "button[title*='logout' i]",
-                "a[title*='sign out' i]", "a[title*='logout' i]"
+                // Specific Unifi Protect sign out button
+                "button[data-testid='LogOutButton']"
             };
 
             foreach (var selector in signOutSelectors)
@@ -653,9 +639,8 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             
             var userMenuSelectors = new[]
             {
-                "button[aria-label*='user' i]", "button[aria-label*='profile' i]", "button[aria-label*='account' i]",
-                "[data-testid*='user']", "[data-testid*='profile']", "[data-testid*='account']",
-                ".user-menu", ".profile-menu", ".account-menu"
+                // Specific Unifi Protect user avatar button
+                "button.unifi-portal-1bmvzvc.eqfginb7.button__qx3Rmpxb.button__RNxIH278.button-light__RNxIH278.large__RNxIH278.circle__RNxIH278"
             };
 
             foreach (var selector in userMenuSelectors)
@@ -680,7 +665,30 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         {
             try
             {
-                var userMenuElement = await page.QuerySelectorAsync(selector);
+                IElementHandle? userMenuElement = null;
+                
+                // Special handling for image-based selectors
+                if (selector.Contains("img[alt*='Automated User'"))
+                {
+                    var imageElement = await page.QuerySelectorAsync(selector);
+                    if (imageElement != null)
+                    {
+                        // Find the parent button
+                        var parentHandle = await page.EvaluateFunctionHandleAsync(@"(img) => {
+                            let parent = img.parentElement;
+                            while (parent && parent.tagName !== 'BUTTON') {
+                                parent = parent.parentElement;
+                            }
+                            return parent;
+                        }", imageElement);
+                        userMenuElement = parentHandle as IElementHandle;
+                    }
+                }
+                else
+                {
+                    userMenuElement = await page.QuerySelectorAsync(selector);
+                }
+                
                 if (userMenuElement == null)
                 {
                     return null;
