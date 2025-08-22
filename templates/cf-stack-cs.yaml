@@ -155,7 +155,9 @@ Resources:
                   - sqs:ReceiveMessage
                   - sqs:DeleteMessage
                   - sqs:GetQueueUrl
-                Resource: !GetAtt AlarmProcessingQueue.Arn
+                Resource: 
+                  - !GetAtt AlarmProcessingQueue.Arn
+                  - !GetAtt AlarmProcessingDeadLetterQueue.Arn
         - PolicyName: UnifiCredentialsSecretsPolicy
           PolicyDocument:
             Version: '2012-10-17'
