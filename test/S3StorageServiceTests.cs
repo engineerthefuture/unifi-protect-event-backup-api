@@ -376,6 +376,9 @@ namespace UnifiWebhookEventReceiverTests
         public async Task StoreScreenshotFileAsync_WithUnknownExtension_UsesDefaultContentType()
         {
             // Arrange
+            var originalBucket = Environment.GetEnvironmentVariable("StorageBucket");
+            Environment.SetEnvironmentVariable("StorageBucket", "test-bucket");
+            
             var tempScreenshotPath = Path.GetTempFileName();
             var unknownPath = Path.ChangeExtension(tempScreenshotPath, ".xyz");
             File.Move(tempScreenshotPath, unknownPath);
@@ -398,6 +401,7 @@ namespace UnifiWebhookEventReceiverTests
             {
                 if (File.Exists(unknownPath))
                     File.Delete(unknownPath);
+                Environment.SetEnvironmentVariable("StorageBucket", originalBucket);
             }
         }
 
