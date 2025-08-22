@@ -94,7 +94,8 @@ Parameters:
   SupportEmail:
     Type: String
     Description: Email address for failure notifications and support (must be verified in SES)
-    AllowedPattern: "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"
+    Default: "brent@brentfoster.me"
+    AllowedPattern: "^$|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"
 
 # Resources
 Resources: 
