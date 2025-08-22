@@ -175,7 +175,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                     // Wait for download to complete and get video data
                     var videoData = await WaitForDownloadAndGetVideoData(downloadDirectory);
 
-                    // Perform sign out and capture screenshot
+                    // Perform sign out and capture screenshot (screenshot will be saved to S3)
                     await PerformSignOutAndCapture(page, downloadDirectory, trigger, timestamp);
 
                     return videoData;
@@ -560,7 +560,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
 
                 // Try to find and click the sign out button
                 var signOutElement = await FindSignOutElement(page);
-                
+
                 if (signOutElement != null)
                 {
                     await ClickSignOutButton(signOutElement);
@@ -569,16 +569,18 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 {
                     _logger.LogLine("Sign out button not found, proceeding without sign out");
                 }
-
-                // Capture screenshot after sign out attempt
-                await CaptureSignOutScreenshot(page, downloadDirectory, trigger, timestamp, "signout-screenshot.png");
+                
+                var screenshotPath = Path.Combine(downloadDirectory, "signout-screenshot.png");
+                await page.ScreenshotAsync(screenshotPath);
+                _logger.LogLine($"Screenshot taken of the signout: {screenshotPath}");
+            
+                // Upload screenshot to S3
+                await UploadScreenshotToS3(screenshotPath, "signout-screenshot.png", trigger, timestamp);
             }
             catch (Exception ex)
             {
                 _logger.LogLine($"Error during sign out process: {ex.Message}");
                 // Don't throw - sign out failure shouldn't break the main process
-                
-                await CaptureSignOutScreenshot(page, downloadDirectory, trigger, timestamp, "signout-error-screenshot.png");
             }
         }
 
@@ -710,38 +712,6 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             // Wait for sign out to complete
             await Task.Delay(2000);
             _logger.LogLine("Sign out completed");
-        }
-
-        /// <summary>
-        /// Captures a screenshot and uploads it to S3.
-        /// </summary>
-        /// <param name="page">The browser page</param>
-        /// <param name="downloadDirectory">Directory for storing the screenshot</param>
-        /// <param name="trigger">The trigger information for screenshot naming</param>
-        /// <param name="timestamp">The event timestamp</param>
-        /// <param name="fileName">The screenshot file name</param>
-        private async Task CaptureSignOutScreenshot(IPage page, string downloadDirectory, Trigger trigger, long timestamp, string fileName)
-        {
-            try
-            {
-                var screenshotPath = Path.Combine(downloadDirectory, fileName);
-                await page.ScreenshotAsync(screenshotPath);
-                _logger.LogLine($"Screenshot taken: {screenshotPath}");
-                
-                // Upload screenshot to S3
-                await UploadScreenshotToS3(screenshotPath, fileName, trigger, timestamp);
-                
-                // Clean up local screenshot file
-                if (File.Exists(screenshotPath))
-                {
-                    File.Delete(screenshotPath);
-                    _logger.LogLine($"Local screenshot file deleted: {screenshotPath}");
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogLine($"Failed to capture screenshot '{fileName}': {ex.Message}");
-            }
         }
 
         /// <summary>
