@@ -3,15 +3,14 @@
 # Simple code coverage script using coverlet and XPlat
 echo "🧪 Running tests with code coverage..."
 
-# Navigate to project root
+# Navigate to test directory (script is already in test folder)
 cd "$(dirname "$0")"
 
 # Clean previous results
 rm -rf TestResults
-rm -rf test/TestResults
+rm -rf ../coverage-results
 
-# Run tests with coverage collection from test directory
-cd test
+# Run tests with coverage collection
 dotnet test --collect:"XPlat Code Coverage" --results-directory ./TestResults
 
 # Find the coverage file

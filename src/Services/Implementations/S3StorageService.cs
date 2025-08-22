@@ -488,7 +488,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 string? eventJsonData = await GetJsonFileFromS3BlobAsync(eventKey);
                 if (eventJsonData != null)
                 {
-                    var eventData = JsonConvert.DeserializeObject(eventJsonData);
+                    var eventData = JsonConvert.DeserializeObject<Alarm>(eventJsonData);
                     _logger.LogLine($"Successfully retrieved event data for {eventKey}");
                     return eventData;
                 }
@@ -509,7 +509,19 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         private async Task<APIGatewayProxyResponse> BuildLatestVideoResponse(string videoKey, long timestamp, object? eventData)
         {
             DateTime dt = DateTimeOffset.FromUnixTimeMilliseconds(timestamp).DateTime;
-            string suggestedFilename = Path.GetFileName(videoKey);
+            
+            // Try to get the original filename from the event data
+            string suggestedFilename = Path.GetFileName(videoKey); // Default fallback
+            if (eventData is Alarm alarm && alarm.triggers?.Count > 0 && !string.IsNullOrEmpty(alarm.triggers[0].originalFileName))
+            {
+                suggestedFilename = alarm.triggers[0].originalFileName!;
+                _logger.LogLine($"Using original downloaded filename: {suggestedFilename}");
+            }
+            else
+            {
+                _logger.LogLine($"Using S3 key filename as fallback: {suggestedFilename}");
+            }
+            
             string eventKey = videoKey.Replace(".mp4", ".json");
 
             var presignedRequest = new GetPreSignedUrlRequest
@@ -658,7 +670,18 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             try
             {
                 DateTime dt = timestamp > 0 ? DateTimeOffset.FromUnixTimeMilliseconds(timestamp).DateTime : DateTime.UtcNow;
-                string suggestedFilename = Path.GetFileName(videoKey);
+                
+                // Try to get the original filename from the event data
+                string suggestedFilename = Path.GetFileName(videoKey); // Default fallback
+                if (eventData is Alarm alarm && alarm.triggers?.Count > 0 && !string.IsNullOrEmpty(alarm.triggers[0].originalFileName))
+                {
+                    suggestedFilename = alarm.triggers[0].originalFileName!;
+                    _logger.LogLine($"Using original downloaded filename: {suggestedFilename}");
+                }
+                else
+                {
+                    _logger.LogLine($"Using S3 key filename as fallback: {suggestedFilename}");
+                }
 
                 var presignedRequest = new GetPreSignedUrlRequest
                 {

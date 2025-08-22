@@ -5,7 +5,8 @@ echo "🔍 ENHANCED COMPLEXITY ANALYSIS 🔍"
 echo "=================================="
 echo ""
 
-cd "$(dirname "$0")"
+# Navigate to project root from test directory
+cd "$(dirname "$0")/.."
 
 echo "🏗️  Building project with analyzers..."
 dotnet build --verbosity quiet --no-restore

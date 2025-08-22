@@ -106,5 +106,8 @@ namespace UnifiWebhookEventReceiver
 
         /// <summary>S3 storage key for associated video file (for future video upload functionality)</summary>
         public string? videoKey { get; set; }
+
+        /// <summary>Original filename of the downloaded video file from browser</summary>
+        public string? originalFileName { get; set; }
     }
 }
