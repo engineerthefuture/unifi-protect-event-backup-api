@@ -79,14 +79,6 @@ Parameters:
     Type: Number
     Description: Y coordinate for archive button click in Unifi Protect UI
     Default: 257
-  DownloadButtonX:
-    Type: Number
-    Description: X coordinate for download button click in Unifi Protect UI
-    Default: 1095
-  DownloadButtonY:
-    Type: Number
-    Description: Y coordinate for download button click in Unifi Protect UI
-    Default: 275
   ProcessingDelaySeconds:
     Type: Number
     Description: Delay in seconds before processing alarm events (default 2 minutes)
@@ -470,8 +462,6 @@ Resources:
           DownloadDirectory: !Ref DownloadDirectory
           ArchiveButtonX: !Ref ArchiveButtonX
           ArchiveButtonY: !Ref ArchiveButtonY
-          DownloadButtonX: !Ref DownloadButtonX
-          DownloadButtonY: !Ref DownloadButtonY
           AlarmProcessingQueueUrl: !Ref AlarmProcessingQueue
           AlarmProcessingDlqUrl: !Ref AlarmProcessingDeadLetterQueue
           ProcessingDelaySeconds: !Ref ProcessingDelaySeconds

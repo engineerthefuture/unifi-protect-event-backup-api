@@ -519,17 +519,11 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         {
             var coordinates = GetDeviceSpecificCoordinates(deviceName);
             
-            var clickCoordinates = new Dictionary<string, (int x, int y)>
-            {
-                { "archiveButton", coordinates.archiveButton },
-                { "downloadButton", coordinates.downloadButton }
-            };
-
-            _logger.LogLine($"Device: {deviceName ?? "Unknown"} - Using click coordinates - Archive: ({coordinates.archiveButton.x}, {coordinates.archiveButton.y}), Download: ({coordinates.downloadButton.x}, {coordinates.downloadButton.y})");
+            _logger.LogLine($"Device: {deviceName ?? "Unknown"} - Using archive button coordinates: ({coordinates.archiveButton.x}, {coordinates.archiveButton.y})");
 
             // Click archive button
-            await page.Mouse.ClickAsync(clickCoordinates["archiveButton"].x, clickCoordinates["archiveButton"].y);
-            _logger.LogLine("Clicked on archive button at coordinates: " + clickCoordinates["archiveButton"]);
+            await page.Mouse.ClickAsync(coordinates.archiveButton.x, coordinates.archiveButton.y);
+            _logger.LogLine("Clicked on archive button at coordinates: " + coordinates.archiveButton);
 
             var screenshotPath = Path.Combine(downloadDirectory, "firstclick-screenshot.png");
             await page.ScreenshotAsync(screenshotPath);
@@ -544,25 +538,6 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 File.Delete(screenshotPath);
                 _logger.LogLine($"Local screenshot file deleted: {screenshotPath}");
             }
-
-            // Click download button
-            await page.Mouse.ClickAsync(clickCoordinates["downloadButton"].x, clickCoordinates["downloadButton"].y);
-            _logger.LogLine("Clicked on download button at coordinates: " + clickCoordinates["downloadButton"]);
-
-            screenshotPath = Path.Combine(downloadDirectory, "secondclick-screenshot.png");
-            await page.ScreenshotAsync(screenshotPath);
-            _logger.LogLine($"Screenshot taken of the clicked download button: {screenshotPath}");
-            
-            // Upload screenshot to S3
-            await UploadScreenshotToS3(screenshotPath, "secondclick-screenshot.png", trigger, timestamp);
-            
-            // Clean up local screenshot file
-            if (File.Exists(screenshotPath))
-            {
-                File.Delete(screenshotPath);
-                _logger.LogLine($"Local screenshot file deleted: {screenshotPath}");
-            }
-            _logger.LogLine($"Screenshot taken of the clicked download button: {screenshotPath}");
         }
 
         /// <summary>
