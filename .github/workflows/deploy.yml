@@ -326,8 +326,8 @@ jobs:
         if: always()
         run: |
           echo "🔍 Running Cyclomatic Complexity Analysis..."
-          chmod +x ./complexity-simple.sh
-          ./complexity-simple.sh > complexity-results.txt 2>&1
+          chmod +x ./test/complexity-simple.sh
+          ./test/complexity-simple.sh > complexity-results.txt 2>&1
           
           echo "📊 Complexity Analysis Results:"
           cat complexity-results.txt
