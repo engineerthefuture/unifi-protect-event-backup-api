@@ -45,6 +45,7 @@ namespace UnifiWebhookEventReceiverTests
             Assert.NotNull(services.S3StorageService);
             Assert.NotNull(services.UnifiProtectService);
             Assert.NotNull(services.CredentialsService);
+            Assert.NotNull(services.EmailService);
             Assert.NotNull(services.ResponseHelper);
         }
 
@@ -119,6 +120,16 @@ namespace UnifiWebhookEventReceiverTests
         }
 
         [Fact]
+        public void CreateServices_EmailService_IsCorrectType()
+        {
+            // Act
+            var services = ServiceFactory.CreateServices(_mockLogger.Object);
+
+            // Assert
+            Assert.IsType<UnifiWebhookEventReceiver.Services.Implementations.EmailService>(services.EmailService);
+        }
+
+        [Fact]
         public void CreateServices_ServicesDependenciesAreWiredCorrectly()
         {
             // Act
@@ -136,6 +147,7 @@ namespace UnifiWebhookEventReceiverTests
             Assert.IsAssignableFrom<IS3StorageService>(services.S3StorageService);
             Assert.IsAssignableFrom<IUnifiProtectService>(services.UnifiProtectService);
             Assert.IsAssignableFrom<ICredentialsService>(services.CredentialsService);
+            Assert.IsAssignableFrom<IEmailService>(services.EmailService);
             Assert.IsAssignableFrom<IResponseHelper>(services.ResponseHelper);
         }
 
@@ -153,6 +165,7 @@ namespace UnifiWebhookEventReceiverTests
             Assert.NotSame(services1.S3StorageService, services2.S3StorageService);
             Assert.NotSame(services1.UnifiProtectService, services2.UnifiProtectService);
             Assert.NotSame(services1.CredentialsService, services2.CredentialsService);
+            Assert.NotSame(services1.EmailService, services2.EmailService);
             Assert.NotSame(services1.ResponseHelper, services2.ResponseHelper);
         }
     }

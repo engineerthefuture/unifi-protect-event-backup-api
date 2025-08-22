@@ -22,6 +22,7 @@
     <PackageReference Include="AWSSDK.S3" Version="3.7.406.4" />
     <PackageReference Include="AWSSDK.SQS" Version="3.7.500" />
     <PackageReference Include="AWSSDK.SecretsManager" Version="3.7.400" />
+    <PackageReference Include="AWSSDK.SimpleEmail" Version="3.7.400" />
     <PackageReference Include="Amazon.Lambda.APIGatewayEvents" Version="2.7.1" />
     <PackageReference Include="Amazon.Lambda.SQSEvents" Version="2.2.0" />
     <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.3.4">

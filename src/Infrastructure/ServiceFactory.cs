@@ -12,6 +12,7 @@
 using Amazon.Lambda.Core;
 using Amazon.S3;
 using Amazon.SecretsManager;
+using Amazon.SimpleEmail;
 using Amazon.SQS;
 using UnifiWebhookEventReceiver.Configuration;
 using UnifiWebhookEventReceiver.Services;
@@ -36,6 +37,7 @@ namespace UnifiWebhookEventReceiver.Infrastructure
             IS3StorageService S3StorageService,
             IUnifiProtectService UnifiProtectService,
             ICredentialsService CredentialsService,
+            IEmailService EmailService,
             IResponseHelper ResponseHelper
         ) CreateServices(ILambdaLogger logger)
         {
@@ -43,11 +45,13 @@ namespace UnifiWebhookEventReceiver.Infrastructure
             var s3Client = new AmazonS3Client(AppConfiguration.AwsRegion);
             var sqsClient = new AmazonSQSClient(AppConfiguration.AwsRegion);
             var secretsClient = new AmazonSecretsManagerClient(AppConfiguration.AwsRegion);
+            var sesClient = new AmazonSimpleEmailServiceClient(AppConfiguration.AwsRegion);
 
             // Create foundational services
             var responseHelper = new ResponseHelper();
             var credentialsService = new CredentialsService(secretsClient, logger);
             var s3StorageService = new S3StorageService(s3Client, responseHelper, logger);
+            var emailService = new EmailService(sesClient, logger, s3StorageService);
             var unifiProtectService = new UnifiProtectService(logger, s3StorageService, credentialsService);
 
             // Create alarm processing service 
@@ -59,7 +63,7 @@ namespace UnifiWebhookEventReceiver.Infrastructure
                 logger);
 
             // Create SQS service
-            var sqsService = new SqsService(sqsClient, alarmProcessingService, responseHelper, logger);
+            var sqsService = new SqsService(sqsClient, alarmProcessingService, emailService, responseHelper, logger);
 
             // Create request router
             var requestRouter = new RequestRouter(sqsService, s3StorageService, responseHelper, logger);
@@ -71,6 +75,7 @@ namespace UnifiWebhookEventReceiver.Infrastructure
                 S3StorageService: s3StorageService,
                 UnifiProtectService: unifiProtectService,
                 CredentialsService: credentialsService,
+                EmailService: emailService,
                 ResponseHelper: responseHelper
             );
         }

@@ -28,6 +28,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
     {
         private readonly AmazonSQSClient _sqsClient;
         private readonly IAlarmProcessingService _alarmProcessingService;
+        private readonly IEmailService _emailService;
         private readonly IResponseHelper _responseHelper;
         private readonly ILambdaLogger _logger;
 
@@ -36,16 +37,19 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// </summary>
         /// <param name="sqsClient">AWS SQS client</param>
         /// <param name="alarmProcessingService">Alarm processing service</param>
+        /// <param name="emailService">Email notification service</param>
         /// <param name="responseHelper">Response helper service</param>
         /// <param name="logger">Lambda logger instance</param>
         public SqsService(
             AmazonSQSClient sqsClient, 
             IAlarmProcessingService alarmProcessingService,
+            IEmailService emailService,
             IResponseHelper responseHelper,
             ILambdaLogger logger)
         {
             _sqsClient = sqsClient ?? throw new ArgumentNullException(nameof(sqsClient));
             _alarmProcessingService = alarmProcessingService ?? throw new ArgumentNullException(nameof(alarmProcessingService));
+            _emailService = emailService ?? throw new ArgumentNullException(nameof(emailService));
             _responseHelper = responseHelper ?? throw new ArgumentNullException(nameof(responseHelper));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
@@ -328,6 +332,27 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 _logger.LogLine($"Sending alarm to DLQ. Reason: {reason}");
                 var response = await _sqsClient.SendMessageAsync(sendRequest);
                 _logger.LogLine($"Successfully sent alarm to DLQ with message ID: {response.MessageId}");
+                
+                // Send email notification about the failure
+                try
+                {
+                    _logger.LogLine("Sending failure notification email");
+                    var retryAttemptTime = messageAttributes["RetryAttempt"].StringValue;
+                    var emailSent = await _emailService.SendFailureNotificationAsync(alarm, reason, response.MessageId, retryAttemptTime);
+                    if (emailSent)
+                    {
+                        _logger.LogLine("Failure notification email sent successfully");
+                    }
+                    else
+                    {
+                        _logger.LogLine("Failed to send failure notification email");
+                    }
+                }
+                catch (Exception emailEx)
+                {
+                    _logger.LogLine($"Error sending failure notification email: {emailEx.Message}");
+                    // Don't throw here - DLQ message was sent successfully, email is secondary
+                }
                 
                 return response.MessageId;
             }

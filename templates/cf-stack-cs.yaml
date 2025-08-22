@@ -91,6 +91,10 @@ Parameters:
     Default: 120
     MinValue: 0
     MaxValue: 900
+  SupportEmail:
+    Type: String
+    Description: Email address for failure notifications and support (must be verified in SES)
+    AllowedPattern: "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"
 
 # Resources
 Resources: 
@@ -143,6 +147,7 @@ Resources:
         - arn:aws:iam::aws:policy/AmazonAPIGatewayInvokeFullAccess
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
         - arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole
+        - arn:aws:iam::aws:policy/AmazonSESFullAccess
       Policies:
         - PolicyName: SQSAlarmProcessingPolicy
           PolicyDocument:
@@ -459,6 +464,7 @@ Resources:
           AlarmProcessingQueueUrl: !Ref AlarmProcessingQueue
           AlarmProcessingDlqUrl: !Ref AlarmProcessingDeadLetterQueue
           ProcessingDelaySeconds: !Ref ProcessingDelaySeconds
+          SupportEmail: !Ref SupportEmail
       Tags: 
         - Key: "FunctionName"
           Value: !Sub "${FunctionName}"

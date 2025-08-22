@@ -522,6 +522,7 @@ jobs:
               UnifiHost="${{ secrets.UNIFI_HOST }}" \
               UnifiUsername="${{ secrets.UNIFI_USERNAME }}" \
               UnifiPassword="${{ secrets.UNIFI_PASSWORD }}" \
+              SupportEmail="${{ vars.SUPPORT_EMAIL }}" \
             --tags \
               Owner="${{ vars.OWNER_NAME }}" \
               AppName="${{ vars.APP_NAME }}" \

@@ -23,8 +23,14 @@ namespace UnifiWebhookEventReceiverTests
             
             var mockSqsClient = new Mock<AmazonSQSClient>(Amazon.RegionEndpoint.USEast1);
             var mockAlarmProcessingService = new Mock<IAlarmProcessingService>();
+            var mockEmailService = new Mock<IEmailService>();
             var mockResponseHelper = new Mock<IResponseHelper>();
             var mockLogger = new Mock<ILambdaLogger>();
+
+            // Mock email service to return success
+            mockEmailService
+                .Setup(x => x.SendFailureNotificationAsync(It.IsAny<Alarm>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+                .ReturnsAsync(true);
 
             var alarm = new Alarm
             {
@@ -54,6 +60,7 @@ namespace UnifiWebhookEventReceiverTests
             var sqsService = new SqsService(
                 mockSqsClient.Object,
                 mockAlarmProcessingService.Object,
+                mockEmailService.Object,
                 mockResponseHelper.Object,
                 mockLogger.Object);
 
@@ -86,6 +93,7 @@ namespace UnifiWebhookEventReceiverTests
             
             var mockSqsClient = new Mock<AmazonSQSClient>(Amazon.RegionEndpoint.USEast1);
             var mockAlarmProcessingService = new Mock<IAlarmProcessingService>();
+            var mockEmailService = new Mock<IEmailService>();
             var mockResponseHelper = new Mock<IResponseHelper>();
             var mockLogger = new Mock<ILambdaLogger>();
 
@@ -106,6 +114,7 @@ namespace UnifiWebhookEventReceiverTests
             var sqsService = new SqsService(
                 mockSqsClient.Object,
                 mockAlarmProcessingService.Object,
+                mockEmailService.Object,
                 mockResponseHelper.Object,
                 mockLogger.Object);
 

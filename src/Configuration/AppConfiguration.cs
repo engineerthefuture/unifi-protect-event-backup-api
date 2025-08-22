@@ -91,6 +91,9 @@ namespace UnifiWebhookEventReceiver.Configuration
         /// <summary>Delay in seconds before processing alarm events (defaults to 2 minutes)</summary>
         public static int ProcessingDelaySeconds => int.TryParse(Environment.GetEnvironmentVariable("ProcessingDelaySeconds"), out var delay) ? delay : 120;
 
+        /// <summary>Support email address for failure notifications</summary>
+        public static string? SupportEmail => Environment.GetEnvironmentVariable("SupportEmail");
+
         #endregion
 
         #region AWS Configuration
