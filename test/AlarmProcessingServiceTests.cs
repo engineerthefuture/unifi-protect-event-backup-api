@@ -339,6 +339,7 @@ namespace UnifiWebhookEventReceiverTests
         public async Task ProcessAlarmAsync_WithDifferentDeviceNames_MapsCorrectly(string deviceMac)
         {
             // Arrange
+            SetValidAlarmBucketEnvironment();
             var alarm = CreateValidAlarm();
             alarm.triggers[0].device = deviceMac;
             
