@@ -103,7 +103,6 @@ Parameters:
     Type: String
     Description: Timestamp when this build was created
     Default: "unknown"
-    AllowedPattern: "^$|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"
 
 # Resources
 Resources: 

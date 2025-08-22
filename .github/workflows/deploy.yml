@@ -504,6 +504,10 @@ jobs:
           role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.OIDC_ROLE_NAME }}
           aws-region: us-east-1
 
+      - name: Generate build timestamp
+        id: timestamp
+        run: echo "BUILD_TIMESTAMP=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
+
       - name: Deploy CloudFormation stack
         run: |
           aws cloudformation deploy \
@@ -524,7 +528,7 @@ jobs:
               UnifiUsername="${{ secrets.UNIFI_USERNAME }}" \
               UnifiPassword="${{ secrets.UNIFI_PASSWORD }}" \
               BuildSha="${{ github.sha }}" \
-              BuildTimestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+              BuildTimestamp="${{ steps.timestamp.outputs.BUILD_TIMESTAMP }}" \
             --tags \
               Owner="${{ vars.OWNER_NAME }}" \
               AppName="${{ vars.APP_NAME }}" \
