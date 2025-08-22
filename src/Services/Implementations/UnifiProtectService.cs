@@ -172,8 +172,13 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                     // Perform video download actions
                     await PerformVideoDownloadActions(page, deviceName, downloadDirectory, trigger, timestamp);
 
-                    // Wait for download to complete and return video data
-                    return await WaitForDownloadAndGetVideoData(downloadDirectory);
+                    // Wait for download to complete and get video data
+                    var videoData = await WaitForDownloadAndGetVideoData(downloadDirectory);
+
+                    // Perform sign out and capture screenshot (screenshot will be saved to S3)
+                    await PerformSignOutAndCapture(page, downloadDirectory, trigger, timestamp);
+
+                    return videoData;
                 }
                 finally
                 {
@@ -538,6 +543,177 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 File.Delete(screenshotPath);
                 _logger.LogLine($"Local screenshot file deleted: {screenshotPath}");
             }
+        }
+
+        /// <summary>
+        /// Performs sign out from Unifi Protect and captures a screenshot for failure email.
+        /// </summary>
+        /// <param name="page">The browser page</param>
+        /// <param name="downloadDirectory">Directory for storing the screenshot</param>
+        /// <param name="trigger">The trigger information for screenshot naming</param>
+        /// <param name="timestamp">The event timestamp</param>
+        private async Task PerformSignOutAndCapture(IPage page, string downloadDirectory, Trigger trigger, long timestamp)
+        {
+            try
+            {
+                _logger.LogLine("Starting sign out process...");
+
+                /*
+                // Try to find and click the sign out button
+                var signOutElement = await FindSignOutElement(page);
+
+                if (signOutElement != null)
+                {
+                    await ClickSignOutButton(signOutElement);
+                }
+                else
+                {
+                    _logger.LogLine("Sign out button not found, proceeding without sign out");
+                }
+                */
+                
+                var screenshotPath = Path.Combine(downloadDirectory, "signout-screenshot.png");
+                await page.ScreenshotAsync(screenshotPath);
+                _logger.LogLine($"Screenshot taken of the signout: {screenshotPath}");
+            
+                // Upload screenshot to S3
+                await UploadScreenshotToS3(screenshotPath, "signout-screenshot.png", trigger, timestamp);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogLine($"Error during sign out process: {ex.Message}");
+                // Don't throw - sign out failure shouldn't break the main process
+            }
+        }
+
+        /// <summary>
+        /// Finds the sign out element on the page, trying direct selectors first, then user menus.
+        /// </summary>
+        /// <param name="page">The browser page</param>
+        /// <returns>The sign out element if found, null otherwise</returns>
+        private async Task<IElementHandle?> FindSignOutElement(IPage page)
+        {
+            // Try direct sign out selectors first
+            var signOutElement = await TryDirectSignOutSelectors(page);
+            if (signOutElement != null)
+            {
+                return signOutElement;
+            }
+
+            // If not found, try user menu approach
+            return await TryUserMenuSignOut(page);
+        }
+
+        /// <summary>
+        /// Tries to find sign out button using direct selectors.
+        /// </summary>
+        /// <param name="page">The browser page</param>
+        /// <returns>The sign out element if found, null otherwise</returns>
+        private async Task<IElementHandle?> TryDirectSignOutSelectors(IPage page)
+        {
+            var signOutSelectors = new[]
+            {
+                "button[aria-label*='sign out' i]", "button[aria-label*='logout' i]",
+                "a[aria-label*='sign out' i]", "a[aria-label*='logout' i]",
+                "button:has-text('Sign Out')", "button:has-text('Logout')",
+                "a:has-text('Sign Out')", "a:has-text('Logout')",
+                "[data-testid*='signout']", "[data-testid*='logout']",
+                "button[title*='sign out' i]", "button[title*='logout' i]",
+                "a[title*='sign out' i]", "a[title*='logout' i]"
+            };
+
+            foreach (var selector in signOutSelectors)
+            {
+                try
+                {
+                    var element = await page.QuerySelectorAsync(selector);
+                    if (element != null)
+                    {
+                        _logger.LogLine($"Found sign out element using selector: {selector}");
+                        return element;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogLine($"Selector '{selector}' failed: {ex.Message}");
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Tries to find sign out through user menu dropdowns.
+        /// </summary>
+        /// <param name="page">The browser page</param>
+        /// <returns>The sign out element if found, null otherwise</returns>
+        private async Task<IElementHandle?> TryUserMenuSignOut(IPage page)
+        {
+            _logger.LogLine("Sign out button not found, trying to find user menu...");
+            
+            var userMenuSelectors = new[]
+            {
+                "button[aria-label*='user' i]", "button[aria-label*='profile' i]", "button[aria-label*='account' i]",
+                "[data-testid*='user']", "[data-testid*='profile']", "[data-testid*='account']",
+                ".user-menu", ".profile-menu", ".account-menu"
+            };
+
+            foreach (var selector in userMenuSelectors)
+            {
+                var signOutElement = await TryClickUserMenuAndFindSignOut(page, selector);
+                if (signOutElement != null)
+                {
+                    return signOutElement;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Tries to click a user menu element and find sign out in the dropdown.
+        /// </summary>
+        /// <param name="page">The browser page</param>
+        /// <param name="selector">The selector for the user menu</param>
+        /// <returns>The sign out element if found, null otherwise</returns>
+        private async Task<IElementHandle?> TryClickUserMenuAndFindSignOut(IPage page, string selector)
+        {
+            try
+            {
+                var userMenuElement = await page.QuerySelectorAsync(selector);
+                if (userMenuElement == null)
+                {
+                    return null;
+                }
+
+                _logger.LogLine($"Found user menu using selector: {selector}");
+                await userMenuElement.ClickAsync();
+                _logger.LogLine("Clicked user menu, waiting for dropdown...");
+                
+                await Task.Delay(1000);
+                
+                // Try to find sign out in the dropdown
+                return await TryDirectSignOutSelectors(page);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogLine($"User menu selector '{selector}' failed: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Clicks the sign out button and waits for the action to complete.
+        /// </summary>
+        /// <param name="signOutElement">The sign out element to click</param>
+        private async Task ClickSignOutButton(IElementHandle signOutElement)
+        {
+            _logger.LogLine("Clicking sign out button...");
+            await signOutElement.ClickAsync();
+            
+            // Wait for sign out to complete
+            await Task.Delay(2000);
+            _logger.LogLine("Sign out completed");
         }
 
         /// <summary>

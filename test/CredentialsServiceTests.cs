@@ -182,5 +182,79 @@ namespace UnifiWebhookEventReceiverTests
                 Environment.SetEnvironmentVariable("UnifiCredentialsSecretArn", originalArn);
             }
         }
+
+        [Fact]
+        public async Task GetUnifiCredentialsAsync_WithEmptyHostname_ThrowsInvalidOperationException()
+        {
+            // Arrange
+            var secretJson = "{\"hostname\":\"\",\"username\":\"admin\",\"password\":\"secret123\"}";
+            var secretResponse = new GetSecretValueResponse
+            {
+                SecretString = secretJson
+            };
+
+            _mockSecretsClient.Setup(x => x.GetSecretValueAsync(It.IsAny<GetSecretValueRequest>(), default))
+                .ReturnsAsync(secretResponse);
+
+            // Act & Assert
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => 
+                _credentialsService.GetUnifiCredentialsAsync());
+            Assert.Contains("Hostname is required", exception.Message);
+        }
+
+        [Fact]
+        public async Task GetUnifiCredentialsAsync_WithEmptyUsername_ThrowsInvalidOperationException()
+        {
+            // Arrange
+            var secretJson = "{\"hostname\":\"192.168.1.1\",\"username\":\"\",\"password\":\"secret123\"}";
+            var secretResponse = new GetSecretValueResponse
+            {
+                SecretString = secretJson
+            };
+
+            _mockSecretsClient.Setup(x => x.GetSecretValueAsync(It.IsAny<GetSecretValueRequest>(), default))
+                .ReturnsAsync(secretResponse);
+
+            // Act & Assert
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => 
+                _credentialsService.GetUnifiCredentialsAsync());
+            Assert.Contains("Username is required", exception.Message);
+        }
+
+        [Fact]
+        public async Task GetUnifiCredentialsAsync_WithEmptyPassword_ThrowsInvalidOperationException()
+        {
+            // Arrange
+            var secretJson = "{\"hostname\":\"192.168.1.1\",\"username\":\"admin\",\"password\":\"\"}";
+            var secretResponse = new GetSecretValueResponse
+            {
+                SecretString = secretJson
+            };
+
+            _mockSecretsClient.Setup(x => x.GetSecretValueAsync(It.IsAny<GetSecretValueRequest>(), default))
+                .ReturnsAsync(secretResponse);
+
+            // Act & Assert
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => 
+                _credentialsService.GetUnifiCredentialsAsync());
+            Assert.Contains("Password is required", exception.Message);
+        }
+
+        [Fact]
+        public async Task GetUnifiCredentialsAsync_WithNullSecretString_ThrowsArgumentNullException()
+        {
+            // Arrange
+            var secretResponse = new GetSecretValueResponse
+            {
+                SecretString = null
+            };
+
+            _mockSecretsClient.Setup(x => x.GetSecretValueAsync(It.IsAny<GetSecretValueRequest>(), default))
+                .ReturnsAsync(secretResponse);
+
+            // Act & Assert
+            await Assert.ThrowsAsync<ArgumentNullException>(() => 
+                _credentialsService.GetUnifiCredentialsAsync());
+        }
     }
 }

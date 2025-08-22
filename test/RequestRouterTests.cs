@@ -342,5 +342,84 @@ namespace UnifiWebhookEventReceiverTests
             // Assert
             Assert.Equal(400, result.StatusCode);
         }
+
+        [Fact]
+        public async Task RouteRequestAsync_WithNullRequest_ReturnsBadRequest()
+        {
+            // Act
+            var result = await _requestRouter.RouteRequestAsync(null);
+
+            // Assert
+            Assert.Equal(400, result.StatusCode);
+        }
+
+        [Fact]
+        public async Task RouteRequestAsync_WithNullPath_ReturnsBadRequest()
+        {
+            // Arrange
+            var request = new APIGatewayProxyRequest
+            {
+                Path = null,
+                HttpMethod = "GET"
+            };
+
+            // Act
+            var result = await _requestRouter.RouteRequestAsync(request);
+
+            // Assert
+            Assert.Equal(400, result.StatusCode);
+        }
+
+        [Fact]
+        public async Task RouteRequestAsync_WithEmptyPath_ReturnsBadRequest()
+        {
+            // Arrange
+            var request = new APIGatewayProxyRequest
+            {
+                Path = "",
+                HttpMethod = "GET"
+            };
+
+            // Act
+            var result = await _requestRouter.RouteRequestAsync(request);
+
+            // Assert
+            Assert.Equal(400, result.StatusCode);
+        }
+
+        [Fact]
+        public async Task RouteRequestAsync_WithNullHttpMethod_ReturnsBadRequest()
+        {
+            // Arrange
+            var request = new APIGatewayProxyRequest
+            {
+                Path = "/test",
+                HttpMethod = null
+            };
+
+            // Act
+            var result = await _requestRouter.RouteRequestAsync(request);
+
+            // Assert
+            Assert.Equal(400, result.StatusCode);
+        }
+
+        [Fact]
+        public async Task RouteRequestAsync_WithOptionsMethod_ReturnsOkWithCorsHeaders()
+        {
+            // Arrange
+            var request = new APIGatewayProxyRequest
+            {
+                Path = "/test",
+                HttpMethod = "OPTIONS"
+            };
+
+            // Act
+            var result = await _requestRouter.RouteRequestAsync(request);
+
+            // Assert
+            Assert.Equal(200, result.StatusCode);
+            Assert.Null(result.Body);
+        }
     }
 }

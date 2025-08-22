@@ -195,7 +195,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 string dateFolder = $"{dt.Year}-{dt.Month:D2}-{dt.Day:D2}";
                 string basePrefix = $"{trigger.eventId}_{trigger.device}_{alarm.timestamp}";
                 
-                var screenshotTypes = new[] { "login-screenshot", "pageload-screenshot", "afterarchivebuttonclick-screenshot" };
+                var screenshotTypes = new[] { "login-screenshot", "pageload-screenshot", "afterarchivebuttonclick-screenshot", "signout-screenshot", "signout-error-screenshot" };
                 
                 foreach (var screenshotType in screenshotTypes)
                 {
