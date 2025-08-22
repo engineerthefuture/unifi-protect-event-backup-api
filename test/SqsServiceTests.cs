@@ -28,6 +28,7 @@ namespace UnifiWebhookEventReceiverTests
     {
         private readonly Mock<AmazonSQSClient> _mockSqsClient;
         private readonly Mock<IAlarmProcessingService> _mockAlarmProcessingService;
+        private readonly Mock<IEmailService> _mockEmailService;
         private readonly Mock<IResponseHelper> _mockResponseHelper;
         private readonly Mock<ILambdaLogger> _mockLogger;
         private readonly SqsService _sqsService;
@@ -36,12 +37,17 @@ namespace UnifiWebhookEventReceiverTests
         {
             _mockSqsClient = new Mock<AmazonSQSClient>(Amazon.RegionEndpoint.USEast1);
             _mockAlarmProcessingService = new Mock<IAlarmProcessingService>();
+            _mockEmailService = new Mock<IEmailService>();
             _mockResponseHelper = new Mock<IResponseHelper>();
             _mockLogger = new Mock<ILambdaLogger>();
 
             // Set required environment variables for testing
             Environment.SetEnvironmentVariable("AlarmProcessingQueueUrl", "https://sqs.us-east-1.amazonaws.com/123456789012/test-queue");
             Environment.SetEnvironmentVariable("ProcessingDelaySeconds", "120");
+
+            // Setup email service mock to return success by default
+            _mockEmailService.Setup(x => x.SendFailureNotificationAsync(It.IsAny<Alarm>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+                .ReturnsAsync(true);
 
             // Setup default response helper behaviors
             _mockResponseHelper.Setup(x => x.GetStandardHeaders())
@@ -63,7 +69,7 @@ namespace UnifiWebhookEventReceiverTests
                     Headers = new Dictionary<string, string> { { "Content-Type", "application/json" } }
                 });
 
-            _sqsService = new SqsService(_mockSqsClient.Object, _mockAlarmProcessingService.Object, _mockResponseHelper.Object, _mockLogger.Object);
+            _sqsService = new SqsService(_mockSqsClient.Object, _mockAlarmProcessingService.Object, _mockEmailService.Object, _mockResponseHelper.Object, _mockLogger.Object);
         }
 
         [Fact]
@@ -71,7 +77,7 @@ namespace UnifiWebhookEventReceiverTests
         {
             // Act & Assert
             Assert.Throws<ArgumentNullException>(() => 
-                new SqsService(null, _mockAlarmProcessingService.Object, _mockResponseHelper.Object, _mockLogger.Object));
+                new SqsService(null, _mockAlarmProcessingService.Object, _mockEmailService.Object, _mockResponseHelper.Object, _mockLogger.Object));
         }
 
         [Fact]
@@ -79,7 +85,15 @@ namespace UnifiWebhookEventReceiverTests
         {
             // Act & Assert
             Assert.Throws<ArgumentNullException>(() => 
-                new SqsService(_mockSqsClient.Object, null, _mockResponseHelper.Object, _mockLogger.Object));
+                new SqsService(_mockSqsClient.Object, null, _mockEmailService.Object, _mockResponseHelper.Object, _mockLogger.Object));
+        }
+
+        [Fact]
+        public void Constructor_WithNullEmailService_ThrowsArgumentNullException()
+        {
+            // Act & Assert
+            Assert.Throws<ArgumentNullException>(() => 
+                new SqsService(_mockSqsClient.Object, _mockAlarmProcessingService.Object, null, _mockResponseHelper.Object, _mockLogger.Object));
         }
 
         [Fact]
@@ -87,7 +101,7 @@ namespace UnifiWebhookEventReceiverTests
         {
             // Act & Assert
             Assert.Throws<ArgumentNullException>(() => 
-                new SqsService(_mockSqsClient.Object, _mockAlarmProcessingService.Object, null, _mockLogger.Object));
+                new SqsService(_mockSqsClient.Object, _mockAlarmProcessingService.Object, _mockEmailService.Object, null, _mockLogger.Object));
         }
 
         [Fact]
@@ -95,7 +109,7 @@ namespace UnifiWebhookEventReceiverTests
         {
             // Act & Assert
             Assert.Throws<ArgumentNullException>(() => 
-                new SqsService(_mockSqsClient.Object, _mockAlarmProcessingService.Object, _mockResponseHelper.Object, null));
+                new SqsService(_mockSqsClient.Object, _mockAlarmProcessingService.Object, _mockEmailService.Object, _mockResponseHelper.Object, null));
         }
 
         [Fact]

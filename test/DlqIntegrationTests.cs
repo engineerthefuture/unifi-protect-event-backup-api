@@ -31,6 +31,9 @@ namespace UnifiWebhookEventReceiverTests
             mockEmailService
                 .Setup(x => x.SendFailureNotificationAsync(It.IsAny<Alarm>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
                 .ReturnsAsync(true);
+            mockEmailService
+                .Setup(x => x.SendFailureNotificationAsync(It.IsAny<Alarm>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+                .ReturnsAsync(true);
 
             var alarm = new Alarm
             {
