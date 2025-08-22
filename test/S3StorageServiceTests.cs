@@ -110,6 +110,7 @@ namespace UnifiWebhookEventReceiverTests
         public async Task StoreVideoFileAsync_WithValidPath_UploadsSuccessfully()
         {
             // Arrange
+            Environment.SetEnvironmentVariable("StorageBucket", "test-bucket");
             var tempDir = Path.GetTempPath();
             var filePath = Path.Combine(tempDir, $"test-video-{Guid.NewGuid()}.mp4");
             var s3Key = "videos/test-video.mp4";

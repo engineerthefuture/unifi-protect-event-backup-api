@@ -66,8 +66,8 @@ namespace UnifiWebhookEventReceiverTests
             Assert.NotNull(result.Headers);
             
             // Verify the body contains the error message
-            var body = JsonConvert.DeserializeObject<dynamic>(result.Body);
-            Assert.Equal(message, (string)body.msg);
+            var body = JsonConvert.DeserializeObject<dynamic>(result.Body!);
+            Assert.Equal(message, (string)body!.msg);
         }
 
         [Theory]
@@ -84,8 +84,8 @@ namespace UnifiWebhookEventReceiverTests
             // Assert
             Assert.Equal((int)statusCode, result.StatusCode);
             
-            var body = JsonConvert.DeserializeObject<dynamic>(result.Body);
-            Assert.Equal(message, (string)body.msg);
+            var body = JsonConvert.DeserializeObject<dynamic>(result.Body!);
+            Assert.Equal(message, (string)body!.msg);
         }
 
         [Fact]
@@ -100,8 +100,8 @@ namespace UnifiWebhookEventReceiverTests
 
             // Assert
             Assert.Equal(400, result.StatusCode);
-            var body = JsonConvert.DeserializeObject<dynamic>(result.Body);
-            Assert.Equal("", (string)body.msg);
+            var body = JsonConvert.DeserializeObject<dynamic>(result.Body!);
+            Assert.Equal("", (string)body!.msg);
         }
 
         [Fact]
@@ -116,8 +116,8 @@ namespace UnifiWebhookEventReceiverTests
 
             // Assert
             Assert.Equal(500, result.StatusCode);
-            var body = JsonConvert.DeserializeObject<dynamic>(result.Body);
-            Assert.Null((string?)body.msg);
+            var body = JsonConvert.DeserializeObject<dynamic>(result.Body!);
+            Assert.Null((string?)body!.msg);
         }
 
         #endregion
@@ -139,8 +139,8 @@ namespace UnifiWebhookEventReceiverTests
             Assert.NotNull(result.Body);
             Assert.NotNull(result.Headers);
             
-            var responseBody = JsonConvert.DeserializeObject<dynamic>(result.Body);
-            Assert.Equal("Success", (string)responseBody.message);
+            var responseBody = JsonConvert.DeserializeObject<dynamic>(result.Body!);
+            Assert.Equal("Success", (string)responseBody!.message);
             Assert.Equal("test data", (string)responseBody.data);
         }
 
@@ -165,7 +165,7 @@ namespace UnifiWebhookEventReceiverTests
             object? body = null;
 
             // Act
-            var result = _responseHelper.CreateSuccessResponse(body);
+            var result = _responseHelper.CreateSuccessResponse(body!);
 
             // Assert
             Assert.Equal(200, result.StatusCode);
@@ -190,8 +190,8 @@ namespace UnifiWebhookEventReceiverTests
             // Assert
             Assert.Equal(200, result.StatusCode);
             
-            var responseBody = JsonConvert.DeserializeObject<dynamic>(result.Body);
-            Assert.Equal(123, (int)responseBody.id);
+            var responseBody = JsonConvert.DeserializeObject<dynamic>(result.Body!);
+            Assert.Equal(123, (int)responseBody!.id);
             Assert.Equal("Test Event", (string)responseBody.name);
             Assert.Equal(1640995200000L, (long)responseBody.timestamp);
             Assert.Equal("camera-1", (string)responseBody.metadata.device);
