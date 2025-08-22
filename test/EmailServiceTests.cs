@@ -71,7 +71,7 @@ namespace UnifiWebhookEventReceiverTests
             };
 
             // Mock the CloudWatch Logs and S3 service calls
-            mockS3Service.Setup(x => x.GetFileAsync(It.IsAny<string>())).ReturnsAsync((byte[]?)null);
+            mockS3Service.Setup(x => x.GetFileAsync(It.IsAny<string>())).ReturnsAsync((byte[])null);
 
             mockSesClient
                 .Setup(x => x.SendRawEmailAsync(It.IsAny<SendRawEmailRequest>(), It.IsAny<System.Threading.CancellationToken>()))

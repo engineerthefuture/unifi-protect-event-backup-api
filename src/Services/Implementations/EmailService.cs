@@ -50,7 +50,13 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
 
             try
             {
-                var subject = $"Unifi Protect Video Download Failure - Event {alarm.triggers?.FirstOrDefault()?.eventId ?? "Unknown"}";
+                var trigger = alarm.triggers?.FirstOrDefault();
+                var deviceName = !string.IsNullOrEmpty(trigger?.device) 
+                    ? AppConfiguration.GetDeviceName(trigger.device.Replace(":", ""))
+                    : "Unknown Device";
+                var environment = AppConfiguration.DeployedEnv ?? "Unknown";
+                
+                var subject = $"[{environment.ToUpper()}] Unifi Protect Video Download Failure - {deviceName} - Event {trigger?.eventId ?? "Unknown"}";
                 
                 // Get CloudWatch logs for the failure
                 var cloudWatchLogs = await GetRecentCloudWatchLogs();
@@ -206,7 +212,9 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             AddFailureInformation(sb, failureReason, messageId, retryAttempt);
             
             // Add event information
-            AddEventInformation(sb, eventKey, deviceName, eventTime, eventPath);
+            var eventKeyType = GetEventKeyType(eventKey);
+            var deviceMacAddress = trigger?.device ?? "Unknown";
+            AddEventInformation(sb, eventKey, deviceName, eventTime, eventPath, eventKeyType, deviceMacAddress);
             
             // Add alarm JSON and logs
             AddAlarmDataAndLogs(sb, alarm, cloudWatchLogs);
@@ -249,23 +257,37 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// </summary>
         private static void AddFailureInformation(StringBuilder sb, string failureReason, string messageId, string retryAttempt)
         {
+            var environment = AppConfiguration.DeployedEnv ?? "Unknown";
+            var buildSha = AppConfiguration.BuildSha ?? "Unknown";
+            var buildTimestamp = AppConfiguration.BuildTimestamp ?? "Unknown";
+            
             sb.AppendLine("<h2>📋 Failure Details</h2>");
             sb.AppendLine("<table>");
+            sb.AppendLine($"<tr><th>Environment</th><td>{environment}</td></tr>");
             sb.AppendLine($"<tr><th>Failure Reason</th><td class='failure'>{failureReason}</td></tr>");
             sb.AppendLine($"<tr><th>SQS Message ID</th><td>{messageId}</td></tr>");
             sb.AppendLine($"<tr><th>Retry Attempt Time</th><td>{retryAttempt}</td></tr>");
+            sb.AppendLine("</table>");
+            
+            sb.AppendLine("<h2>🔧 Build Information</h2>");
+            sb.AppendLine("<table>");
+            sb.AppendLine($"<tr><th>Build SHA</th><td>{buildSha}</td></tr>");
+            sb.AppendLine($"<tr><th>Build Timestamp</th><td>{buildTimestamp}</td></tr>");
+            sb.AppendLine($"<tr><th>Lambda Function</th><td>{AppConfiguration.FunctionName ?? "Unknown"}</td></tr>");
             sb.AppendLine("</table>");
         }
 
         /// <summary>
         /// Adds event information section to the email body.
         /// </summary>
-        private static void AddEventInformation(StringBuilder sb, string eventKey, string deviceName, string eventTime, string eventPath)
+        private static void AddEventInformation(StringBuilder sb, string eventKey, string deviceName, string eventTime, string eventPath, string eventKeyType, string deviceMacAddress)
         {
             sb.AppendLine("<h2>🏠 Event Information</h2>");
             sb.AppendLine("<table>");
             sb.AppendLine($"<tr><th>Event ID</th><td>{eventKey}</td></tr>");
-            sb.AppendLine($"<tr><th>Device</th><td>{deviceName}</td></tr>");
+            sb.AppendLine($"<tr><th>Event Type</th><td>{eventKeyType}</td></tr>");
+            sb.AppendLine($"<tr><th>Device Name</th><td>{deviceName}</td></tr>");
+            sb.AppendLine($"<tr><th>Device MAC</th><td>{deviceMacAddress}</td></tr>");
             sb.AppendLine($"<tr><th>Event Time</th><td>{eventTime}</td></tr>");
             sb.AppendLine($"<tr><th>Event Path</th><td>{eventPath}</td></tr>");
             sb.AppendLine("</table>");
@@ -297,24 +319,79 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             sb.AppendLine("<ul>");
             sb.AppendLine("<li><strong>CloudWatch Logs</strong> - Recent execution logs attached as cloudwatch-logs.txt</li>");
             sb.AppendLine("<li><strong>Alarm JSON</strong> - Complete alarm data attached as alarm-event.json</li>");
+            sb.AppendLine("</ul>");
+            sb.AppendLine("</div>");
             
             if (screenshots.Count > 0)
             {
-                sb.AppendLine("<li><strong>Screenshots</strong> - Process screenshots attached:</li>");
-                sb.AppendLine("<ul>");
+                sb.AppendLine("<h3>📷 Process Screenshots</h3>");
+                sb.AppendLine("<p>The following screenshots document the automation process at the time of failure:</p>");
+                
                 foreach (var screenshot in screenshots)
                 {
-                    sb.AppendLine($"<li>{screenshot.name} ({screenshot.data.Length} bytes)</li>");
+                    var description = GetScreenshotDescription(screenshot.name);
+                    sb.AppendLine("<div style='margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px;'>");
+                    sb.AppendLine($"<h4 style='margin-top: 0; color: #1976d2;'>{description}</h4>");
+                    sb.AppendLine($"<p><strong>File:</strong> {screenshot.name}</p>");
+                    sb.AppendLine($"<p><strong>Size:</strong> {screenshot.data.Length:N0} bytes</p>");
+                    sb.AppendLine($"<p><em>This screenshot is attached to this email and can be viewed in your email client.</em></p>");
+                    sb.AppendLine("</div>");
                 }
-                sb.AppendLine("</ul>");
             }
             else
             {
-                sb.AppendLine("<li><strong>Screenshots</strong> - No screenshots available for this event</li>");
+                sb.AppendLine("<div class='info'>");
+                sb.AppendLine("<p><strong>Screenshots:</strong> No screenshots available for this event</p>");
+                sb.AppendLine("</div>");
             }
-            
-            sb.AppendLine("</ul>");
-            sb.AppendLine("</div>");
+        }
+
+        /// <summary>
+        /// Gets a descriptive title for each screenshot type.
+        /// </summary>
+        private static string GetScreenshotDescription(string filename)
+        {
+            return filename.ToLower() switch
+            {
+                var name when name.Contains("login-screenshot") => "🔐 Login Page Screenshot",
+                var name when name.Contains("pageload-screenshot") => "📄 Page Load Screenshot", 
+                var name when name.Contains("firstclick-screenshot") => "🖱️ First Click Screenshot (Archive Button)",
+                var name when name.Contains("secondclick-screenshot") => "💾 Second Click Screenshot (Download Button)",
+                _ => "📸 Process Screenshot"
+            };
+        }
+
+        /// <summary>
+        /// Extracts the event key type from the event ID.
+        /// </summary>
+        private static string GetEventKeyType(string eventKey)
+        {
+            if (string.IsNullOrEmpty(eventKey))
+                return "Unknown";
+
+            return eventKey switch
+            {
+                var key when key.StartsWith("alm_") => "Alarm Event",
+                var key when key.StartsWith("evt_") => "Motion Event", 
+                var key when key.StartsWith("test_") => "Test Event",
+                var key when key.StartsWith("rec_") => "Recording Event",
+                var key when key.StartsWith("live_") => "Live Stream Event",
+                _ => ExtractPrefixFromEventKey(eventKey)
+            };
+        }
+
+        /// <summary>
+        /// Extracts and formats the prefix from an event key for unknown types.
+        /// </summary>
+        private static string ExtractPrefixFromEventKey(string eventKey)
+        {
+            var underscoreIndex = eventKey.IndexOf('_');
+            if (underscoreIndex > 0)
+            {
+                var prefix = eventKey.Substring(0, underscoreIndex);
+                return $"{char.ToUpper(prefix[0])}{prefix.Substring(1)} Event";
+            }
+            return "Custom Event";
         }
 
         /// <summary>

@@ -523,6 +523,8 @@ jobs:
               UnifiHost="${{ secrets.UNIFI_HOST }}" \
               UnifiUsername="${{ secrets.UNIFI_USERNAME }}" \
               UnifiPassword="${{ secrets.UNIFI_PASSWORD }}" \
+              BuildSha="${{ github.sha }}" \
+              BuildTimestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
             --tags \
               Owner="${{ vars.OWNER_NAME }}" \
               AppName="${{ vars.APP_NAME }}" \
