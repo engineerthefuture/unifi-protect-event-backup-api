@@ -29,6 +29,11 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         private readonly ICredentialsService _credentialsService;
 
         /// <summary>
+        /// Maximum time in seconds to wait for video download to complete
+        /// </summary>
+        private const int MaxVideoDownloadWaitTimeSeconds = 118;
+
+        /// <summary>
         /// Initializes a new instance of the UnifiProtectService.
         /// </summary>
         /// <param name="logger">Lambda logger instance</param>
@@ -570,7 +575,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             _logger.LogLine("Waiting for video download to complete...");
 
             var initialFileCount = Directory.GetFiles(downloadDirectory, "*.mp4").Length;
-            var maxWaitTime = TimeSpan.FromSeconds(100);
+            var maxWaitTime = TimeSpan.FromSeconds(MaxVideoDownloadWaitTimeSeconds);
             var checkInterval = TimeSpan.FromSeconds(1);
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
