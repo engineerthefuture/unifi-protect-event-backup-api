@@ -67,8 +67,8 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 // Generate email body with embedded JSON
                 var body = GenerateEmailBodyWithAttachments(alarm, failureReason, messageId, retryAttempt, cloudWatchLogs, screenshots);
                 
-                // Send email with attachments using SendRawEmail
-                var success = await SendRawEmailWithAttachments(supportEmail, subject, body, cloudWatchLogs, alarm);
+                // Send email using SendRawEmail (attachments capability preserved for future use)
+                var success = await SendRawEmailWithAttachments(supportEmail, subject, body);
                 
                 return success;
             }
@@ -364,17 +364,14 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// </summary>
         private static void AddAttachmentsInformation(StringBuilder sb, List<(string name, byte[] data)> screenshots)
         {
-            sb.AppendLine("<h2>📸 Attachments</h2>");
+            sb.AppendLine("<h2>📸 Process Screenshots</h2>");
             sb.AppendLine("<div class='info'>");
-            sb.AppendLine("<ul>");
-            sb.AppendLine("<li><strong>CloudWatch Logs</strong> - Recent execution logs attached as cloudwatch-logs.txt</li>");
-            sb.AppendLine("<li><strong>Alarm JSON</strong> - Complete alarm data attached as alarm-event.json</li>");
-            sb.AppendLine("</ul>");
+            sb.AppendLine("<p>CloudWatch logs and alarm event data are included in the sections above. Screenshots from the automation process are embedded below:</p>");
             sb.AppendLine("</div>");
             
             if (screenshots.Count > 0)
             {
-                sb.AppendLine("<h3>📷 Process Screenshots</h3>");
+                sb.AppendLine("<h3>📷 Automation Screenshots</h3>");
                 sb.AppendLine("<p>The following screenshots document the automation process at the time of failure:</p>");
                 
                 foreach (var screenshot in screenshots)
@@ -471,7 +468,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// <summary>
         /// Sends raw email with attachments using SES SendRawEmail.
         /// </summary>
-        private async Task<bool> SendRawEmailWithAttachments(string supportEmail, string subject, string htmlBody, string cloudWatchLogs, Alarm alarm)
+        private async Task<bool> SendRawEmailWithAttachments(string supportEmail, string subject, string htmlBody)
         {
             try
             {
@@ -494,25 +491,9 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 rawMessage.AppendLine(htmlBody);
                 rawMessage.AppendLine();
 
-                // CloudWatch logs attachment
-                rawMessage.AppendLine($"--{boundary}");
-                rawMessage.AppendLine("Content-Type: text/plain; charset=UTF-8");
-                rawMessage.AppendLine("Content-Transfer-Encoding: base64");
-                rawMessage.AppendLine("Content-Disposition: attachment; filename=\"cloudwatch-logs.txt\"");
-                rawMessage.AppendLine();
-                rawMessage.AppendLine(Convert.ToBase64String(Encoding.UTF8.GetBytes(cloudWatchLogs)));
-                rawMessage.AppendLine();
-
-                // Alarm JSON attachment
-                var alarmJson = JsonConvert.SerializeObject(alarm, Formatting.Indented);
-                rawMessage.AppendLine($"--{boundary}");
-                rawMessage.AppendLine("Content-Type: application/json; charset=UTF-8");
-                rawMessage.AppendLine("Content-Transfer-Encoding: base64");
-                rawMessage.AppendLine("Content-Disposition: attachment; filename=\"alarm-event.json\"");
-                rawMessage.AppendLine();
-                rawMessage.AppendLine(Convert.ToBase64String(Encoding.UTF8.GetBytes(alarmJson)));
-                rawMessage.AppendLine();
-
+                // Note: Logs and JSON data are now embedded in the HTML body above
+                // Additional attachments can be added here in the future if needed
+                
                 // End boundary
                 rawMessage.AppendLine($"--{boundary}--");
 
