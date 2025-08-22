@@ -558,6 +558,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             {
                 _logger.LogLine("Starting sign out process...");
 
+                /*
                 // Try to find and click the sign out button
                 var signOutElement = await FindSignOutElement(page);
 
@@ -569,6 +570,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 {
                     _logger.LogLine("Sign out button not found, proceeding without sign out");
                 }
+                */
                 
                 var screenshotPath = Path.Combine(downloadDirectory, "signout-screenshot.png");
                 await page.ScreenshotAsync(screenshotPath);
