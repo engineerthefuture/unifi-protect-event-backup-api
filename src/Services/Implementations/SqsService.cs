@@ -246,7 +246,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 if (alarm != null)
                 {
                     _logger.LogLine($"Processing delayed alarm for device: {alarm.triggers?.FirstOrDefault()?.device}");
-                    await _alarmProcessingService.ProcessAlarmAsync(alarm);
+                    await _alarmProcessingService.ProcessAlarmForSqsAsync(alarm);
                     _logger.LogLine($"Successfully processed delayed alarm: {record.MessageId}");
                 }
                 else
