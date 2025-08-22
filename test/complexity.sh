@@ -4,8 +4,8 @@
 echo "🔍 CYCLOMATIC COMPLEXITY ANALYSIS 🔍"
 echo "====================================="
 
-# Navigate to project root
-cd "$(dirname "$0")"
+# Navigate to project root from test directory
+cd "$(dirname "$0")/.."
 
 echo "📊 Method 1: Using SonarAnalyzer warnings..."
 echo ""

@@ -92,8 +92,12 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 // This would call the headless browser logic (simplified for decomposition)
                 // In the actual implementation, this would contain all the browser automation code
                 _logger.LogLine("About to call DownloadVideoFromUnifiProtect");
-                var videoData = await DownloadVideoFromUnifiProtect(eventLocalLink, trigger.deviceName ?? "", downloadDirectory, trigger, timestamp);
+                var (videoData, originalFileName) = await DownloadVideoFromUnifiProtect(eventLocalLink, trigger.deviceName ?? "", downloadDirectory, trigger, timestamp);
                 _logger.LogLine($"DownloadVideoFromUnifiProtect completed, received {videoData.Length} bytes");
+                _logger.LogLine($"Original downloaded filename: {originalFileName}");
+                
+                // Store the original filename in the trigger for later use
+                trigger.originalFileName = originalFileName;
                 
                 // Save to temporary file
                 await File.WriteAllBytesAsync(tempVideoFile, videoData);
@@ -148,9 +152,9 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// <param name="downloadDirectory">Directory to use for downloads</param>
         /// <param name="trigger">The trigger information for screenshot naming</param>
         /// <param name="timestamp">The event timestamp for screenshot naming</param>
-        /// <returns>Byte array containing the downloaded video data</returns>
+        /// <returns>Tuple containing the downloaded video data and original filename</returns>
         [ExcludeFromCodeCoverage] // Requires headless browser and external network connectivity
-        private async Task<byte[]> DownloadVideoFromUnifiProtect(string eventLocalLink, string deviceName, string downloadDirectory, Trigger trigger, long timestamp)
+        private async Task<(byte[] videoData, string originalFileName)> DownloadVideoFromUnifiProtect(string eventLocalLink, string deviceName, string downloadDirectory, Trigger trigger, long timestamp)
         {
             try
             {
@@ -173,12 +177,12 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                     await PerformVideoDownloadActions(page, deviceName, downloadDirectory, trigger, timestamp);
 
                     // Wait for download to complete and get video data
-                    var videoData = await WaitForDownloadAndGetVideoData(downloadDirectory);
+                    var (videoData, actualFileName) = await WaitForDownloadAndGetVideoData(downloadDirectory);
 
                     // Perform sign out and capture screenshot (screenshot will be saved to S3)
                     await PerformSignOutAndCapture(page, downloadDirectory, trigger, timestamp);
 
-                    return videoData;
+                    return (videoData, actualFileName);
                 }
                 finally
                 {
@@ -725,11 +729,11 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         }
 
         /// <summary>
-        /// Waits for the download to complete and returns the video data.
+        /// Waits for the download to complete and returns the video data and original filename.
         /// </summary>
         /// <param name="downloadDirectory">The download directory to monitor</param>
-        /// <returns>The downloaded video data as byte array</returns>
-        private async Task<byte[]> WaitForDownloadAndGetVideoData(string downloadDirectory)
+        /// <returns>Tuple containing the downloaded video data as byte array and the original filename</returns>
+        private async Task<(byte[] videoData, string fileName)> WaitForDownloadAndGetVideoData(string downloadDirectory)
         {
             _logger.LogLine("Waiting for video download to complete...");
 
@@ -776,8 +780,11 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
 
             byte[] videoData = await File.ReadAllBytesAsync(latestVideoFile);
             _logger.LogLine($"Video data size: {videoData.Length} bytes");
+            
+            string actualFileName = Path.GetFileName(latestVideoFile);
+            _logger.LogLine($"Downloaded file name: {actualFileName}");
 
-            return videoData;
+            return (videoData, actualFileName);
         }
 
         /// <summary>
