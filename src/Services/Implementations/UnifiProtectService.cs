@@ -639,8 +639,8 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// <returns>The sign out element if found, null otherwise</returns>
         private async Task<IElementHandle?> TryUserMenuSignOut(IPage page)
         {
-            _logger.LogLine("Sign out button not found, trying to find user menu...");
-            
+            _logger.LogLine("Finding Sign Out button via user menu...");
+
             var userMenuSelectors = new[]
             {
                 // Specific Unifi Protect user avatar button
