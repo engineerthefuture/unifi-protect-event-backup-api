@@ -143,20 +143,13 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         [SuppressMessage("Security", "CA5359:Do Not Disable Certificate Validation", Justification = "UniFi Protect commonly uses self-signed certificates")]
         public async Task<string> FetchAndStoreCameraMetadataAsync()
         {
-            _logger.LogLine("Fetching Unifi API key from Secrets Manager...");
-            
-            // The secret name follows the pattern: {FunctionName}-unifi-api-key
-            var functionName = AppConfiguration.FunctionName;
-            var apiKeySecretName = $"{functionName}-unifi-api-key";
-            
-            var apiKey = await _credentialsService.GetSecretValueAsync(apiKeySecretName);
-            if (string.IsNullOrEmpty(apiKey))
-                throw new InvalidOperationException($"UNIFI_API_KEY is not configured in Secrets Manager secret: {apiKeySecretName}");
-
-            _logger.LogLine("Fetching Unifi credentials for hostname...");
+            _logger.LogLine("Fetching Unifi credentials from Secrets Manager...");
             var credentials = await _credentialsService.GetUnifiCredentialsAsync();
             if (credentials == null || string.IsNullOrEmpty(credentials.hostname))
                 throw new InvalidOperationException("Unifi credentials are not properly configured in Secrets Manager");
+
+            if (string.IsNullOrEmpty(credentials.apikey))
+                throw new InvalidOperationException("Unifi API key is not configured in the credentials secret");
 
             var url = $"{credentials.hostname.TrimEnd('/')}/proxy/protect/api/cameras";
             _logger.LogLine($"Requesting camera metadata from: {url}");
@@ -176,7 +169,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             // Add headers that Unifi Protect requires
             httpClient.DefaultRequestHeaders.Add("Accept", "application/json");
             httpClient.DefaultRequestHeaders.Add("User-Agent", "UnifiWebhookEventReceiver/1.0");
-            httpClient.DefaultRequestHeaders.Add("x-api-key", apiKey);
+            httpClient.DefaultRequestHeaders.Add("x-api-key", credentials.apikey);
 
             try
             {

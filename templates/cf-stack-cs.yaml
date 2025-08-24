@@ -213,7 +213,6 @@ Resources:
                   - secretsmanager:GetSecretValue
                 Resource: 
                   - !Ref UnifiCredentialsSecret
-                  - !Ref UnifiApiKeySecret
       Path: /
       Tags: 
         - Key: "Name"
@@ -293,26 +292,14 @@ Resources:
         {
           "hostname": "${UnifiHost}",
           "username": "${UnifiUsername}",
-          "password": "${UnifiPassword}"
+          "password": "${UnifiPassword}",
+          "apikey": "${UnifiApiKey}"
         }
       Tags:
         - Key: "Name"
           Value: !Sub "${FunctionName}-unifi-credentials"
         - Key: "Purpose"
           Value: "Unifi Protect authentication credentials"
-
-  # Secrets Manager for Unifi Protect API Key
-  UnifiApiKeySecret:
-    Type: AWS::SecretsManager::Secret
-    Properties:
-      Name: !Sub "${FunctionName}-unifi-api-key"
-      Description: "Unifi Protect API key for metadata access"
-      SecretString: !Ref UnifiApiKey
-      Tags:
-        - Key: "Name"
-          Value: !Sub "${FunctionName}-unifi-api-key"
-        - Key: "Purpose"
-          Value: "Unifi Protect API key for metadata access"
 
   # API gateway instance
   ApiGateway:
