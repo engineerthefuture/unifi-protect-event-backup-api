@@ -170,9 +170,12 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             var hostname = $"https://{domainName}";
             _logger.LogLine($"Using UniFi domain name: {hostname}");
 
-            var url = $"{hostname}/proxy/protect/api/cameras";
+            // Get the API metadata path from environment variable, with fallback to default
+            var apiMetadataPath = Environment.GetEnvironmentVariable("UnifiApiMetadataPath") ?? "/proxy/protect/api/cameras";
+            var url = $"{hostname}/{apiMetadataPath}";
             _logger.LogLine($"=== UniFi Protect API Call Details ===");
             _logger.LogLine($"Target URL: {url}");
+            _logger.LogLine($"API metadata path: {apiMetadataPath}");
             _logger.LogLine($"Original hostname from credentials: {credentials.hostname}");
             _logger.LogLine($"Final domain name: {domainName}");
             _logger.LogLine($"Deployed environment: {Environment.GetEnvironmentVariable("DeployedEnv")}");
