@@ -143,9 +143,14 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         public async Task<string> FetchAndStoreCameraMetadataAsync()
         {
             _logger.LogLine("Fetching Unifi API key from Secrets Manager...");
-            var apiKey = await _credentialsService.GetSecretValueAsync("UNIFI_API_KEY");
+            
+            // The secret name follows the pattern: {FunctionName}-unifi-api-key
+            var functionName = AppConfiguration.FunctionName;
+            var apiKeySecretName = $"{functionName}-unifi-api-key";
+            
+            var apiKey = await _credentialsService.GetSecretValueAsync(apiKeySecretName);
             if (string.IsNullOrEmpty(apiKey))
-                throw new InvalidOperationException("UNIFI_API_KEY is not configured in Secrets Manager");
+                throw new InvalidOperationException($"UNIFI_API_KEY is not configured in Secrets Manager secret: {apiKeySecretName}");
 
             _logger.LogLine("Fetching Unifi credentials for hostname...");
             var credentials = await _credentialsService.GetUnifiCredentialsAsync();

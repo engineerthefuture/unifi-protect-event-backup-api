@@ -68,6 +68,10 @@ Parameters:
     Type: String
     Description: Unifi Protect password for video downloads
     NoEcho: true
+  UnifiApiKey:
+    Type: String
+    Description: Unifi Protect API key for metadata access
+    NoEcho: true
   DownloadDirectory:
     Type: String
     Description: Directory path for temporary video downloads (defaults to /tmp for Lambda compatibility)
@@ -207,7 +211,9 @@ Resources:
               - Effect: Allow
                 Action:
                   - secretsmanager:GetSecretValue
-                Resource: !Ref UnifiCredentialsSecret
+                Resource: 
+                  - !Ref UnifiCredentialsSecret
+                  - !Ref UnifiApiKeySecret
       Path: /
       Tags: 
         - Key: "Name"
@@ -294,6 +300,19 @@ Resources:
           Value: !Sub "${FunctionName}-unifi-credentials"
         - Key: "Purpose"
           Value: "Unifi Protect authentication credentials"
+
+  # Secrets Manager for Unifi Protect API Key
+  UnifiApiKeySecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "${FunctionName}-unifi-api-key"
+      Description: "Unifi Protect API key for metadata access"
+      SecretString: !Ref UnifiApiKey
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${FunctionName}-unifi-api-key"
+        - Key: "Purpose"
+          Value: "Unifi Protect API key for metadata access"
 
   # API gateway instance
   ApiGateway:
