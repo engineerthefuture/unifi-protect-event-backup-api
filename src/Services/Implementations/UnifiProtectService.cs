@@ -140,6 +140,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// Fetches camera metadata from the Unifi Protect API and stores it in S3 as metadata/cameras.json.
         /// </summary>
         /// <returns>The JSON metadata that was fetched and stored</returns>
+        [SuppressMessage("Security", "CA5359:Do Not Disable Certificate Validation", Justification = "UniFi Protect commonly uses self-signed certificates")]
         public async Task<string> FetchAndStoreCameraMetadataAsync()
         {
             _logger.LogLine("Fetching Unifi API key from Secrets Manager...");
@@ -162,8 +163,10 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
 
             // Create HttpClientHandler for SSL
             using var handler = new HttpClientHandler();
-            // For production, you might want to validate certificates properly
-            // For now, we'll trust the SSL certificate
+            // Bypass SSL certificate validation for UniFi Protect systems
+            // Many UniFi Protect installations use self-signed certificates or have hostname mismatches
+            // This is a common requirement for UniFi Protect API integration
+            handler.ServerCertificateCustomValidationCallback = (sender, certificate, chain, sslPolicyErrors) => true;
             
             using var httpClient = new HttpClient(handler);
             
