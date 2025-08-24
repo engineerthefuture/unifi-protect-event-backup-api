@@ -30,7 +30,8 @@ namespace UnifiWebhookEventReceiver.Services
     /// <summary>
     /// Fetches camera metadata from the Unifi Protect API and stores it in S3 as metadata/cameras.json.
     /// </summary>
-    Task FetchAndStoreCameraMetadataAsync();
+    /// <returns>The JSON metadata that was fetched and stored</returns>
+    Task<string> FetchAndStoreCameraMetadataAsync();
 
     /// <summary>
     /// Cleans up temporary video files.

@@ -157,11 +157,18 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         {
             try
             {
-                await _unifiProtectService.FetchAndStoreCameraMetadataAsync();
+                var metadataJson = await _unifiProtectService.FetchAndStoreCameraMetadataAsync();
+                
+                var response = new
+                {
+                    message = "Camera metadata fetched and stored successfully.",
+                    metadata = JsonConvert.DeserializeObject(metadataJson)
+                };
+                
                 return new APIGatewayProxyResponse
                 {
                     StatusCode = 200,
-                    Body = "Camera metadata fetched and stored successfully.",
+                    Body = JsonConvert.SerializeObject(response, Formatting.Indented),
                     Headers = _responseHelper.GetStandardHeaders()
                 };
             }
@@ -170,7 +177,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 _logger.LogLine($"Error in /metadata: {ex.Message}");
                 return _responseHelper.CreateErrorResponse(HttpStatusCode.InternalServerError, $"Failed to fetch/store camera metadata: {ex.Message}");
             }
-    }
+        }
 
         /// <summary>
         /// Handles alarm webhook POST requests.

@@ -96,5 +96,30 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 throw;
             }
         }
+
+        /// <summary>
+        /// Retrieves a specific secret value from AWS Secrets Manager.
+        /// </summary>
+        /// <param name="secretName">The name/ARN of the secret to retrieve</param>
+        /// <returns>The secret value as a string</returns>
+        [ExcludeFromCodeCoverage] // Requires AWS Secrets Manager connectivity
+        public async Task<string> GetSecretValueAsync(string secretName)
+        {
+            try
+            {
+                var request = new GetSecretValueRequest
+                {
+                    SecretId = secretName
+                };
+
+                var response = await _secretsClient.GetSecretValueAsync(request);
+                return response.SecretString;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error retrieving secret '{secretName}' from Secrets Manager: {ex.Message}");
+                throw;
+            }
+        }
     }
 }

@@ -139,9 +139,15 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// <summary>
         /// Fetches camera metadata from the Unifi Protect API and stores it in S3 as metadata/cameras.json.
         /// </summary>
-        public async Task FetchAndStoreCameraMetadataAsync()
+        /// <returns>The JSON metadata that was fetched and stored</returns>
+        public async Task<string> FetchAndStoreCameraMetadataAsync()
         {
-            _logger.LogLine("Fetching Unifi credentials from Secrets Manager...");
+            _logger.LogLine("Fetching Unifi API key from Secrets Manager...");
+            var apiKey = await _credentialsService.GetSecretValueAsync("UNIFI_API_KEY");
+            if (string.IsNullOrEmpty(apiKey))
+                throw new InvalidOperationException("UNIFI_API_KEY is not configured in Secrets Manager");
+
+            _logger.LogLine("Fetching Unifi credentials for hostname...");
             var credentials = await _credentialsService.GetUnifiCredentialsAsync();
             if (credentials == null || string.IsNullOrEmpty(credentials.hostname))
                 throw new InvalidOperationException("Unifi credentials are not properly configured in Secrets Manager");
@@ -149,28 +155,63 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             var url = $"{credentials.hostname.TrimEnd('/')}/proxy/protect/api/cameras";
             _logger.LogLine($"Requesting camera metadata from: {url}");
 
-            using var httpClient = new HttpClient();
+            // Create HttpClientHandler for SSL
+            using var handler = new HttpClientHandler();
+            // For production, you might want to validate certificates properly
+            // For now, we'll trust the SSL certificate
             
-            // For now, we'll use basic authentication since we don't have API key configured
-            // This would need to be updated based on your actual Unifi Protect API configuration
-            var authString = Convert.ToBase64String(System.Text.Encoding.ASCII.GetBytes($"{credentials.username}:{credentials.password}"));
-            httpClient.DefaultRequestHeaders.Add("Authorization", $"Basic {authString}");
+            using var httpClient = new HttpClient(handler);
+            
+            // Configure HttpClient
+            httpClient.Timeout = TimeSpan.FromSeconds(30);
+            
+            // Add headers that Unifi Protect requires
+            httpClient.DefaultRequestHeaders.Add("Accept", "application/json");
+            httpClient.DefaultRequestHeaders.Add("User-Agent", "UnifiWebhookEventReceiver/1.0");
+            httpClient.DefaultRequestHeaders.Add("x-api-key", apiKey);
 
-            var response = await httpClient.GetAsync(url);
-            if (!response.IsSuccessStatusCode)
+            try
             {
-                var error = await response.Content.ReadAsStringAsync();
-                _logger.LogLine($"Failed to fetch camera metadata: {response.StatusCode} - {error}");
-                throw new InvalidOperationException($"Failed to fetch camera metadata: {response.StatusCode}");
+                _logger.LogLine("Making HTTPS request...");
+                var response = await httpClient.GetAsync(url);
+                
+                _logger.LogLine($"Response status: {response.StatusCode}");
+                _logger.LogLine($"Response headers: {string.Join(", ", response.Headers.Select(h => $"{h.Key}: {string.Join(", ", h.Value)}"))}");
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    var error = await response.Content.ReadAsStringAsync();
+                    _logger.LogLine($"Failed to fetch camera metadata: {response.StatusCode} - {error}");
+                    throw new InvalidOperationException($"Failed to fetch camera metadata: {response.StatusCode} - {error}");
+                }
+
+                var json = await response.Content.ReadAsStringAsync();
+                _logger.LogLine($"Fetched camera metadata, length: {json.Length} bytes");
+
+                // Store in S3: metadata/cameras.json
+                var s3Key = "metadata/cameras.json";
+                await _s3StorageService.StoreJsonStringAsync(json, s3Key);
+                _logger.LogLine($"Camera metadata stored in S3 at {s3Key}");
+                
+                return json;
             }
-
-            var json = await response.Content.ReadAsStringAsync();
-            _logger.LogLine($"Fetched camera metadata, length: {json.Length} bytes");
-
-            // Store in S3: metadata/cameras.json
-            var s3Key = "metadata/cameras.json";
-            await _s3StorageService.StoreJsonStringAsync(json, s3Key);
-            _logger.LogLine($"Camera metadata stored in S3 at {s3Key}");
+            catch (HttpRequestException httpEx)
+            {
+                _logger.LogLine($"HTTP request exception: {httpEx.Message}");
+                _logger.LogLine($"Inner exception: {httpEx.InnerException?.Message}");
+                throw new InvalidOperationException($"Network error while fetching camera metadata: {httpEx.Message}", httpEx);
+            }
+            catch (TaskCanceledException tcEx)
+            {
+                _logger.LogLine($"Request timeout: {tcEx.Message}");
+                throw new InvalidOperationException("Request timed out while fetching camera metadata", tcEx);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogLine($"Unexpected error: {ex.Message}");
+                _logger.LogLine($"Exception type: {ex.GetType().Name}");
+                throw;
+            }
         }
 
         #region Private Video Download Implementation
