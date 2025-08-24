@@ -608,7 +608,6 @@ Resources:
           DeviceMac28704E113F33: "Backyard West"
           DeviceMacF4E2C677E20F: "Door"
           UnifiCredentialsSecretArn: !Ref UnifiCredentialsSecret
-          USE_UNIFI_DOMAIN: !If [UseUnifiDomain, "true", "false"]
           DownloadDirectory: !Ref DownloadDirectory
           ArchiveButtonX: !Ref ArchiveButtonX
           ArchiveButtonY: !Ref ArchiveButtonY

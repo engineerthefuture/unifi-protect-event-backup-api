@@ -151,104 +151,134 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             if (string.IsNullOrEmpty(credentials.apikey))
                 throw new InvalidOperationException("Unifi API key is not configured in the credentials secret");
 
-            // Determine the hostname to use - prefer the domain name for better SSL support
-            var hostname = credentials.hostname.TrimEnd('/');
-            var useDomainName = Environment.GetEnvironmentVariable("USE_UNIFI_DOMAIN")?.ToLower() == "true";
-            
-            if (useDomainName)
+            // Extract the hostname part (removing https:// or http:// if present)
+            var domainName = credentials.hostname.TrimEnd('/');
+            if (domainName.StartsWith("https://"))
+                domainName = domainName.Substring(8); // Remove "https://"
+            else if (domainName.StartsWith("http://"))
+                domainName = domainName.Substring(7); // Remove "http://"
+                
+            // Prepend "dev-" if we're in a dev environment
+            var deployedEnv = Environment.GetEnvironmentVariable("DeployedEnv")?.ToLower();
+            if (deployedEnv == "dev")
             {
-                // Replace IP with domain name for better certificate validation
-                // Extract the hostname part (removing https:// if present)
-                var domainName = hostname;
-                if (domainName.StartsWith("https://"))
-                    domainName = domainName.Substring(8); // Remove "https://"
-                else if (domainName.StartsWith("http://"))
-                    domainName = domainName.Substring(7); // Remove "http://"
-                    
-                // Prepend "dev-" if we're in a dev environment
-                var deployedEnv = Environment.GetEnvironmentVariable("DeployedEnv")?.ToLower();
-                if (deployedEnv == "dev")
-                {
-                    domainName = $"dev-{domainName}";
-                    _logger.LogLine($"Prepending 'dev-' for dev environment: {domainName}");
-                }
-                    
-                // Use the domain name directly from the hostname
-                hostname = $"https://{domainName}";
-                _logger.LogLine($"Using UniFi domain name: {hostname}");
+                domainName = $"dev-{domainName}";
+                _logger.LogLine($"Prepending 'dev-' for dev environment: {domainName}");
             }
+                
+            // Always use HTTPS with the domain name
+            var hostname = $"https://{domainName}";
+            _logger.LogLine($"Using UniFi domain name: {hostname}");
 
             var url = $"{hostname}/proxy/protect/api/cameras";
-            _logger.LogLine($"Requesting camera metadata from: {url}");
+            _logger.LogLine($"=== UniFi Protect API Call Details ===");
+            _logger.LogLine($"Target URL: {url}");
+            _logger.LogLine($"Original hostname from credentials: {credentials.hostname}");
+            _logger.LogLine($"Final domain name: {domainName}");
+            _logger.LogLine($"Deployed environment: {Environment.GetEnvironmentVariable("DeployedEnv")}");
 
             // Create HttpClientHandler for SSL
             using var handler = new HttpClientHandler();
             
-            // Only bypass SSL certificate validation when not using the domain name
-            // If using udm.brentfoster.me with a proper certificate, we can validate normally
-            if (!useDomainName)
-            {
-                // Bypass SSL certificate validation for UniFi Protect systems with IP addresses
-                // Many UniFi Protect installations use self-signed certificates or have hostname mismatches
-                // This is a common requirement for UniFi Protect API integration
-                handler.ServerCertificateCustomValidationCallback = (sender, certificate, chain, sslPolicyErrors) => true;
-                _logger.LogLine("SSL certificate validation bypassed for IP address connection");
-            }
-            else
-            {
-                _logger.LogLine("Using standard SSL certificate validation for domain name connection");
-            }
+            // Always bypass SSL certificate validation for UniFi Protect systems
+            // UniFi Protect often uses self-signed certificates or has hostname mismatches
+            // This is a common requirement for UniFi Protect API integration
+            handler.ServerCertificateCustomValidationCallback = (sender, certificate, chain, sslPolicyErrors) => true;
+            _logger.LogLine("SSL certificate validation bypassed for UniFi Protect connection");
             
             using var httpClient = new HttpClient(handler);
             
             // Configure HttpClient
             httpClient.Timeout = TimeSpan.FromSeconds(30);
+            _logger.LogLine($"HTTP client timeout set to: 30 seconds");
             
             // Add headers that Unifi Protect requires
             httpClient.DefaultRequestHeaders.Add("Accept", "application/json");
             httpClient.DefaultRequestHeaders.Add("User-Agent", "UnifiWebhookEventReceiver/1.0");
             httpClient.DefaultRequestHeaders.Add("x-api-key", credentials.apikey);
+            
+            // Log request headers (mask the API key for security)
+            _logger.LogLine("=== Request Headers ===");
+            _logger.LogLine($"Accept: application/json");
+            _logger.LogLine($"User-Agent: UnifiWebhookEventReceiver/1.0");
+            _logger.LogLine($"x-api-key: {new string('*', Math.Max(0, credentials.apikey.Length - 4))}{credentials.apikey.Substring(Math.Max(0, credentials.apikey.Length - 4))}");
 
             try
             {
-                _logger.LogLine("Making HTTPS request...");
+                _logger.LogLine("=== Making HTTPS Request ===");
+                var startTime = DateTime.UtcNow;
                 var response = await httpClient.GetAsync(url);
+                var endTime = DateTime.UtcNow;
+                var duration = endTime - startTime;
                 
-                _logger.LogLine($"Response status: {response.StatusCode}");
-                _logger.LogLine($"Response headers: {string.Join(", ", response.Headers.Select(h => $"{h.Key}: {string.Join(", ", h.Value)}"))}");
+                _logger.LogLine($"=== Response Details ===");
+                _logger.LogLine($"Request duration: {duration.TotalMilliseconds:F2} ms");
+                _logger.LogLine($"Response status code: {(int)response.StatusCode} {response.StatusCode}");
+                _logger.LogLine($"Response reason phrase: {response.ReasonPhrase ?? "null"}");
+                
+                // Log response headers
+                _logger.LogLine("=== Response Headers ===");
+                foreach (var header in response.Headers)
+                {
+                    _logger.LogLine($"{header.Key}: {string.Join(", ", header.Value)}");
+                }
+                foreach (var header in response.Content.Headers)
+                {
+                    _logger.LogLine($"{header.Key}: {string.Join(", ", header.Value)}");
+                }
 
                 if (!response.IsSuccessStatusCode)
                 {
                     var error = await response.Content.ReadAsStringAsync();
-                    _logger.LogLine($"Failed to fetch camera metadata: {response.StatusCode} - {error}");
+                    _logger.LogLine($"=== Error Response ===");
+                    _logger.LogLine($"Failed to fetch camera metadata: {response.StatusCode} - {response.ReasonPhrase}");
+                    _logger.LogLine($"Error content length: {error?.Length ?? 0} characters");
+                    _logger.LogLine($"Error content: {error ?? "null"}");
                     throw new InvalidOperationException($"Failed to fetch camera metadata: {response.StatusCode} - {error}");
                 }
 
                 var json = await response.Content.ReadAsStringAsync();
-                _logger.LogLine($"Fetched camera metadata, length: {json.Length} bytes");
+                _logger.LogLine($"=== Success Response ===");
+                _logger.LogLine($"Fetched camera metadata successfully");
+                _logger.LogLine($"Response content length: {json.Length} characters");
+                _logger.LogLine($"Content type: {response.Content.Headers.ContentType?.ToString() ?? "unknown"}");
+                
+                // Log a sample of the JSON for debugging (first 200 characters)
+                var jsonSample = json.Length > 200 ? string.Concat(json.AsSpan(0, 200), "...") : json;
+                _logger.LogLine($"JSON sample: {jsonSample}");
 
                 // Store in S3: metadata/cameras.json
                 var s3Key = "metadata/cameras.json";
                 await _s3StorageService.StoreJsonStringAsync(json, s3Key);
                 _logger.LogLine($"Camera metadata stored in S3 at {s3Key}");
+                _logger.LogLine($"=== API Call Completed Successfully ===");
                 
                 return json;
             }
             catch (HttpRequestException httpEx)
             {
-                _logger.LogLine($"HTTP request exception: {httpEx.Message}");
-                _logger.LogLine($"Inner exception: {httpEx.InnerException?.Message}");
+                _logger.LogLine($"=== HTTP Request Exception ===");
+                _logger.LogLine($"Exception message: {httpEx.Message}");
+                _logger.LogLine($"Inner exception: {httpEx.InnerException?.Message ?? "null"}");
+                _logger.LogLine($"Target URL was: {url}");
+                _logger.LogLine($"Always using domain name mode for connections");
                 throw new InvalidOperationException($"Network error while fetching camera metadata: {httpEx.Message}", httpEx);
             }
             catch (TaskCanceledException tcEx)
             {
-                _logger.LogLine($"Request timeout: {tcEx.Message}");
-                throw new InvalidOperationException("Request timed out while fetching camera metadata", tcEx);
+                _logger.LogLine($"=== Request Timeout Exception ===");
+                _logger.LogLine($"Timeout exception: {tcEx.Message}");
+                _logger.LogLine($"Is cancellation requested: {tcEx.CancellationToken.IsCancellationRequested}");
+                _logger.LogLine($"Target URL was: {url}");
+                throw new InvalidOperationException("Request timed out while fetching camera metadata (30 second timeout)", tcEx);
             }
             catch (Exception ex)
             {
-                _logger.LogLine($"Unexpected error: {ex.Message}");
+                _logger.LogLine($"=== Unexpected Exception ===");
                 _logger.LogLine($"Exception type: {ex.GetType().Name}");
+                _logger.LogLine($"Exception message: {ex.Message}");
+                _logger.LogLine($"Stack trace: {ex.StackTrace}");
+                _logger.LogLine($"Target URL was: {url}");
                 throw;
             }
         }
