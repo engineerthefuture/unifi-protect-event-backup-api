@@ -239,6 +239,13 @@ namespace UnifiWebhookEventReceiverTests
             Environment.SetEnvironmentVariable("StorageBucket", "");
             
             var alarm = CreateValidAlarm();
+            
+            // Setup required mocks that are called before bucket validation
+            _mockCredentialsService.Setup(x => x.GetUnifiCredentialsAsync())
+                .ReturnsAsync(CreateValidCredentials());
+            _mockS3StorageService.Setup(x => x.GenerateS3Keys(It.IsAny<Trigger>(), It.IsAny<long>()))
+                .Returns(("test-event-key", "test-video-key"));
+            
             var expectedResponse = new APIGatewayProxyResponse { StatusCode = 500 };
             _mockResponseHelper.Setup(x => x.CreateErrorResponse(HttpStatusCode.InternalServerError, "Server configuration error: StorageBucket not configured"))
                 .Returns(expectedResponse);
@@ -333,7 +340,7 @@ namespace UnifiWebhookEventReceiverTests
         }
 
         [Theory]
-        [InlineData("12704E113C44")] // Test device MAC mapping
+        [InlineData("28704E113C44")] // Test device MAC mapping
         [InlineData("UNKNOWN_DEVICE")] // Test unknown device
         [InlineData("")] // Test empty device
         public async Task ProcessAlarmAsync_WithDifferentDeviceNames_MapsCorrectly(string deviceMac)
