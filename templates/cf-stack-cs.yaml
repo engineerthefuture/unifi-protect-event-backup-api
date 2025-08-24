@@ -60,6 +60,9 @@ Parameters:
   UnifiHost:
     Type: String
     Description: Unifi Protect hostname or IP address (e.g., udm.local, 192.168.1.1)
+  UnifiHostIp:
+    Type: String
+    Description: Unifi Protect IP address for DNS record (e.g., 192.168.1.1)
   UnifiUsername:
     Type: String
     Description: Unifi Protect username for video downloads
@@ -67,6 +70,10 @@ Parameters:
   UnifiPassword:
     Type: String
     Description: Unifi Protect password for video downloads
+    NoEcho: true
+  UnifiApiKey:
+    Type: String
+    Description: Unifi Protect API key for metadata access
     NoEcho: true
   DownloadDirectory:
     Type: String
@@ -112,6 +119,11 @@ Conditions:
   HasCustomDomain: !Not [!Equals [!Ref DomainName, ""]]
   HasHostedZone: !Not [!Equals [!Ref HostedZoneId, ""]]
   UseCustomDomain: !And [!Condition HasCustomDomain, !Condition HasHostedZone]
+  HasUnifiHost: !Not [!Equals [!Ref UnifiHost, ""]]
+  HasUnifiHostIp: !Not [!Equals [!Ref UnifiHostIp, ""]]
+  UseUnifiDomain: !And [!And [!Condition HasUnifiHost, !Condition HasUnifiHostIp], !Condition HasHostedZone]
+  HasHttpsPrefix: !Not [!Equals [!Select [0, !Split ["://", !Ref UnifiHost]], !Ref UnifiHost]]
+  IsDevEnvironment: !Equals [!Ref EnvPrefix, "dev"]
 
 # Resources
 Resources: 
@@ -133,6 +145,37 @@ Resources:
           Value: !Ref EnvPrefix
         - Key: "Purpose"
           Value: "API Gateway Custom Domain SSL Certificate"
+
+  # SSL Certificate for UniFi Domain
+  UnifiCertificate:
+    Type: AWS::CertificateManager::Certificate
+    Condition: UseUnifiDomain
+    Properties:
+      DomainName: !Sub
+        - "${DevPrefix}${DomainName}"
+        - DevPrefix: !If [IsDevEnvironment, "dev-", ""]
+          DomainName: !If
+            - HasHttpsPrefix
+            - !Select [2, !Split ["/", !Ref UnifiHost]]
+            - !Ref UnifiHost
+      ValidationMethod: DNS
+      DomainValidationOptions:
+        - DomainName: !Sub
+            - "${DevPrefix}${DomainName}"
+            - DevPrefix: !If [IsDevEnvironment, "dev-", ""]
+              DomainName: !If
+                - HasHttpsPrefix
+                - !Select [2, !Split ["/", !Ref UnifiHost]]
+                - !Ref UnifiHost
+          HostedZoneId: !Ref HostedZoneId
+      CertificateExport: ENABLED
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${FunctionName}-unifi-cert"
+        - Key: "Environment"
+          Value: !Ref EnvPrefix
+        - Key: "Purpose"
+          Value: "UniFi Protect SSL Certificate"
 
   # Role for API gateway logging
   CloudWatchRole:
@@ -207,7 +250,8 @@ Resources:
               - Effect: Allow
                 Action:
                   - secretsmanager:GetSecretValue
-                Resource: !Ref UnifiCredentialsSecret
+                Resource: 
+                  - !Ref UnifiCredentialsSecret
       Path: /
       Tags: 
         - Key: "Name"
@@ -287,7 +331,8 @@ Resources:
         {
           "hostname": "${UnifiHost}",
           "username": "${UnifiUsername}",
-          "password": "${UnifiPassword}"
+          "password": "${UnifiPassword}",
+          "apikey": "${UnifiApiKey}"
         }
       Tags:
         - Key: "Name"
@@ -518,6 +563,24 @@ Resources:
         HostedZoneId: !GetAtt ApiGatewayDomainName.RegionalHostedZoneId
         EvaluateTargetHealth: false
 
+  # Route53 A Record for UniFi Domain
+  UnifiDomainNameRecord:
+    Type: AWS::Route53::RecordSet
+    Condition: UseUnifiDomain
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Sub
+        - "${DevPrefix}${DomainName}"
+        - DevPrefix: !If [IsDevEnvironment, "dev-", ""]
+          DomainName: !If
+            - HasHttpsPrefix
+            - !Select [2, !Split ["/", !Ref UnifiHost]]
+            - !Ref UnifiHost
+      Type: A
+      TTL: 300
+      ResourceRecords:
+        - !Ref UnifiHostIp
+
   # Proxy lambda function
   LambdaFunction:
     Type: AWS::Lambda::Function
@@ -685,6 +748,22 @@ Outputs:
     Value: !Ref Certificate
     Export:
       Name: !Sub "${AWS::StackName}-CertificateArn"
+  UnifiCertificateArn:
+    Condition: UseUnifiDomain
+    Description: ARN of the UniFi SSL certificate
+    Value: !Ref UnifiCertificate
+    Export:
+      Name: !Sub "${AWS::StackName}-UnifiCertificateArn"
+  UnifiDomainName:
+    Condition: UseUnifiDomain
+    Description: UniFi domain name
+    Value: !Sub
+      - "${DevPrefix}${DomainName}"
+      - DevPrefix: !If [IsDevEnvironment, "dev-", ""]
+        DomainName: !If
+          - HasHttpsPrefix
+          - !Select [2, !Split ["/", !Ref UnifiHost]]
+          - !Ref UnifiHost
   DNSRecordsCreated:
     Condition: UseCustomDomain
     Description: Confirmation that DNS records have been created

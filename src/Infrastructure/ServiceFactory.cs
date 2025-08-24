@@ -68,7 +68,7 @@ namespace UnifiWebhookEventReceiver.Infrastructure
             var sqsService = new SqsService(sqsClient, alarmProcessingService, emailService, responseHelper, logger);
 
             // Create request router
-            var requestRouter = new RequestRouter(sqsService, s3StorageService, responseHelper, logger);
+            var requestRouter = new RequestRouter(sqsService, s3StorageService, unifiProtectService, responseHelper, logger);
 
             return (
                 RequestRouter: requestRouter,

@@ -23,5 +23,8 @@ namespace UnifiWebhookEventReceiver
 
         /// <summary>Password for Unifi Protect authentication</summary>
         public string password { get; set; } = string.Empty;
+
+        /// <summary>API key for Unifi Protect metadata access</summary>
+        public string apikey { get; set; } = string.Empty;
     }
 }

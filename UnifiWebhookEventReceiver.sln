@@ -5,6 +5,8 @@ VisualStudioVersion = 17.5.002.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "UnifiWebhookEventReceiver", "UnifiWebhookEventReceiver.csproj", "{502C4BAD-0E97-4C67-A9DC-8E0C539616D3}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UnifiWebhookEventReceiverTests", "test\UnifiWebhookEventReceiverTests.csproj", "{3DE755A7-5DD3-4CE4-9748-7070787A17C3}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -15,6 +17,10 @@ Global
 		{502C4BAD-0E97-4C67-A9DC-8E0C539616D3}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{502C4BAD-0E97-4C67-A9DC-8E0C539616D3}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{502C4BAD-0E97-4C67-A9DC-8E0C539616D3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3DE755A7-5DD3-4CE4-9748-7070787A17C3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3DE755A7-5DD3-4CE4-9748-7070787A17C3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3DE755A7-5DD3-4CE4-9748-7070787A17C3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3DE755A7-5DD3-4CE4-9748-7070787A17C3}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -27,7 +27,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
     /// </summary>
     public class S3StorageService : IS3StorageService
     {
-        private readonly AmazonS3Client _s3Client;
+    private readonly IAmazonS3 _s3Client;
         private readonly IResponseHelper _responseHelper;
         private readonly ILambdaLogger _logger;
 
@@ -37,7 +37,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// <param name="s3Client">AWS S3 client</param>
         /// <param name="responseHelper">Response helper service</param>
         /// <param name="logger">Lambda logger instance</param>
-        public S3StorageService(AmazonS3Client s3Client, IResponseHelper responseHelper, ILambdaLogger logger)
+    public S3StorageService(IAmazonS3 s3Client, IResponseHelper responseHelper, ILambdaLogger logger)
         {
             _s3Client = s3Client ?? throw new ArgumentNullException(nameof(s3Client));
             _responseHelper = responseHelper ?? throw new ArgumentNullException(nameof(responseHelper));
@@ -98,6 +98,20 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             
             _logger.LogLine("About to upload video data to S3...");
             await UploadBinaryContentAsync(AppConfiguration.AlarmBucketName, s3Key, videoData, "video/mp4");
+        }
+
+        /// <summary>
+        /// Stores a raw JSON string in S3 at the specified key.
+        /// </summary>
+        /// <param name="json">The JSON string to store</param>
+        /// <param name="s3Key">The S3 key where the JSON will be stored</param>
+        /// <returns>Task representing the upload operation</returns>
+        [ExcludeFromCodeCoverage] // Requires AWS S3 connectivity
+        public async Task StoreJsonStringAsync(string json, string s3Key)
+        {
+            if (string.IsNullOrEmpty(AppConfiguration.AlarmBucketName))
+                throw new InvalidOperationException("StorageBucket environment variable is not configured");
+            await UploadStringContentAsync(AppConfiguration.AlarmBucketName, s3Key, json, "application/json");
         }
 
         /// <summary>

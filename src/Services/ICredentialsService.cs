@@ -21,5 +21,12 @@ namespace UnifiWebhookEventReceiver.Services
         /// </summary>
         /// <returns>UnifiCredentials object containing hostname, username, and password</returns>
         Task<UnifiCredentials> GetUnifiCredentialsAsync();
+
+        /// <summary>
+        /// Retrieves a specific secret value from AWS Secrets Manager.
+        /// </summary>
+        /// <param name="secretName">The name/ARN of the secret to retrieve</param>
+        /// <returns>The secret value as a string</returns>
+        Task<string> GetSecretValueAsync(string secretName);
     }
 }
