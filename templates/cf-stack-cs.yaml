@@ -470,7 +470,7 @@ Resources:
     Condition: UseCustomDomain
     Properties:
       DomainName: !Ref DomainName
-      CertificateArn: !Ref Certificate
+      RegionalCertificateArn: !Ref Certificate
       EndpointConfiguration:
         Types:
           - REGIONAL
