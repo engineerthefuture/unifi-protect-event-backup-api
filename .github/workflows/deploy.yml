@@ -535,6 +535,7 @@ jobs:
               FunctionName="${{ steps.env.outputs.LAMBDA_NAME }}" \
               RoleName="${{ steps.env.outputs.LAMBDA_NAME }}-role" \
               UnifiHost="${{ secrets.UNIFI_HOST }}" \
+              UnifiHostIp="${{ secrets.UNIFI_HOST_IP }}" \
               UnifiUsername="${{ secrets.UNIFI_USERNAME }}" \
               UnifiPassword="${{ secrets.UNIFI_PASSWORD }}" \
               UnifiApiKey="${{ secrets.UNIFI_API_KEY }}" \

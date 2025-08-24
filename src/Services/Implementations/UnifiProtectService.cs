@@ -151,15 +151,53 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             if (string.IsNullOrEmpty(credentials.apikey))
                 throw new InvalidOperationException("Unifi API key is not configured in the credentials secret");
 
-            var url = $"{credentials.hostname.TrimEnd('/')}/proxy/protect/api/cameras";
+            // Determine the hostname to use - prefer the domain name for better SSL support
+            var hostname = credentials.hostname.TrimEnd('/');
+            var useDomainName = Environment.GetEnvironmentVariable("USE_UNIFI_DOMAIN")?.ToLower() == "true";
+            
+            if (useDomainName)
+            {
+                // Replace IP with domain name for better certificate validation
+                // Extract the hostname part (removing https:// if present)
+                var domainName = hostname;
+                if (domainName.StartsWith("https://"))
+                    domainName = domainName.Substring(8); // Remove "https://"
+                else if (domainName.StartsWith("http://"))
+                    domainName = domainName.Substring(7); // Remove "http://"
+                    
+                // Prepend "dev-" if we're in a dev environment
+                var deployedEnv = Environment.GetEnvironmentVariable("DeployedEnv")?.ToLower();
+                if (deployedEnv == "dev")
+                {
+                    domainName = $"dev-{domainName}";
+                    _logger.LogLine($"Prepending 'dev-' for dev environment: {domainName}");
+                }
+                    
+                // Use the domain name directly from the hostname
+                hostname = $"https://{domainName}";
+                _logger.LogLine($"Using UniFi domain name: {hostname}");
+            }
+
+            var url = $"{hostname}/proxy/protect/api/cameras";
             _logger.LogLine($"Requesting camera metadata from: {url}");
 
             // Create HttpClientHandler for SSL
             using var handler = new HttpClientHandler();
-            // Bypass SSL certificate validation for UniFi Protect systems
-            // Many UniFi Protect installations use self-signed certificates or have hostname mismatches
-            // This is a common requirement for UniFi Protect API integration
-            handler.ServerCertificateCustomValidationCallback = (sender, certificate, chain, sslPolicyErrors) => true;
+            
+            // Only bypass SSL certificate validation when not using the domain name
+            // If using udm.brentfoster.me with a proper certificate, we can validate normally
+            if (!useDomainName)
+            {
+                // Bypass SSL certificate validation for UniFi Protect systems with IP addresses
+                // Many UniFi Protect installations use self-signed certificates or have hostname mismatches
+                // This is a common requirement for UniFi Protect API integration
+                handler.ServerCertificateCustomValidationCallback = (sender, certificate, chain, sslPolicyErrors) => true;
+                _logger.LogLine("SSL certificate validation bypassed for IP address connection");
+            }
+            else
+            {
+                _logger.LogLine("Using standard SSL certificate validation for domain name connection");
+            }
             
             using var httpClient = new HttpClient(handler);
             
