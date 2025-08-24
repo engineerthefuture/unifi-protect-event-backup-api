@@ -41,7 +41,7 @@ namespace UnifiWebhookEventReceiverTests
         {
             // Act & Assert
             Assert.Throws<ArgumentNullException>(() => 
-                new S3StorageService(null, _mockResponseHelper.Object, _mockLogger.Object));
+                new S3StorageService(null!, _mockResponseHelper.Object, _mockLogger.Object));
         }
 
         [Fact]
@@ -50,7 +50,7 @@ namespace UnifiWebhookEventReceiverTests
             var mockS3Client = new Mock<AmazonS3Client>(Amazon.RegionEndpoint.USEast1);
             // Act & Assert
             Assert.Throws<ArgumentNullException>(() => 
-                new S3StorageService(mockS3Client.Object, null, _mockLogger.Object));
+                new S3StorageService(mockS3Client.Object, null!, _mockLogger.Object));
         }
 
         [Fact]
@@ -59,7 +59,7 @@ namespace UnifiWebhookEventReceiverTests
             var mockS3Client = new Mock<AmazonS3Client>(Amazon.RegionEndpoint.USEast1);
             // Act & Assert
             Assert.Throws<ArgumentNullException>(() => 
-                new S3StorageService(mockS3Client.Object, _mockResponseHelper.Object, null));
+                new S3StorageService(mockS3Client.Object, _mockResponseHelper.Object, null!));
         }
 
         [Fact]
@@ -114,7 +114,7 @@ namespace UnifiWebhookEventReceiverTests
 
             // Act & Assert
             await Assert.ThrowsAsync<ArgumentNullException>(() => 
-                _s3StorageService.StoreAlarmEventAsync(null, trigger));
+                _s3StorageService.StoreAlarmEventAsync(null!, trigger));
         }
 
         [Fact]

@@ -141,6 +141,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// </summary>
         /// <returns>The JSON metadata that was fetched and stored</returns>
         [SuppressMessage("Security", "CA5359:Do Not Disable Certificate Validation", Justification = "UniFi Protect commonly uses self-signed certificates")]
+        [SuppressMessage("Security", "S4830:Enable server certificate validation on this SSL/TLS connection", Justification = "UniFi Protect commonly uses self-signed certificates")]
         public async Task<string> FetchAndStoreCameraMetadataAsync()
         {
             _logger.LogLine("Fetching Unifi credentials from Secrets Manager...");
@@ -151,6 +152,25 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             if (string.IsNullOrEmpty(credentials.apikey))
                 throw new InvalidOperationException("Unifi API key is not configured in the credentials secret");
 
+            var url = BuildApiUrl(credentials);
+            var json = await FetchMetadataFromApi(url, credentials);
+            
+            // Store in S3: metadata/cameras.json
+            var s3Key = "metadata/cameras.json";
+            await _s3StorageService.StoreJsonStringAsync(json, s3Key);
+            _logger.LogLine($"Camera metadata stored in S3 at {s3Key}");
+            _logger.LogLine($"=== API Call Completed Successfully ===");
+            
+            return json;
+        }
+
+        /// <summary>
+        /// Builds the API URL for camera metadata requests.
+        /// </summary>
+        /// <param name="credentials">UniFi credentials containing hostname</param>
+        /// <returns>Complete API URL for camera metadata</returns>
+        private string BuildApiUrl(UnifiCredentials credentials)
+        {
             // Extract the hostname part (removing https:// or http:// if present)
             var domainName = credentials.hostname.TrimEnd('/');
             if (domainName.StartsWith("https://"))
@@ -173,6 +193,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             // Get the API metadata path from environment variable, with fallback to default
             var apiMetadataPath = Environment.GetEnvironmentVariable("UnifiApiMetadataPath") ?? "/proxy/protect/api/cameras";
             var url = $"{hostname}/{apiMetadataPath}";
+            
             _logger.LogLine($"=== UniFi Protect API Call Details ===");
             _logger.LogLine($"Target URL: {url}");
             _logger.LogLine($"API metadata path: {apiMetadataPath}");
@@ -180,7 +201,19 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             _logger.LogLine($"Final domain name: {domainName}");
             _logger.LogLine($"Deployed environment: {Environment.GetEnvironmentVariable("DeployedEnv")}");
 
-            // Create HttpClientHandler for SSL
+            return url;
+        }
+
+        /// <summary>
+        /// Fetches metadata from the UniFi Protect API.
+        /// </summary>
+        /// <param name="url">API URL to call</param>
+        /// <param name="credentials">UniFi credentials for authentication</param>
+        /// <returns>JSON response from the API</returns>
+        [SuppressMessage("Security", "S4830:Enable server certificate validation on this SSL/TLS connection", Justification = "UniFi Protect commonly uses self-signed certificates")]
+        [SuppressMessage("Maintainability", "S1541:The Cyclomatic Complexity of this method is 13 which is greater than 10 authorized", Justification = "Complexity is due to necessary exception handling for different API error scenarios")]
+        private async Task<string> FetchMetadataFromApi(string url, UnifiCredentials credentials)
+        {
             using var handler = new HttpClientHandler();
             
             // Always bypass SSL certificate validation for UniFi Protect systems
@@ -250,12 +283,6 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 var jsonSample = json.Length > 200 ? string.Concat(json.AsSpan(0, 200), "...") : json;
                 _logger.LogLine($"JSON sample: {jsonSample}");
 
-                // Store in S3: metadata/cameras.json
-                var s3Key = "metadata/cameras.json";
-                await _s3StorageService.StoreJsonStringAsync(json, s3Key);
-                _logger.LogLine($"Camera metadata stored in S3 at {s3Key}");
-                _logger.LogLine($"=== API Call Completed Successfully ===");
-                
                 return json;
             }
             catch (HttpRequestException httpEx)
