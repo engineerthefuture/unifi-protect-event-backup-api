@@ -723,6 +723,12 @@ Outputs:
       - https://${ApiId}.execute-api.${AWS::Region}.amazonaws.com/${EnvPrefix}/?eventKey={key}
       - ApiId: !Ref ApiGateway
         StageName: !Ref ApiGatewayStage
+  GETMetadataEndpoint:
+    Description: GET endpoint for fetching and storing camera metadata from Unifi Protect
+    Value: !Sub
+      - https://${ApiId}.execute-api.${AWS::Region}.amazonaws.com/${EnvPrefix}/metadata
+      - ApiId: !Ref ApiGateway
+        StageName: !Ref ApiGatewayStage
   CustomDomainName:
     Condition: UseCustomDomain
     Description: Custom domain name for the API
@@ -739,6 +745,10 @@ Outputs:
     Condition: UseCustomDomain
     Description: GET endpoint for retrieving stored alarm event data by eventKey (Custom Domain)
     Value: !Sub "${DomainName}/${EnvPrefix}/?eventKey={key}"
+  CustomGETMetadataEndpoint:
+    Condition: UseCustomDomain
+    Description: GET endpoint for fetching and storing camera metadata from Unifi Protect (Custom Domain)
+    Value: !Sub "${DomainName}/${EnvPrefix}/metadata"
   DomainNameTarget:
     Condition: UseCustomDomain
     Description: Target domain name for DNS CNAME record

@@ -301,9 +301,13 @@ graph TB
     %% GET endpoints
     API -->|GET /?eventKey=xxx| HANDLER
     API -->|GET /latestvideo| HANDLER
+    API -->|GET /metadata| HANDLER
     HANDLER -->|Retrieve Event| S3
     HANDLER -->|Download Latest Video| S3
+    HANDLER -->|Fetch Camera Metadata| UDM
+    HANDLER -->|Store Metadata| S3
     S3 -->|JSON/Video Response| API
+    UDM -->|Camera Metadata| HANDLER
     
     %% Environment separation
     DEV_DEPLOY -.->|bf-dev-*| S3
@@ -494,6 +498,16 @@ Provides presigned URL for downloading the most recent video file from all store
 - **Optimization**: Efficiently searches from today's date folder backwards, day by day
 - **Payload Limit Solution**: Uses presigned URLs to handle large video files (>6MB) that exceed API Gateway limits
 
+#### 4. 📊 Camera Metadata - `GET /{stage}/metadata`
+Fetches and stores current camera metadata from the Unifi Protect API
+- **Purpose**: Retrieve camera configuration, names, and technical specifications from your Unifi Protect system
+- **Authentication**: API Key required
+- **Parameters**: None required
+- **Response**: Complete camera metadata JSON with device information, names, MAC addresses, and configuration details
+- **Storage**: Automatically stores fetched metadata as `metadata/cameras.json` in S3 for future reference
+- **API Path**: Configurable via `UNIFI_API_METADATA_PATH` repository secret (defaults to `/proxy/protect/api/cameras`)
+- **Use Cases**: Camera discovery, device mapping, configuration validation, system inventory
+
 ### 📖 OpenAPI 3.0 Specification
 
 **Complete API Documentation**: [openapi.yaml](openapi.yaml)
@@ -646,6 +660,50 @@ Returns a presigned URL for downloading the most recent video file from all stor
 }
 ```
 
+#### 📊 GET /metadata
+Fetches current camera metadata from your Unifi Protect system and stores it in S3.
+
+**Parameters**: None required
+
+**Response**: JSON object containing:
+- `message`: Success confirmation message
+- `metadata`: Complete camera metadata object with device information
+
+**What it does**:
+1. Connects to your Unifi Protect API using stored credentials
+2. Fetches complete camera metadata including device names, MAC addresses, and configuration
+3. Stores the metadata as `metadata/cameras.json` in your S3 bucket for future reference
+4. Returns the fetched metadata in the API response
+
+**Configuration**: The API endpoint path is configurable via the `UNIFI_API_METADATA_PATH` repository secret, which defaults to `/proxy/protect/api/cameras` if not specified.
+
+**Example Response**:
+```json
+{
+  "message": "Camera metadata fetched and stored successfully.",
+  "metadata": {
+    "cameras": [
+      {
+        "id": "67b389ab005ec703e40075a5",
+        "name": "Front Door Camera",
+        "mac": "28:70:4E:11:3F:64",
+        "type": "UVC-G4-Doorbell",
+        "state": "CONNECTED",
+        "isRecording": true,
+        "channels": [
+          {
+            "id": 0,
+            "width": 1600,
+            "height": 1200,
+            "fps": 15
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
 #### ⚙️ OPTIONS /alarmevent
 Handles CORS preflight requests for web client support.
 
@@ -732,6 +790,7 @@ Configure these secrets in your GitHub repository settings (Settings → Secrets
 |--------|-------------|--------------|
 | `UNIFI_USERNAME` | Unifi Protect username | Video download functionality |
 | `UNIFI_PASSWORD` | Unifi Protect password | Video download functionality |
+| `UNIFI_API_METADATA_PATH` | Custom API path for camera metadata | Metadata endpoint customization (optional, defaults to `/proxy/protect/api/cameras`) |
 | `APP_DESCRIPTION` | Application description | `Unifi webhook alarm event processing and backup API` |
 
 #### 🔑 OIDC IAM Role Setup
@@ -865,6 +924,7 @@ The CloudFormation template automatically configures these Lambda environment va
 | `UnifiHost` | CloudFormation parameter | Unifi Protect hostname/IP |
 | `UnifiUsername` | CloudFormation parameter | Unifi Protect username |
 | `UnifiPassword` | CloudFormation parameter | Unifi Protect password |
+| `UnifiApiMetadataPath` | CloudFormation parameter | Custom API path for camera metadata (default: `/proxy/protect/api/cameras`) |
 | `DownloadDirectory` | CloudFormation parameter | Download directory (default: `/tmp`) |
 | `ArchiveButtonX` | CloudFormation parameter | X coordinate for archive button (default: 1274) |
 | `ArchiveButtonY` | CloudFormation parameter | Y coordinate for archive button (default: 257) |
@@ -983,6 +1043,7 @@ If deploying manually, configure these environment variables in your Lambda func
 | `UnifiHost` | Unifi Protect hostname or IP address | `192.168.1.1` |
 | `UnifiUsername` | Unifi Protect username | `admin` |
 | `UnifiPassword` | Unifi Protect password | `password123` |
+| `UnifiApiMetadataPath` | API path for camera metadata | `/proxy/protect/api/cameras` |
 | `DownloadDirectory` | Download directory path | `/tmp` |
 | `ArchiveButtonX` | X coordinate for archive button click | `1274` |
 | `ArchiveButtonY` | Y coordinate for archive button click | `257` |
