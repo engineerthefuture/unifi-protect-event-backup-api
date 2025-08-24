@@ -110,10 +110,11 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 path = path.Substring(path.IndexOf('/') + 1);
             }
 
+            // For paths like "dev/latestvideo", extract the endpoint after the environment prefix
             var route = path;
             if (path.Contains('/'))
             {
-                route = path.Substring(0, path.LastIndexOf('/'));
+                route = path.Substring(path.LastIndexOf('/') + 1);
             }
 
             return (request.HttpMethod!.ToUpper(), path, route);

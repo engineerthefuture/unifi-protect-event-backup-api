@@ -245,6 +245,8 @@ namespace UnifiWebhookEventReceiverTests
                 .ReturnsAsync(CreateValidCredentials());
             _mockS3StorageService.Setup(x => x.GenerateS3Keys(It.IsAny<Trigger>(), It.IsAny<long>()))
                 .Returns(("test-event-key", "test-video-key"));
+            _mockS3StorageService.Setup(x => x.StoreAlarmEventAsync(It.IsAny<Alarm>(), It.IsAny<Trigger>()))
+                .ReturnsAsync("test-alarm-key");
             
             var expectedResponse = new APIGatewayProxyResponse { StatusCode = 500 };
             _mockResponseHelper.Setup(x => x.CreateErrorResponse(HttpStatusCode.InternalServerError, "Server configuration error: StorageBucket not configured"))
@@ -274,6 +276,8 @@ namespace UnifiWebhookEventReceiverTests
             
             _mockCredentialsService.Setup(x => x.GetUnifiCredentialsAsync())
                 .ReturnsAsync(CreateValidCredentials());
+            _mockS3StorageService.Setup(x => x.GenerateS3Keys(It.IsAny<Trigger>(), It.IsAny<long>()))
+                .Returns(("test-event-key", "test-video-key"));
             _mockS3StorageService.Setup(x => x.StoreAlarmEventAsync(It.IsAny<Alarm>(), It.IsAny<Trigger>()))
                 .ReturnsAsync("test-event-key");
             _mockUnifiProtectService.Setup(x => x.DownloadVideoAsync(It.IsAny<Trigger>(), It.IsAny<string>(), It.IsAny<long>()))
