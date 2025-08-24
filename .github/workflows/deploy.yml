@@ -539,6 +539,7 @@ jobs:
               UnifiUsername="${{ secrets.UNIFI_USERNAME }}" \
               UnifiPassword="${{ secrets.UNIFI_PASSWORD }}" \
               UnifiApiKey="${{ secrets.UNIFI_API_KEY }}" \
+              UnifiApiMetadataPath="${{ secrets.UNIFI_API_METADATA_PATH }}" \
               DomainName="${{ steps.env.outputs.DOMAIN_NAME }}" \
               HostedZoneId="${{ steps.env.outputs.HOSTED_ZONE_ID }}" \
               BuildSha="${{ github.sha }}" \

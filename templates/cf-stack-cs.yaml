@@ -75,6 +75,10 @@ Parameters:
     Type: String
     Description: Unifi Protect API key for metadata access
     NoEcho: true
+  UnifiApiMetadataPath:
+    Type: String
+    Description: Unifi Protect API metadata endpoint path
+    NoEcho: true
   DownloadDirectory:
     Type: String
     Description: Directory path for temporary video downloads (defaults to /tmp for Lambda compatibility)
@@ -609,6 +613,7 @@ Resources:
           DeviceMac28704E113F33: "Backyard West"
           DeviceMacF4E2C677E20F: "Door"
           UnifiCredentialsSecretArn: !Ref UnifiCredentialsSecret
+          UnifiApiMetadataPath: !Ref UnifiApiMetadataPath
           DownloadDirectory: !Ref DownloadDirectory
           ArchiveButtonX: !Ref ArchiveButtonX
           ArchiveButtonY: !Ref ArchiveButtonY
