@@ -217,8 +217,19 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// <returns>Enhanced trigger object with device name and date information</returns>
         private Trigger ExtractAndEnhanceTriggerDetails(Alarm alarm)
         {
+            // Validate alarm and triggers
+            if (alarm?.triggers == null || alarm.triggers.Count == 0)
+            {
+                throw new ArgumentException("Alarm must contain at least one trigger");
+            }
+
             Trigger trigger = alarm.triggers[0];
-            string device = trigger.device;
+            if (trigger == null)
+            {
+                throw new ArgumentException("First trigger cannot be null");
+            }
+
+            string device = trigger.device ?? string.Empty;
             long timestamp = alarm.timestamp;
 
             // Set date from timestamp

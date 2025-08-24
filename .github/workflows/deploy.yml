@@ -492,6 +492,8 @@ jobs:
             echo "BUCKET_STORAGE=bf-prod-s3-unifi-protect-event-backup-api" >> $GITHUB_OUTPUT
             echo "LAMBDA_NAME=bf-prod-lambda-unifi-protect-event-backup-api" >> $GITHUB_OUTPUT
             echo "S3_KEY_PREFIX=bf-prod-lambda-unifi-protect-event-backup-api" >> $GITHUB_OUTPUT
+            echo "DOMAIN_NAME=${{ vars.PROD_DOMAIN_NAME }}" >> $GITHUB_OUTPUT
+            echo "HOSTED_ZONE_ID=${{ vars.HOSTED_ZONE_ID }}" >> $GITHUB_OUTPUT
           else
             echo "ENV_PREFIX=dev" >> $GITHUB_OUTPUT
             echo "STACK_NAME=bf-dev-unifi-protect-event-backup-api" >> $GITHUB_OUTPUT
@@ -499,9 +501,12 @@ jobs:
             echo "BUCKET_STORAGE=bf-dev-s3-unifi-protect-event-backup-api" >> $GITHUB_OUTPUT
             echo "LAMBDA_NAME=bf-dev-lambda-unifi-protect-event-backup-api" >> $GITHUB_OUTPUT
             echo "S3_KEY_PREFIX=bf-dev-lambda-unifi-protect-event-backup-api" >> $GITHUB_OUTPUT
+            echo "DOMAIN_NAME=${{ vars.DEV_DOMAIN_NAME }}" >> $GITHUB_OUTPUT
+            echo "HOSTED_ZONE_ID=${{ vars.HOSTED_ZONE_ID }}" >> $GITHUB_OUTPUT
           fi
           echo "Deploying to environment: $ENV_PREFIX"
           echo "Stack name: $STACK_NAME"
+          echo "Domain name: $DOMAIN_NAME"
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4

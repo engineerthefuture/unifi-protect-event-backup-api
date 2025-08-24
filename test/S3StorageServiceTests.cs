@@ -8,6 +8,8 @@ using Amazon.Lambda.Core;
 using Amazon.S3;
 using Amazon.S3.Model;
 using Moq;
+
+#nullable enable
 using UnifiWebhookEventReceiver;
 using UnifiWebhookEventReceiver.Services;
 using UnifiWebhookEventReceiver.Services.Implementations;
@@ -179,7 +181,10 @@ namespace UnifiWebhookEventReceiverTests
             finally
             {
                 // Restore original environment variable value
-                Environment.SetEnvironmentVariable("StorageBucket", originalStorageBucket);
+                if (originalStorageBucket != null)
+                    Environment.SetEnvironmentVariable("StorageBucket", originalStorageBucket);
+                else
+                    Environment.SetEnvironmentVariable("StorageBucket", null);
             }
         }
 
@@ -476,7 +481,10 @@ namespace UnifiWebhookEventReceiverTests
             }
             finally
             {
-                Environment.SetEnvironmentVariable("StorageBucket", originalBucket);
+                if (originalBucket != null)
+                    Environment.SetEnvironmentVariable("StorageBucket", originalBucket);
+                else
+                    Environment.SetEnvironmentVariable("StorageBucket", null!);
                 if (File.Exists(testPath))
                     File.Delete(testPath);
             }

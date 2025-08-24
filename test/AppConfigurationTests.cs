@@ -64,21 +64,30 @@ namespace UnifiWebhookEventReceiverTests
         public void AlarmBucketName_WithEnvironmentVariable_ReturnsValue()
         {
             // Arrange
+            var originalValue = Environment.GetEnvironmentVariable("StorageBucket");
             Environment.SetEnvironmentVariable("StorageBucket", "test-bucket");
 
-            // Act
-            var result = AppConfiguration.AlarmBucketName;
+            try
+            {
+                // Act
+                var result = AppConfiguration.AlarmBucketName;
 
-            // Assert
-            Assert.Equal("test-bucket", result);
+                // Assert
+                Assert.Equal("test-bucket", result);
+            }
+            finally
+            {
+                // Cleanup
+                Environment.SetEnvironmentVariable("StorageBucket", originalValue);
+            }
         }
 
         [Fact]
         public void AlarmBucketName_WithoutEnvironmentVariable_ReturnsNull()
         {
             // Arrange - Ensure no environment variable is set
-            var originalValue = Environment.GetEnvironmentVariable("AlarmBucketName");
-            Environment.SetEnvironmentVariable("AlarmBucketName", null);
+            var originalValue = Environment.GetEnvironmentVariable("StorageBucket");
+            Environment.SetEnvironmentVariable("StorageBucket", null);
 
             try
             {
@@ -91,7 +100,7 @@ namespace UnifiWebhookEventReceiverTests
             finally
             {
                 // Cleanup
-                Environment.SetEnvironmentVariable("AlarmBucketName", originalValue);
+                Environment.SetEnvironmentVariable("StorageBucket", originalValue);
             }
         }
 
