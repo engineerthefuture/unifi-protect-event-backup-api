@@ -66,20 +66,20 @@ The API Gateway can be configured with a custom domain name with automatic SSL c
 
 ### Prerequisites
 
-1. **Domain Name**: You must own the domain (e.g., `brentfoster.me`)
+1. **Domain Name**: You must own the domain (e.g., `example.com`)
 2. **Route53 Hosted Zone**: Your domain must be managed by Route53
 
 ### Configuration
 
 **Required Parameters:**
-- `DomainName`: Your desired subdomain (e.g., `api.brentfoster.me`)
+- `DomainName`: Your desired subdomain (e.g., `api.example.com`)
 - `HostedZoneId`: Your Route53 Hosted Zone ID
 
 **Example Configuration:**
 ```json
 {
   "ParameterKey": "DomainName",
-  "ParameterValue": "api.brentfoster.me"
+   "ParameterValue": "api.example.com"
 },
 {
   "ParameterKey": "HostedZoneId", 
@@ -93,14 +93,14 @@ For automated deployments, set these repository variables:
 
 **Repository Variables** (Settings > Secrets and variables > Actions > Variables):
 - `HOSTED_ZONE_ID`: Your Route53 Hosted Zone ID (e.g., `Z1D633PJN98FT9`)
-- `PROD_DOMAIN_NAME`: Production domain (e.g., `api.brentfoster.me`)
-- `DEV_DOMAIN_NAME`: Development domain (e.g., `api-dev.brentfoster.me`)
+- `PROD_DOMAIN_NAME`: Production domain (e.g., `api.example.com`)
+- `DEV_DOMAIN_NAME`: Development domain (e.g., `api-dev.example.com`)
 
 ### Setup Steps
 
 1. **Find Your Hosted Zone ID**:
    ```bash
-   aws route53 list-hosted-zones --query "HostedZones[?Name=='brentfoster.me.'].Id" --output text
+   aws route53 list-hosted-zones --query "HostedZones[?Name=='example.com.'].Id" --output text
    ```
 
 2. **Set Repository Variables**:
@@ -125,13 +125,13 @@ The CloudFormation template automatically creates:
 
 **Production Environment** (`main` branch):
 - Uses `${{ vars.PROD_DOMAIN_NAME }}`
-- Example: `api.brentfoster.me`
-- Endpoints: `https://api.brentfoster.me/prod/*`
+- Example: `api.example.com`
+- Endpoints: `https://api.example.com/prod/*`
 
 **Development Environment** (other branches):
 - Uses `${{ vars.DEV_DOMAIN_NAME }}`
-- Example: `api-dev.brentfoster.me`
-- Endpoints: `https://api-dev.brentfoster.me/dev/*`
+- Example: `api-dev.example.com`
+- Endpoints: `https://api-dev.example.com/dev/*`
 
 ### Manual Deployment Example
 
@@ -140,7 +140,7 @@ aws cloudformation deploy \
   --template-file templates/cf-stack-cs.yaml \
   --stack-name my-api-stack \
   --parameter-overrides \
-    DomainName=api.brentfoster.me \
+   DomainName=api.example.com \
     HostedZoneId=Z1D633PJN98FT9 \
     # ... other parameters
 ```
@@ -162,5 +162,5 @@ aws cloudformation deploy \
 - DNS changes may take 5-60 minutes to propagate globally
 - Use `dig` or `nslookup` to verify DNS resolution:
   ```bash
-  dig api.brentfoster.me
+   dig api.example.com
   ```

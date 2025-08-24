@@ -5,20 +5,10 @@ A step-by-step guide to deploy and configure the Unifi Protect Event Backup API 
 ## Prerequisites
 
 ### Required Components
-- **AWS Account** with administrative permissions
-- **Unifi Dream Machine Pro/SE** with Protect installed
-- **GitHub Account** for automated deployment (recommended)
-- **Basic AWS CLI Knowledge** for configuration verification
 
 ### Local Development Tools (Optional)
-- **.NET 8.0 SDK** for local testing
-- **AWS CLI** configured with your account credentials
-- **Git** for cloning the repository
 
 ### Important Notes
-- **Video Download Feature**: Requires Unifi Protect credentials for browser automation
-- **AWS Costs**: Estimated $5-15/month depending on usage (S3 storage, Lambda executions, API Gateway calls)
-- **Security**: This setup stores your Unifi credentials securely in AWS Secrets Manager
 
 ## Step 1: Setup GitHub Organization and Repository
 
@@ -115,8 +105,6 @@ Create a file `github-actions-trust-policy.json`:
 ```
 
 **Replace placeholders**:
-- `YOUR_ACCOUNT_ID` with your AWS Account ID
-- `YOUR_ORGANIZATION` with your GitHub organization name (from Step 1.1)
 
 Create the IAM role:
 
@@ -267,11 +255,6 @@ Configure the webhook with these settings:
 ### 5.3 Select Event Types
 
 Choose which events to send:
-- ✅ **Motion Detection**
-- ✅ **Person Detection** 
-- ✅ **Vehicle Detection**
-- ✅ **Package Detection**
-- ✅ **Doorbell Ring** (if applicable)
 
 ### 5.4 Test Webhook
 
@@ -356,25 +339,12 @@ git push origin main
 ### Common Issues
 
 #### 1. GitHub Actions Deployment Fails
-- ✅ Verify AWS Account ID in repository variables
-- ✅ Check OIDC role trust policy has correct repository path
-- ✅ Ensure all required IAM policies are attached
 
 #### 2. Webhook Test Fails
-- ✅ Verify API Gateway endpoint URL is correct
-- ✅ Check API key is valid and properly formatted
-- ✅ Ensure webhook uses `POST` method with `X-API-Key` header
 
 #### 3. No Videos Downloaded
-- ✅ Check Unifi credentials in repository secrets
-- ✅ Verify Lambda function has internet access
-- ✅ Check CloudWatch logs for browser automation errors
-- ✅ Ensure 2-minute delay allows video to be available
 
 #### 4. S3 Access Denied
-- ✅ Verify S3 bucket exists and Lambda has permissions
-- ✅ Check Lambda execution role has S3 read/write permissions
-- ✅ Ensure bucket name matches environment variable
 
 ### Debug Commands
 
@@ -399,27 +369,14 @@ aws s3api get-bucket-policy \
 
 ### Getting Help
 
-- **CloudWatch Logs**: Most issues can be diagnosed from Lambda execution logs
-- **AWS Documentation**: [Lambda](https://docs.aws.amazon.com/lambda/), [API Gateway](https://docs.aws.amazon.com/apigateway/), [S3](https://docs.aws.amazon.com/s3/)
-- **GitHub Issues**: Create issues in the repository for bugs or questions
-- **AWS Support**: Use AWS Support for account-specific issues
 
 ## Next Steps
 
 ### Security Hardening
-- **VPC Configuration**: Deploy Lambda in private VPC for enhanced security
-- **KMS Keys**: Use customer-managed KMS keys for encryption
-- **WAF**: Add AWS WAF to API Gateway for additional protection
 
 ### Monitoring & Alerting
-- **CloudWatch Alarms**: Set up alerts for failed executions
-- **SNS Notifications**: Get notified of deployment issues
-- **Cost Monitoring**: Set up billing alerts for unexpected charges
 
 ### Advanced Features
-- **Multi-Region**: Deploy to multiple AWS regions for redundancy
-- **Video Retention**: Implement S3 lifecycle policies for cost optimization
-- **Custom Processing**: Extend Lambda function for additional event processing
 
 ## Cost Estimation
 
@@ -438,6 +395,5 @@ aws s3api get-bucket-policy \
 
 > **Note**: Costs may vary based on region, usage patterns, and video file sizes. Enable AWS Cost Explorer for detailed monitoring.
 
----
 
 **Congratulations!** 🎉 Your Unifi Protect Event Backup API is now deployed and configured. Your alarm events and videos will be automatically backed up to AWS S3 with secure, scalable, and reliable infrastructure.

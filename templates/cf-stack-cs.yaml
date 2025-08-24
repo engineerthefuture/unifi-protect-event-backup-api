@@ -16,17 +16,6 @@ Metadata:
       - Key: SupportEmail
         Value: !Ref SupportEmail
 
-Tags:
-  - Key: Owner
-    Value: !Ref OwnerName
-  - Key: Description
-    Value: !Ref AppDescription
-  - Key: Environment
-    Value: !Ref EnvPrefix
-  - Key: AppName
-    Value: !Ref AppName
-  - Key: SupportEmail
-    Value: !Ref SupportEmail
     
 # Parameters
 Parameters:
