@@ -381,7 +381,8 @@ src/
 
 ### Migration Path
 
-The original `UnifiWebhookEventReceiver.cs` class remains in the codebase for backward compatibility but should be considered deprecated. The new `UnifiWebhookEventHandler.cs` provides the same functionality through the decomposed service architecture. Update your Lambda function handler configuration to use:
+
+The main Lambda handler is implemented in `UnifiWebhookEventHandler.cs`. Update your Lambda function handler configuration to use:
 
 ```
 UnifiWebhookEventReceiver.UnifiWebhookEventHandler::FunctionHandler
@@ -1256,7 +1257,7 @@ my-unifi-events-bucket/
 
 ```
 ├── src/
-│   ├── UnifiWebhookEventReceiver.cs    # Main Lambda handler
+│   ├── UnifiWebhookEventHandler.cs     # Main Lambda handler
 │   └── Alarm.cs                        # Data models
 ├── test/
 │   ├── UnifiWebhookEventReceiverTests.cs   # Unit tests
