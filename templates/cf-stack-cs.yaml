@@ -168,8 +168,7 @@ Resources:
                 - !Select [2, !Split ["/", !Ref UnifiHost]]
                 - !Ref UnifiHost
           HostedZoneId: !Ref HostedZoneId
-      Options:
-        Export: ENABLED
+      CertificateExport: ENABLED
       Tags:
         - Key: "Name"
           Value: !Sub "${FunctionName}-unifi-cert"
