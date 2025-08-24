@@ -22,9 +22,11 @@ using UnifiWebhookEventReceiver.Services;
 using UnifiWebhookEventReceiver.Services.Implementations;
 using Xunit;
 
+#nullable enable
+
 namespace UnifiWebhookEventReceiverTests
 {
-    public class AlarmProcessingServiceTests
+    public class AlarmProcessingServiceTests : IDisposable
     {
         private readonly Mock<IS3StorageService> _mockS3StorageService;
         private readonly Mock<IUnifiProtectService> _mockUnifiProtectService;
@@ -32,9 +34,15 @@ namespace UnifiWebhookEventReceiverTests
         private readonly Mock<IResponseHelper> _mockResponseHelper;
         private readonly Mock<ILambdaLogger> _mockLogger;
         private readonly AlarmProcessingService _alarmProcessingService;
+        private readonly string? _originalStorageBucket;
+        private readonly string? _originalFunctionName;
 
         public AlarmProcessingServiceTests()
         {
+            // Store original environment variables for cleanup
+            _originalStorageBucket = Environment.GetEnvironmentVariable("StorageBucket");
+            _originalFunctionName = Environment.GetEnvironmentVariable("FunctionName");
+            
             // Set up common environment variables for testing
             Environment.SetEnvironmentVariable("FunctionName", "TestFunction");
             SetValidAlarmBucketEnvironment(); // Ensure bucket is set by default
@@ -60,7 +68,7 @@ namespace UnifiWebhookEventReceiverTests
         {
             // Act & Assert
             Assert.Throws<ArgumentNullException>(() =>
-                new AlarmProcessingService(null, _mockUnifiProtectService.Object, _mockCredentialsService.Object, _mockResponseHelper.Object, _mockLogger.Object));
+                new AlarmProcessingService(null!, _mockUnifiProtectService.Object, _mockCredentialsService.Object, _mockResponseHelper.Object, _mockLogger.Object));
         }
 
         [Fact]
@@ -68,7 +76,7 @@ namespace UnifiWebhookEventReceiverTests
         {
             // Act & Assert
             Assert.Throws<ArgumentNullException>(() =>
-                new AlarmProcessingService(_mockS3StorageService.Object, null, _mockCredentialsService.Object, _mockResponseHelper.Object, _mockLogger.Object));
+                new AlarmProcessingService(_mockS3StorageService.Object, null!, _mockCredentialsService.Object, _mockResponseHelper.Object, _mockLogger.Object));
         }
 
         [Fact]
@@ -76,7 +84,7 @@ namespace UnifiWebhookEventReceiverTests
         {
             // Act & Assert
             Assert.Throws<ArgumentNullException>(() =>
-                new AlarmProcessingService(_mockS3StorageService.Object, _mockUnifiProtectService.Object, null, _mockResponseHelper.Object, _mockLogger.Object));
+                new AlarmProcessingService(_mockS3StorageService.Object, _mockUnifiProtectService.Object, null!, _mockResponseHelper.Object, _mockLogger.Object));
         }
 
         [Fact]
@@ -84,7 +92,7 @@ namespace UnifiWebhookEventReceiverTests
         {
             // Act & Assert
             Assert.Throws<ArgumentNullException>(() =>
-                new AlarmProcessingService(_mockS3StorageService.Object, _mockUnifiProtectService.Object, _mockCredentialsService.Object, null, _mockLogger.Object));
+                new AlarmProcessingService(_mockS3StorageService.Object, _mockUnifiProtectService.Object, _mockCredentialsService.Object, null!, _mockLogger.Object));
         }
 
         [Fact]
@@ -92,7 +100,7 @@ namespace UnifiWebhookEventReceiverTests
         {
             // Act & Assert
             Assert.Throws<ArgumentNullException>(() =>
-                new AlarmProcessingService(_mockS3StorageService.Object, _mockUnifiProtectService.Object, _mockCredentialsService.Object, _mockResponseHelper.Object, null));
+                new AlarmProcessingService(_mockS3StorageService.Object, _mockUnifiProtectService.Object, _mockCredentialsService.Object, _mockResponseHelper.Object, null!));
         }
 
         [Fact]
@@ -118,7 +126,7 @@ namespace UnifiWebhookEventReceiverTests
                 .Returns(expectedResponse);
 
             // Act
-            var result = await _alarmProcessingService.ProcessAlarmAsync(null);
+            var result = await _alarmProcessingService.ProcessAlarmAsync(null!);
 
             // Assert
             Assert.Equal(expectedResponse, result);
@@ -134,7 +142,7 @@ namespace UnifiWebhookEventReceiverTests
             {
                 name = "Test Alarm",
                 timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-                triggers = null
+                triggers = null!
             };
 
             var expectedResponse = new APIGatewayProxyResponse { StatusCode = 400 };
@@ -263,7 +271,10 @@ namespace UnifiWebhookEventReceiverTests
             }
             finally
             {
-                Environment.SetEnvironmentVariable("StorageBucket", originalBucket);
+                if (originalBucket != null)
+                    Environment.SetEnvironmentVariable("StorageBucket", originalBucket);
+                else
+                    Environment.SetEnvironmentVariable("StorageBucket", null!);
             }
         }
 
@@ -417,5 +428,19 @@ namespace UnifiWebhookEventReceiverTests
         }
 
         #endregion
+
+        public void Dispose()
+        {
+            // Restore original environment variables
+            if (_originalStorageBucket != null)
+                Environment.SetEnvironmentVariable("StorageBucket", _originalStorageBucket);
+            else
+                Environment.SetEnvironmentVariable("StorageBucket", null);
+                
+            if (_originalFunctionName != null)
+                Environment.SetEnvironmentVariable("FunctionName", _originalFunctionName);
+            else
+                Environment.SetEnvironmentVariable("FunctionName", null);
+        }
     }
 }
