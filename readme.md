@@ -386,6 +386,40 @@ UnifiWebhookEventReceiver.UnifiWebhookEventHandler::FunctionHandler
 
 ## API Endpoints
 
+### Custom Domain Support
+
+The API Gateway can be configured with a custom domain name for more professional endpoints with automatic SSL certificate creation and DNS setup.
+
+**Default URL Format:**
+```
+https://{api-id}.execute-api.{region}.amazonaws.com/{stage}/alarmevent
+```
+
+**Custom Domain Format:**
+```
+https://api.brentfoster.me/{stage}/alarmevent
+```
+
+#### Automatic Setup Features
+- ✅ **SSL Certificate Creation**: Automatically creates and validates certificates (mandatory)
+- ✅ **DNS Configuration**: Sets up Route53 A and AAAA records
+- ✅ **Domain Validation**: Handles certificate validation via DNS  
+- ✅ **Multi-Environment Support**: Different subdomains per environment
+- ✅ **GitHub Actions Integration**: Environment variables for automated deployment
+
+#### Configuration Requirements
+
+**Required Parameters:**
+- `DomainName`: Your custom domain (e.g., `api.brentfoster.me`)
+- `HostedZoneId`: Route53 Hosted Zone ID for your domain
+
+**GitHub Repository Variables:**
+- `HOSTED_ZONE_ID`: Route53 Hosted Zone ID
+- `PROD_DOMAIN_NAME`: Production domain (e.g., `api.brentfoster.me`)
+- `DEV_DOMAIN_NAME`: Development domain (e.g., `api-dev.brentfoster.me`)
+
+See [DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed setup instructions.
+
 ### Core Endpoints
 
 #### 1. Webhook Receiver - `POST /{stage}/alarmevent`

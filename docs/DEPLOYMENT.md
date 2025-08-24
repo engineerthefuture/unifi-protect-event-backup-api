@@ -59,3 +59,108 @@ Supported development branch patterns:
 - `develop` - Main development branch
 
 Any branch not matching these patterns or `main` will still deploy to dev environment.
+
+## Custom Domain Configuration
+
+The API Gateway can be configured with a custom domain name with automatic SSL certificate creation and DNS setup. Certificate creation is mandatory when using custom domains - the system will automatically handle SSL certificate creation, validation, and DNS configuration.
+
+### Prerequisites
+
+1. **Domain Name**: You must own the domain (e.g., `brentfoster.me`)
+2. **Route53 Hosted Zone**: Your domain must be managed by Route53
+
+### Configuration
+
+**Required Parameters:**
+- `DomainName`: Your desired subdomain (e.g., `api.brentfoster.me`)
+- `HostedZoneId`: Your Route53 Hosted Zone ID
+
+**Example Configuration:**
+```json
+{
+  "ParameterKey": "DomainName",
+  "ParameterValue": "api.brentfoster.me"
+},
+{
+  "ParameterKey": "HostedZoneId", 
+  "ParameterValue": "Z1D633PJN98FT9"
+}
+```
+
+### GitHub Actions Environment Variables
+
+For automated deployments, set these repository variables:
+
+**Repository Variables** (Settings > Secrets and variables > Actions > Variables):
+- `HOSTED_ZONE_ID`: Your Route53 Hosted Zone ID (e.g., `Z1D633PJN98FT9`)
+- `PROD_DOMAIN_NAME`: Production domain (e.g., `api.brentfoster.me`)
+- `DEV_DOMAIN_NAME`: Development domain (e.g., `api-dev.brentfoster.me`)
+
+### Setup Steps
+
+1. **Find Your Hosted Zone ID**:
+   ```bash
+   aws route53 list-hosted-zones --query "HostedZones[?Name=='brentfoster.me.'].Id" --output text
+   ```
+
+2. **Set Repository Variables**:
+   - Go to your GitHub repository
+   - Navigate to Settings > Secrets and variables > Actions > Variables
+   - Add the required variables listed above
+
+3. **Deploy**:
+   - Push to `main` branch for production deployment
+   - Push to any other branch for development deployment
+   - The GitHub Actions workflow will automatically use the appropriate domain
+
+### What Gets Automatically Created
+
+The CloudFormation template automatically creates:
+- ✅ **SSL Certificate** (in `us-east-1` region with DNS validation)
+- ✅ **DNS Validation Records** (for certificate verification)
+- ✅ **API Gateway Custom Domain**
+- ✅ **Route53 A and AAAA Records** (pointing to the API Gateway)
+
+### Environment-Specific Setup
+
+**Production Environment** (`main` branch):
+- Uses `${{ vars.PROD_DOMAIN_NAME }}`
+- Example: `api.brentfoster.me`
+- Endpoints: `https://api.brentfoster.me/prod/*`
+
+**Development Environment** (other branches):
+- Uses `${{ vars.DEV_DOMAIN_NAME }}`
+- Example: `api-dev.brentfoster.me`
+- Endpoints: `https://api-dev.brentfoster.me/dev/*`
+
+### Manual Deployment Example
+
+```bash
+aws cloudformation deploy \
+  --template-file templates/cf-stack-cs.yaml \
+  --stack-name my-api-stack \
+  --parameter-overrides \
+    DomainName=api.brentfoster.me \
+    HostedZoneId=Z1D633PJN98FT9 \
+    # ... other parameters
+```
+
+### Timeline
+
+- **Certificate Creation**: 5-10 minutes (DNS validation)
+- **DNS Propagation**: 5-60 minutes globally
+- **Total Setup**: Usually complete in 10-15 minutes
+
+### Troubleshooting
+
+**Certificate Validation Issues:**
+- Ensure your domain is managed by the specified Route53 Hosted Zone
+- Check that the domain name exactly matches the hosted zone
+- Verify you have permissions to create Route53 records
+
+**DNS Propagation:**
+- DNS changes may take 5-60 minutes to propagate globally
+- Use `dig` or `nslookup` to verify DNS resolution:
+  ```bash
+  dig api.brentfoster.me
+  ```

@@ -97,9 +97,42 @@ Parameters:
     Type: String
     Description: Timestamp when this build was created
     Default: "unknown"
+  DomainName:
+    Type: String
+    Description: Custom domain name for the API Gateway (e.g., api.brentfoster.me)
+    Default: ""
+  HostedZoneId:
+    Type: String
+    Description: Route53 Hosted Zone ID for the domain (e.g., Z1D633PJN98FT9)
+    Default: ""
+
+# Conditions
+Conditions:
+  HasCustomDomain: !Not [!Equals [!Ref DomainName, ""]]
+  HasHostedZone: !Not [!Equals [!Ref HostedZoneId, ""]]
+  UseCustomDomain: !And [!Condition HasCustomDomain, !Condition HasHostedZone]
 
 # Resources
 Resources: 
+
+  # SSL Certificate for Custom Domain
+  Certificate:
+    Type: AWS::CertificateManager::Certificate
+    Condition: UseCustomDomain
+    Properties:
+      DomainName: !Ref DomainName
+      ValidationMethod: DNS
+      DomainValidationOptions:
+        - DomainName: !Ref DomainName
+          HostedZoneId: !Ref HostedZoneId
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${FunctionName}-cert"
+        - Key: "Environment"
+          Value: !Ref EnvPrefix
+        - Key: "Purpose"
+          Value: "API Gateway Custom Domain SSL Certificate"
+
   # Role for API gateway logging
   CloudWatchRole:
     Type: 'AWS::IAM::Role'
@@ -431,6 +464,59 @@ Resources:
       RestApiId: !Ref ApiGateway
       StageName: !Sub "${EnvPrefix}"
 
+  # Custom Domain Name for API Gateway
+  ApiGatewayDomainName:
+    Type: AWS::ApiGateway::DomainName
+    Condition: UseCustomDomain
+    Properties:
+      DomainName: !Ref DomainName
+      CertificateArn: !Ref Certificate
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+      SecurityPolicy: TLS_1_2
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${FunctionName}-domain"
+        - Key: "Environment"
+          Value: !Ref EnvPrefix
+
+  # Base Path Mapping for custom domain
+  ApiGatewayBasePathMapping:
+    Type: AWS::ApiGateway::BasePathMapping
+    Condition: UseCustomDomain
+    DependsOn: ApiGatewayStage
+    Properties:
+      DomainName: !Ref ApiGatewayDomainName
+      RestApiId: !Ref ApiGateway
+      Stage: !Ref ApiGatewayStage
+
+  # Route53 A Record for Custom Domain (IPv4)
+  DomainNameRecord:
+    Type: AWS::Route53::RecordSet
+    Condition: UseCustomDomain
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref DomainName
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt ApiGatewayDomainName.RegionalDomainName
+        HostedZoneId: !GetAtt ApiGatewayDomainName.RegionalHostedZoneId
+        EvaluateTargetHealth: false
+
+  # Route53 AAAA Record for Custom Domain (IPv6)
+  DomainNameRecordAAAA:
+    Type: AWS::Route53::RecordSet
+    Condition: UseCustomDomain
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref DomainName
+      Type: AAAA
+      AliasTarget:
+        DNSName: !GetAtt ApiGatewayDomainName.RegionalDomainName
+        HostedZoneId: !GetAtt ApiGatewayDomainName.RegionalHostedZoneId
+        EvaluateTargetHealth: false
+
   # Proxy lambda function
   LambdaFunction:
     Type: AWS::Lambda::Function
@@ -568,3 +654,37 @@ Outputs:
       - https://${ApiId}.execute-api.${AWS::Region}.amazonaws.com/${EnvPrefix}/?eventKey={key}
       - ApiId: !Ref ApiGateway
         StageName: !Ref ApiGatewayStage
+  CustomDomainName:
+    Condition: UseCustomDomain
+    Description: Custom domain name for the API
+    Value: !Ref DomainName
+  CustomPOSTUnfiWebhookAlarmEventEndpoint:
+    Condition: UseCustomDomain
+    Description: POST endpoint for receiving alarm webhooks from Unifi Protect (Custom Domain)
+    Value: !Sub "${DomainName}/${EnvPrefix}/alarmevent"
+  CustomGETLatestVideoEndpoint:
+    Condition: UseCustomDomain
+    Description: GET endpoint for downloading the most recent video file (Custom Domain)
+    Value: !Sub "${DomainName}/${EnvPrefix}/latestvideo"
+  CustomGETEventDataEndpoint:
+    Condition: UseCustomDomain
+    Description: GET endpoint for retrieving stored alarm event data by eventKey (Custom Domain)
+    Value: !Sub "${DomainName}/${EnvPrefix}/?eventKey={key}"
+  DomainNameTarget:
+    Condition: UseCustomDomain
+    Description: Target domain name for DNS CNAME record
+    Value: !GetAtt ApiGatewayDomainName.RegionalDomainName
+  DomainNameHostedZoneId:
+    Condition: UseCustomDomain
+    Description: Hosted Zone ID for the API Gateway domain (for Route 53 alias records)
+    Value: !GetAtt ApiGatewayDomainName.RegionalHostedZoneId
+  CertificateArn:
+    Condition: UseCustomDomain
+    Description: ARN of the created SSL certificate
+    Value: !Ref Certificate
+    Export:
+      Name: !Sub "${AWS::StackName}-CertificateArn"
+  DNSRecordsCreated:
+    Condition: UseCustomDomain
+    Description: Confirmation that DNS records have been created
+    Value: !Sub "DNS records created for ${DomainName}"

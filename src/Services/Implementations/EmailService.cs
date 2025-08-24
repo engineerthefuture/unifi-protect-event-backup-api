@@ -407,6 +407,8 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 var name when name.Contains("login-screenshot") => "🔐 Login Page Screenshot",
                 var name when name.Contains("pageload-screenshot") => "📄 Page Load Screenshot", 
                 var name when name.Contains("afterarchivebuttonclick-screenshot") => "🖱️ After Archive Button Click Screenshot",
+                var name when name.Contains("signout-screenshot") => "🚪 Signout Page Screenshot",
+                var name when name.Contains("signout-error-screenshot") => "❌ Signout Error Screenshot",
                 _ => "📸 Process Screenshot"
             };
         }
