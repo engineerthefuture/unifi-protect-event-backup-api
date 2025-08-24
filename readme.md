@@ -281,11 +281,14 @@ graph TB
 
 ### Key Architectural Components
 
-#### **Dead Letter Queue (DLQ) Integration**
-- **Automatic Retry Mechanism**: Failed video downloads automatically send original alarm messages to dedicated DLQ
+
+#### **Dead Letter Queue (DLQ) Integration & Failure Email Notification**
+- **Automatic Retry Mechanism**: Failed video downloads automatically send original alarm messages to a dedicated DLQ
 - **Rich Failure Metadata**: DLQ messages include `FailureReason`, `OriginalTimestamp`, and `RetryAttempt` attributes
+- **Failure Email Notification**: When a video download fails and a message is sent to the DLQ, the system automatically sends a failure notification email to the configured recipient(s). The email includes details about the failed event, the reason for failure, the DLQ message ID, and the retry attempt number.
+- **Configuration**: Email recipients and sending method (e.g., AWS SES) are configured via environment variables or application settings. See the deployment documentation for setup details.
 - **Exact Message Preservation**: Original alarm event preserved in DLQ for perfect retry scenarios
-- **Specific Error Handling**: "No video files were downloaded" errors trigger DLQ processing
+- **Specific Error Handling**: "No video files were downloaded" errors trigger DLQ processing and email notification
 - **Manual Retry Support**: DLQ messages can be manually re-queued to main processing queue
 - **Fault Tolerance**: Ensures no alarm events are lost due to temporary video availability issues
 
@@ -397,7 +400,7 @@ https://{api-id}.execute-api.{region}.amazonaws.com/{stage}/alarmevent
 
 **Custom Domain Format:**
 ```
-https://api.brentfoster.me/{stage}/alarmevent
+https://api.example.com/{stage}/alarmevent
 ```
 
 #### Automatic Setup Features
@@ -410,13 +413,13 @@ https://api.brentfoster.me/{stage}/alarmevent
 #### Configuration Requirements
 
 **Required Parameters:**
-- `DomainName`: Your custom domain (e.g., `api.brentfoster.me`)
+-- `DomainName`: Your custom domain (e.g., `api.example.com`)
 - `HostedZoneId`: Route53 Hosted Zone ID for your domain
 
 **GitHub Repository Variables:**
 - `HOSTED_ZONE_ID`: Route53 Hosted Zone ID
-- `PROD_DOMAIN_NAME`: Production domain (e.g., `api.brentfoster.me`)
-- `DEV_DOMAIN_NAME`: Development domain (e.g., `api-dev.brentfoster.me`)
+- `PROD_DOMAIN_NAME`: Production domain (e.g., `api.example.com`)
+- `DEV_DOMAIN_NAME`: Development domain (e.g., `api-dev.example.com`)
 
 See [DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed setup instructions.
 
