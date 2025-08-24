@@ -136,6 +136,43 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             }
         }
 
+        /// <summary>
+        /// Fetches camera metadata from the Unifi Protect API and stores it in S3 as metadata/cameras.json.
+        /// </summary>
+        public async Task FetchAndStoreCameraMetadataAsync()
+        {
+            _logger.LogLine("Fetching Unifi credentials from Secrets Manager...");
+            var credentials = await _credentialsService.GetUnifiCredentialsAsync();
+            if (credentials == null || string.IsNullOrEmpty(credentials.hostname))
+                throw new InvalidOperationException("Unifi credentials are not properly configured in Secrets Manager");
+
+            var url = $"{credentials.hostname.TrimEnd('/')}/proxy/protect/api/cameras";
+            _logger.LogLine($"Requesting camera metadata from: {url}");
+
+            using var httpClient = new HttpClient();
+            
+            // For now, we'll use basic authentication since we don't have API key configured
+            // This would need to be updated based on your actual Unifi Protect API configuration
+            var authString = Convert.ToBase64String(System.Text.Encoding.ASCII.GetBytes($"{credentials.username}:{credentials.password}"));
+            httpClient.DefaultRequestHeaders.Add("Authorization", $"Basic {authString}");
+
+            var response = await httpClient.GetAsync(url);
+            if (!response.IsSuccessStatusCode)
+            {
+                var error = await response.Content.ReadAsStringAsync();
+                _logger.LogLine($"Failed to fetch camera metadata: {response.StatusCode} - {error}");
+                throw new InvalidOperationException($"Failed to fetch camera metadata: {response.StatusCode}");
+            }
+
+            var json = await response.Content.ReadAsStringAsync();
+            _logger.LogLine($"Fetched camera metadata, length: {json.Length} bytes");
+
+            // Store in S3: metadata/cameras.json
+            var s3Key = "metadata/cameras.json";
+            await _s3StorageService.StoreJsonStringAsync(json, s3Key);
+            _logger.LogLine($"Camera metadata stored in S3 at {s3Key}");
+        }
+
         #region Private Video Download Implementation
 
         /// <summary>

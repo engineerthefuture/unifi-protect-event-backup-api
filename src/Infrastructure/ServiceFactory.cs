@@ -43,11 +43,11 @@ namespace UnifiWebhookEventReceiver.Infrastructure
         ) CreateServices(ILambdaLogger logger)
         {
             // Create AWS clients
-            var s3Client = new AmazonS3Client(AppConfiguration.AwsRegion);
-            var sqsClient = new AmazonSQSClient(AppConfiguration.AwsRegion);
-            var secretsClient = new AmazonSecretsManagerClient(AppConfiguration.AwsRegion);
-            var sesClient = new AmazonSimpleEmailServiceClient(AppConfiguration.AwsRegion);
-            var cloudWatchLogsClient = new AmazonCloudWatchLogsClient(AppConfiguration.AwsRegion);
+            var s3Client = new Amazon.S3.AmazonS3Client(AppConfiguration.AwsRegion);
+            var sqsClient = new Amazon.SQS.AmazonSQSClient(AppConfiguration.AwsRegion);
+            var secretsClient = new Amazon.SecretsManager.AmazonSecretsManagerClient(AppConfiguration.AwsRegion);
+            var sesClient = new Amazon.SimpleEmail.AmazonSimpleEmailServiceClient(AppConfiguration.AwsRegion);
+            var cloudWatchLogsClient = new Amazon.CloudWatchLogs.AmazonCloudWatchLogsClient(AppConfiguration.AwsRegion);
 
             // Create foundational services
             var responseHelper = new ResponseHelper();
@@ -68,7 +68,7 @@ namespace UnifiWebhookEventReceiver.Infrastructure
             var sqsService = new SqsService(sqsClient, alarmProcessingService, emailService, responseHelper, logger);
 
             // Create request router
-            var requestRouter = new RequestRouter(sqsService, s3StorageService, responseHelper, logger);
+            var requestRouter = new RequestRouter(sqsService, s3StorageService, unifiProtectService, responseHelper, logger);
 
             return (
                 RequestRouter: requestRouter,

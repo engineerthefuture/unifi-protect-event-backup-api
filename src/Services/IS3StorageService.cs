@@ -69,5 +69,13 @@ namespace UnifiWebhookEventReceiver.Services
         /// <param name="s3Key">The S3 key of the file to retrieve</param>
         /// <returns>The file data as byte array, or null if not found</returns>
         Task<byte[]?> GetFileAsync(string s3Key);
+
+        /// <summary>
+        /// Stores a raw JSON string in S3 at the specified key.
+        /// </summary>
+        /// <param name="json">The JSON string to store</param>
+        /// <param name="s3Key">The S3 key where the JSON will be stored</param>
+        /// <returns>Task representing the upload operation</returns>
+        Task StoreJsonStringAsync(string json, string s3Key);
     }
 }

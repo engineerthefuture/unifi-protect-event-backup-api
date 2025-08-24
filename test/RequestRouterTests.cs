@@ -17,6 +17,7 @@ namespace UnifiWebhookEventReceiverTests
     {
         private readonly Mock<ISqsService> _mockSqsService;
         private readonly Mock<IS3StorageService> _mockS3StorageService;
+        private readonly Mock<IUnifiProtectService> _mockUnifiProtectService;
         private readonly Mock<IResponseHelper> _mockResponseHelper;
         private readonly Mock<ILambdaLogger> _mockLogger;
         private readonly RequestRouter _requestRouter;
@@ -25,6 +26,7 @@ namespace UnifiWebhookEventReceiverTests
         {
             _mockSqsService = new Mock<ISqsService>();
             _mockS3StorageService = new Mock<IS3StorageService>();
+            _mockUnifiProtectService = new Mock<IUnifiProtectService>();
             _mockResponseHelper = new Mock<IResponseHelper>();
             _mockLogger = new Mock<ILambdaLogger>();
             
@@ -53,7 +55,7 @@ namespace UnifiWebhookEventReceiverTests
                     Headers = new Dictionary<string, string> { ["Content-Type"] = "application/json" }
                 });
             
-            _requestRouter = new RequestRouter(_mockSqsService.Object, _mockS3StorageService.Object, _mockResponseHelper.Object, _mockLogger.Object);
+            _requestRouter = new RequestRouter(_mockSqsService.Object, _mockS3StorageService.Object, _mockUnifiProtectService.Object, _mockResponseHelper.Object, _mockLogger.Object);
         }
 
         [Fact]
@@ -61,7 +63,7 @@ namespace UnifiWebhookEventReceiverTests
         {
             // Act & Assert
             Assert.Throws<ArgumentNullException>(() => 
-                new RequestRouter(null, _mockS3StorageService.Object, _mockResponseHelper.Object, _mockLogger.Object));
+                new RequestRouter(null, _mockS3StorageService.Object, _mockUnifiProtectService.Object, _mockResponseHelper.Object, _mockLogger.Object));
         }
 
         [Fact]
@@ -69,7 +71,15 @@ namespace UnifiWebhookEventReceiverTests
         {
             // Act & Assert
             Assert.Throws<ArgumentNullException>(() => 
-                new RequestRouter(_mockSqsService.Object, null, _mockResponseHelper.Object, _mockLogger.Object));
+                new RequestRouter(_mockSqsService.Object, null, _mockUnifiProtectService.Object, _mockResponseHelper.Object, _mockLogger.Object));
+        }
+
+        [Fact]
+        public void Constructor_WithNullUnifiProtectService_ThrowsArgumentNullException()
+        {
+            // Act & Assert
+            Assert.Throws<ArgumentNullException>(() => 
+                new RequestRouter(_mockSqsService.Object, _mockS3StorageService.Object, null, _mockResponseHelper.Object, _mockLogger.Object));
         }
 
         [Fact]
@@ -77,7 +87,7 @@ namespace UnifiWebhookEventReceiverTests
         {
             // Act & Assert
             Assert.Throws<ArgumentNullException>(() => 
-                new RequestRouter(_mockSqsService.Object, _mockS3StorageService.Object, null, _mockLogger.Object));
+                new RequestRouter(_mockSqsService.Object, _mockS3StorageService.Object, _mockUnifiProtectService.Object, null, _mockLogger.Object));
         }
 
         [Fact]
@@ -85,7 +95,7 @@ namespace UnifiWebhookEventReceiverTests
         {
             // Act & Assert
             Assert.Throws<ArgumentNullException>(() => 
-                new RequestRouter(_mockSqsService.Object, _mockS3StorageService.Object, _mockResponseHelper.Object, null));
+                new RequestRouter(_mockSqsService.Object, _mockS3StorageService.Object, _mockUnifiProtectService.Object, _mockResponseHelper.Object, null));
         }
 
         [Fact]

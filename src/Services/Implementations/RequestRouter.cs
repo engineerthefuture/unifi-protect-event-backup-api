@@ -24,10 +24,11 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
     /// </summary>
     public class RequestRouter : IRequestRouter
     {
-        private readonly ISqsService _sqsService;
-        private readonly IS3StorageService _s3StorageService;
-        private readonly IResponseHelper _responseHelper;
-        private readonly ILambdaLogger _logger;
+    private readonly ISqsService _sqsService;
+    private readonly IS3StorageService _s3StorageService;
+    private readonly IUnifiProtectService _unifiProtectService;
+    private readonly IResponseHelper _responseHelper;
+    private readonly ILambdaLogger _logger;
 
         /// <summary>
         /// Initializes a new instance of the RequestRouter.
@@ -35,11 +36,13 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         public RequestRouter(
             ISqsService sqsService,
             IS3StorageService s3StorageService,
+            IUnifiProtectService unifiProtectService,
             IResponseHelper responseHelper,
             ILambdaLogger logger)
         {
             _sqsService = sqsService ?? throw new ArgumentNullException(nameof(sqsService));
             _s3StorageService = s3StorageService ?? throw new ArgumentNullException(nameof(s3StorageService));
+            _unifiProtectService = unifiProtectService ?? throw new ArgumentNullException(nameof(unifiProtectService));
             _responseHelper = responseHelper ?? throw new ArgumentNullException(nameof(responseHelper));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
@@ -133,6 +136,10 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 return _responseHelper.CreateErrorResponse(HttpStatusCode.NotFound, AppConfiguration.ERROR_MESSAGE_404 + AppConfiguration.ERROR_INVALID_ROUTE);
             }
 
+            if (routeInfo.Method == "GET" && routeInfo.Route == "metadata")
+            {
+                return await HandleMetadataRequest();
+            }
             return routeInfo.Method switch
             {
                 "POST" when routeInfo.Route == AppConfiguration.ROUTE_ALARM => await HandleAlarmWebhook(request),
@@ -142,6 +149,28 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 _ => CreateInvalidRouteResponse(routeInfo.Route, routeInfo.Method)
             };
         }
+
+        /// <summary>
+        /// Handles GET /metadata requests to fetch and store camera metadata.
+        /// </summary>
+        private async Task<APIGatewayProxyResponse> HandleMetadataRequest()
+        {
+            try
+            {
+                await _unifiProtectService.FetchAndStoreCameraMetadataAsync();
+                return new APIGatewayProxyResponse
+                {
+                    StatusCode = 200,
+                    Body = "Camera metadata fetched and stored successfully.",
+                    Headers = _responseHelper.GetStandardHeaders()
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogLine($"Error in /metadata: {ex.Message}");
+                return _responseHelper.CreateErrorResponse(HttpStatusCode.InternalServerError, $"Failed to fetch/store camera metadata: {ex.Message}");
+            }
+    }
 
         /// <summary>
         /// Handles alarm webhook POST requests.
