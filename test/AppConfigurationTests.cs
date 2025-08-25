@@ -21,8 +21,8 @@ namespace UnifiWebhookEventReceiverTests
             // Don't restore them to avoid conflicts with other test classes
             var variablesToClean = new[] 
             {
-                "StorageBucket", "DevicePrefix", "FunctionName", "UnifiCredentialsSecretArn",
-                "DownloadDirectory", "ArchiveButtonX", "ArchiveButtonY", "DownloadButtonX", 
+                "StorageBucket", "FunctionName", "UnifiCredentialsSecretArn",
+                "DownloadDirectory", "DownloadButtonX", 
                 "DownloadButtonY", "ProcessingDelaySeconds", "AlarmProcessingQueueUrl", 
                 "AWS_REGION", "DeployedEnv", "BuildSha", "BuildTimestamp"
             };
@@ -104,28 +104,7 @@ namespace UnifiWebhookEventReceiverTests
             }
         }
 
-        [Fact]
-        public void DevicePrefix_WithEnvironmentVariable_ReturnsValue()
-        {
-            // Arrange
-            Environment.SetEnvironmentVariable("DevicePrefix", "DeviceMac");
-
-            // Act
-            var result = AppConfiguration.DevicePrefix;
-
-            // Assert
-            Assert.Equal("DeviceMac", result);
-        }
-
-        [Fact]
-        public void DevicePrefix_WithoutEnvironmentVariable_ReturnsNull()
-        {
-            // Act
-            var result = AppConfiguration.DevicePrefix;
-
-            // Assert
-            Assert.Null(result);
-        }
+        // DevicePrefix tests removed: DevicePrefix is obsolete. Use DeviceMetadata and GetDeviceName instead.
 
         [Fact]
         public void FunctionName_WithEnvironmentVariable_ReturnsValue()
@@ -197,77 +176,7 @@ namespace UnifiWebhookEventReceiverTests
             Assert.Equal("/tmp", result);
         }
 
-        [Fact]
-        public void ArchiveButtonX_WithEnvironmentVariable_ReturnsValue()
-        {
-            // Arrange
-            Environment.SetEnvironmentVariable("ArchiveButtonX", "1500");
-
-            // Act
-            var result = AppConfiguration.ArchiveButtonX;
-
-            // Assert
-            Assert.Equal(1500, result);
-        }
-
-        [Fact]
-        public void ArchiveButtonX_WithInvalidEnvironmentVariable_ReturnsDefault()
-        {
-            // Arrange
-            Environment.SetEnvironmentVariable("ArchiveButtonX", "invalid");
-
-            // Act
-            var result = AppConfiguration.ArchiveButtonX;
-
-            // Assert
-            Assert.Equal(1274, result); // Default value
-        }
-
-        [Fact]
-        public void ArchiveButtonX_WithoutEnvironmentVariable_ReturnsDefault()
-        {
-            // Act
-            var result = AppConfiguration.ArchiveButtonX;
-
-            // Assert
-            Assert.Equal(1274, result);
-        }
-
-        [Fact]
-        public void ArchiveButtonY_WithEnvironmentVariable_ReturnsValue()
-        {
-            // Arrange
-            Environment.SetEnvironmentVariable("ArchiveButtonY", "300");
-
-            // Act
-            var result = AppConfiguration.ArchiveButtonY;
-
-            // Assert
-            Assert.Equal(300, result);
-        }
-
-        [Fact]
-        public void ArchiveButtonY_WithInvalidEnvironmentVariable_ReturnsDefault()
-        {
-            // Arrange
-            Environment.SetEnvironmentVariable("ArchiveButtonY", "not-a-number");
-
-            // Act
-            var result = AppConfiguration.ArchiveButtonY;
-
-            // Assert
-            Assert.Equal(257, result); // Default value
-        }
-
-        [Fact]
-        public void ArchiveButtonY_WithoutEnvironmentVariable_ReturnsDefault()
-        {
-            // Act
-            var result = AppConfiguration.ArchiveButtonY;
-
-            // Assert
-            Assert.Equal(257, result);
-        }
+        // ArchiveButtonX/Y tests removed: Use GetDeviceCoordinates and DeviceMetadata for coordinate logic.
 
         [Fact]
         public void DownloadButtonX_WithEnvironmentVariable_ReturnsValue()

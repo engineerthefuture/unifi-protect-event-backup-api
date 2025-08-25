@@ -247,29 +247,6 @@ namespace UnifiWebhookEventReceiver.Configuration
 
         #endregion
 
-        #region Legacy Support (Deprecated)
-
-        /// <summary>
-        /// Prefix for environment variables containing device MAC to name mappings.
-        /// DEPRECATED: Use DeviceMetadata instead.
-        /// </summary>
-        [Obsolete("Use DeviceMetadata environment variable instead", false)]
-        public static string? DevicePrefix => Environment.GetEnvironmentVariable("DevicePrefix");
-
-        /// <summary>
-        /// X coordinate for archive button click. Defaults to 1274.
-        /// DEPRECATED: Use GetDeviceCoordinates instead.
-        /// </summary>
-        [Obsolete("Use GetDeviceCoordinates instead", false)]
-        public static int ArchiveButtonX => int.TryParse(Environment.GetEnvironmentVariable("ArchiveButtonX"), out var archiveX) ? archiveX : 1274;
-
-        /// <summary>
-        /// Y coordinate for archive button click. Defaults to 257.
-        /// DEPRECATED: Use GetDeviceCoordinates instead.
-        /// </summary>
-        [Obsolete("Use GetDeviceCoordinates instead", false)]
-        public static int ArchiveButtonY => int.TryParse(Environment.GetEnvironmentVariable("ArchiveButtonY"), out var archiveY) ? archiveY : 257;
-
-        #endregion
-    }
+    // Deprecated members removed. Use DeviceMetadata and GetDeviceCoordinates instead.
+}
 }
