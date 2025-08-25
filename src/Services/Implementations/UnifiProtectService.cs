@@ -393,25 +393,11 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// <returns>Tuple containing archive and download button coordinates</returns>
         private static ((int x, int y) archiveButton, (int x, int y) downloadButton) GetDeviceSpecificCoordinates(string deviceName)
         {
-            // For "Door" device, use the default coordinates from environment variables
-            if (string.Equals(deviceName, "Door", StringComparison.OrdinalIgnoreCase))
-            {
-                return (
-                    archiveButton: (AppConfiguration.ArchiveButtonX, AppConfiguration.ArchiveButtonY),
-                    downloadButton: (AppConfiguration.DownloadButtonX, AppConfiguration.DownloadButtonY)
-                );
-            }
+            // Get device MAC address using the existing method
+            string? deviceMac = AppConfiguration.GetDeviceMac(deviceName);
             
-            // For all other devices, use adjusted coordinates
-            int archiveX = 1205;
-            int archiveY = 241;
-            int downloadX = archiveX - 179;  // 1205 - 179 = 1026
-            int downloadY = archiveY + 18;   // 241 + 18 = 259
-            
-            return (
-                archiveButton: (archiveX, archiveY),
-                downloadButton: (downloadX, downloadY)
-            );
+            // Use the new JSON-based configuration to get coordinates, fallback to MAC if not found by name
+            return AppConfiguration.GetDeviceCoordinates(deviceMac ?? deviceName);
         }
 
         /// <summary>

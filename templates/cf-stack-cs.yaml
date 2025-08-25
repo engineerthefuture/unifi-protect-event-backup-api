@@ -83,14 +83,6 @@ Parameters:
     Type: String
     Description: Directory path for temporary video downloads (defaults to /tmp for Lambda compatibility)
     Default: "/tmp"
-  ArchiveButtonX:
-    Type: Number
-    Description: X coordinate for archive button click in Unifi Protect UI
-    Default: 1274
-  ArchiveButtonY:
-    Type: Number
-    Description: Y coordinate for archive button click in Unifi Protect UI
-    Default: 257
   ProcessingDelaySeconds:
     Type: Number
     Description: Delay in seconds before processing alarm events (default 2 minutes)
@@ -109,6 +101,10 @@ Parameters:
     Type: String
     Description: Timestamp when this build was created
     Default: "unknown"
+  DeviceMetadata:
+    Type: String
+    Description: JSON configuration for device names, MAC addresses, and UI coordinates
+    Default: "replaced from GitHub Actions variable"
   DomainName:
     Type: String
     Description: Custom domain name for the API Gateway (e.g., api.brentfoster.me)
@@ -606,17 +602,10 @@ Resources:
           DeployedEnv: !Sub "${EnvPrefix}"
           StorageBucket: !Sub "${BucketName}"
           ApiKey: !Sub "${ApiGatewayKey}"
-          DevicePrefix: "DeviceMac"
-          DeviceMac28704E113F64: "Backyard East"
-          DeviceMacF4E2C67A2FE8: "Front"
-          DeviceMac28704E113C44: "Side"
-          DeviceMac28704E113F33: "Backyard West"
-          DeviceMacF4E2C677E20F: "Door"
+          DeviceMetadata: !Ref DeviceMetadata
           UnifiCredentialsSecretArn: !Ref UnifiCredentialsSecret
           UnifiApiMetadataPath: !Ref UnifiApiMetadataPath
           DownloadDirectory: !Ref DownloadDirectory
-          ArchiveButtonX: !Ref ArchiveButtonX
-          ArchiveButtonY: !Ref ArchiveButtonY
           AlarmProcessingQueueUrl: !Ref AlarmProcessingQueue
           AlarmProcessingDlqUrl: !Ref AlarmProcessingDeadLetterQueue
           ProcessingDelaySeconds: !Ref ProcessingDelaySeconds
