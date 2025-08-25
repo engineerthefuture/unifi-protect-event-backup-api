@@ -771,10 +771,13 @@ Configure these secrets in your GitHub repository settings (Settings → Secrets
 
 | Secret | Description | Required For |
 |--------|-------------|--------------|
+| `PROD_UNIFI_HOST` | Unifi Protect hostname or IP address for production | Production deployments |
+| `DEV_UNIFI_HOST` | Unifi Protect hostname or IP address for development | Development deployments |
+| `UNIFI_HOST_IP` | Unifi Protect IP address for DNS record | All deployments |
 | `UNIFI_USERNAME` | Unifi Protect username | Video download functionality |
 | `UNIFI_PASSWORD` | Unifi Protect password | Video download functionality |
+| `UNIFI_API_KEY` | Unifi Protect API key for metadata access | All deployments |
 | `UNIFI_API_METADATA_PATH` | Custom API path for camera metadata | Metadata endpoint customization (optional, defaults to `/proxy/protect/api/cameras`) |
-| `APP_DESCRIPTION` | Application description | `Unifi webhook alarm event processing and backup API` |
 
 #### 🔑 OIDC IAM Role Setup
 
@@ -902,7 +905,6 @@ The CloudFormation template automatically configures these Lambda environment va
 | `ApiKey` | Generated API key | API Gateway authentication |
 | `AlarmProcessingQueueUrl` | SQS queue URL | Delayed alarm processing queue |
 | `AlarmProcessingDlqUrl` | SQS DLQ URL | Dead letter queue for failed video downloads |
-| `DevicePrefix` | Fixed value: `DeviceMac` | Device mapping prefix |
 | `DeviceMac{MacAddress}` | Template values | Device name mappings |
 | `UnifiHost` | CloudFormation parameter | Unifi Protect hostname |
 | `UnifiUsername` | CloudFormation parameter | Unifi Protect username |
