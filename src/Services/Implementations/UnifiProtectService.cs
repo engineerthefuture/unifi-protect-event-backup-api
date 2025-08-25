@@ -159,7 +159,6 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             var s3Key = "metadata/cameras.json";
             await _s3StorageService.StoreJsonStringAsync(json, s3Key);
             _logger.LogLine($"Camera metadata stored in S3 at {s3Key}");
-            _logger.LogLine($"=== API Call Completed Successfully ===");
             
             return json;
         }
@@ -188,18 +187,10 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 
             // Always use HTTPS with the domain name
             var hostname = $"https://{domainName}";
-            _logger.LogLine($"Using UniFi domain name: {hostname}");
 
             // Get the API metadata path from environment variable, with fallback to default
             var apiMetadataPath = Environment.GetEnvironmentVariable("UnifiApiMetadataPath") ?? "/proxy/protect/api/cameras";
             var url = $"{hostname}/{apiMetadataPath}";
-            
-            _logger.LogLine($"=== UniFi Protect API Call Details ===");
-            _logger.LogLine($"Target URL: {url}");
-            _logger.LogLine($"API metadata path: {apiMetadataPath}");
-            _logger.LogLine($"Original hostname from credentials: {credentials.hostname}");
-            _logger.LogLine($"Final domain name: {domainName}");
-            _logger.LogLine($"Deployed environment: {Environment.GetEnvironmentVariable("DeployedEnv")}");
 
             return url;
         }
@@ -233,82 +224,36 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             httpClient.DefaultRequestHeaders.Add("User-Agent", "UnifiWebhookEventReceiver/1.0");
             httpClient.DefaultRequestHeaders.Add("x-api-key", credentials.apikey);
             
-            // Log request headers (mask the API key for security)
-            _logger.LogLine("=== Request Headers ===");
-            _logger.LogLine($"Accept: application/json");
-            _logger.LogLine($"User-Agent: UnifiWebhookEventReceiver/1.0");
-            _logger.LogLine($"x-api-key: {new string('*', Math.Max(0, credentials.apikey.Length - 4))}{credentials.apikey.Substring(Math.Max(0, credentials.apikey.Length - 4))}");
-
             try
             {
-                _logger.LogLine("=== Making HTTPS Request ===");
-                var startTime = DateTime.UtcNow;
                 var response = await httpClient.GetAsync(url);
-                var endTime = DateTime.UtcNow;
-                var duration = endTime - startTime;
-                
-                _logger.LogLine($"=== Response Details ===");
-                _logger.LogLine($"Request duration: {duration.TotalMilliseconds:F2} ms");
-                _logger.LogLine($"Response status code: {(int)response.StatusCode} {response.StatusCode}");
-                _logger.LogLine($"Response reason phrase: {response.ReasonPhrase ?? "null"}");
-                
-                // Log response headers
-                _logger.LogLine("=== Response Headers ===");
-                foreach (var header in response.Headers)
-                {
-                    _logger.LogLine($"{header.Key}: {string.Join(", ", header.Value)}");
-                }
-                foreach (var header in response.Content.Headers)
-                {
-                    _logger.LogLine($"{header.Key}: {string.Join(", ", header.Value)}");
-                }
 
                 if (!response.IsSuccessStatusCode)
                 {
                     var error = await response.Content.ReadAsStringAsync();
-                    _logger.LogLine($"=== Error Response ===");
                     _logger.LogLine($"Failed to fetch camera metadata: {response.StatusCode} - {response.ReasonPhrase}");
-                    _logger.LogLine($"Error content length: {error?.Length ?? 0} characters");
-                    _logger.LogLine($"Error content: {error ?? "null"}");
                     throw new InvalidOperationException($"Failed to fetch camera metadata: {response.StatusCode} - {error}");
                 }
 
                 var json = await response.Content.ReadAsStringAsync();
-                _logger.LogLine($"=== Success Response ===");
                 _logger.LogLine($"Fetched camera metadata successfully");
-                _logger.LogLine($"Response content length: {json.Length} characters");
-                _logger.LogLine($"Content type: {response.Content.Headers.ContentType?.ToString() ?? "unknown"}");
-                
-                // Log a sample of the JSON for debugging (first 200 characters)
-                var jsonSample = json.Length > 200 ? string.Concat(json.AsSpan(0, 200), "...") : json;
-                _logger.LogLine($"JSON sample: {jsonSample}");
 
                 return json;
             }
             catch (HttpRequestException httpEx)
             {
-                _logger.LogLine($"=== HTTP Request Exception ===");
                 _logger.LogLine($"Exception message: {httpEx.Message}");
-                _logger.LogLine($"Inner exception: {httpEx.InnerException?.Message ?? "null"}");
-                _logger.LogLine($"Target URL was: {url}");
-                _logger.LogLine($"Always using domain name mode for connections");
                 throw new InvalidOperationException($"Network error while fetching camera metadata: {httpEx.Message}", httpEx);
             }
             catch (TaskCanceledException tcEx)
             {
-                _logger.LogLine($"=== Request Timeout Exception ===");
                 _logger.LogLine($"Timeout exception: {tcEx.Message}");
-                _logger.LogLine($"Is cancellation requested: {tcEx.CancellationToken.IsCancellationRequested}");
-                _logger.LogLine($"Target URL was: {url}");
                 throw new InvalidOperationException("Request timed out while fetching camera metadata (30 second timeout)", tcEx);
             }
             catch (Exception ex)
             {
-                _logger.LogLine($"=== Unexpected Exception ===");
                 _logger.LogLine($"Exception type: {ex.GetType().Name}");
                 _logger.LogLine($"Exception message: {ex.Message}");
-                _logger.LogLine($"Stack trace: {ex.StackTrace}");
-                _logger.LogLine($"Target URL was: {url}");
                 throw;
             }
         }

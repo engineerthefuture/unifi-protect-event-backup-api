@@ -713,7 +713,7 @@ Device and UI coordinate mapping is now managed via a single JSON environment va
 {"Devices":[{"DeviceName":"Backyard East","DeviceMac":"28704EAA3F64","ArchiveButtonX":1205,"ArchiveButtonY":240},{"DeviceName":"Front","DeviceMac":"F4E2C6BB2FE8","ArchiveButtonX":1205,"ArchiveButtonY":240},{"DeviceName":"Side","DeviceMac":"28704EC13C44","ArchiveButtonX":1205,"ArchiveButtonY":240},{"DeviceName":"Backyard West","DeviceMac":"28704ED13F33","ArchiveButtonX":1205,"ArchiveButtonY":240},{"DeviceName":"Door","DeviceMac":"F4E2AB77E20F","ArchiveButtonX":1275,"ArchiveButtonY":260}]}
 ```
 
-- Set this as the `DEVICEMETADATA` GitHub repository variable.
+- Set this as the `DEVICE_METADATA` GitHub repository variable.
 - The Lambda function will use this for all device name and coordinate lookups.
 
 ### ⚙️ Environment Variables (Manual Deploy)

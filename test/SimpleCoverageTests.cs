@@ -108,22 +108,22 @@ namespace UnifiWebhookEventReceiver.Tests
             // Clear any environment variables that might affect the test
             var originalProcessingDelay = Environment.GetEnvironmentVariable("ProcessingDelaySeconds");
             Environment.SetEnvironmentVariable("ProcessingDelaySeconds", null);
-            
             try
             {
                 // Test that integer properties have reasonable default values
-                Assert.True(AppConfiguration.ArchiveButtonX > 0);
-                Assert.True(AppConfiguration.ArchiveButtonY > 0);
                 Assert.True(AppConfiguration.DownloadButtonX > 0);
                 Assert.True(AppConfiguration.DownloadButtonY > 0);
                 Assert.True(AppConfiguration.ProcessingDelaySeconds >= 0);
-                
-                // Test specific default values
-                Assert.Equal(1274, AppConfiguration.ArchiveButtonX);
-                Assert.Equal(257, AppConfiguration.ArchiveButtonY);
+
+                // Test specific default values for DownloadButton and ProcessingDelaySeconds
                 Assert.Equal(1095, AppConfiguration.DownloadButtonX);
                 Assert.Equal(275, AppConfiguration.DownloadButtonY);
                 Assert.Equal(120, AppConfiguration.ProcessingDelaySeconds);
+
+                // Test GetDeviceCoordinates default values (archive and download)
+                var coords = AppConfiguration.GetDeviceCoordinates("");
+                Assert.Equal((1205, 240), coords.archiveButton);
+                Assert.Equal((1026, 258), coords.downloadButton);
             }
             finally
             {
