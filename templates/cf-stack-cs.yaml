@@ -104,41 +104,7 @@ Parameters:
   DeviceMetadata:
     Type: String
     Description: JSON configuration for device names, MAC addresses, and UI coordinates
-    Default: |
-      {
-        "Devices": [
-          {
-            "DeviceName": "Backyard East",
-            "DeviceMac": "28704E113F64",
-            "ArchiveButtonX": 1205,
-            "ArchiveButtonY": 240
-          },
-          {
-            "DeviceName": "Front",
-            "DeviceMac": "F4E2C67A2FE8",
-            "ArchiveButtonX": 1205,
-            "ArchiveButtonY": 240
-          },
-          {
-            "DeviceName": "Side",
-            "DeviceMac": "28704E113C44",
-            "ArchiveButtonX": 1205,
-            "ArchiveButtonY": 240
-          },
-          {
-            "DeviceName": "Backyard West",
-            "DeviceMac": "28704E113F33",
-            "ArchiveButtonX": 1205,
-            "ArchiveButtonY": 240
-          },
-          {
-            "DeviceName": "Door",
-            "DeviceMac": "F4E2C677E20F",
-            "ArchiveButtonX": 1275,
-            "ArchiveButtonY": 260
-          }
-        ]
-      }
+    Default: "replaced from GitHub Actions variable"
   DomainName:
     Type: String
     Description: Custom domain name for the API Gateway (e.g., api.brentfoster.me)
