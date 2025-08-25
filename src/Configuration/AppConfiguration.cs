@@ -10,6 +10,8 @@
  ***********************/
 
 using Amazon;
+using System.Text.Json;
+using UnifiWebhookEventReceiver.Models;
 
 namespace UnifiWebhookEventReceiver.Configuration
 {
@@ -58,9 +60,6 @@ namespace UnifiWebhookEventReceiver.Configuration
         /// <summary>S3 bucket name for storing alarm event data</summary>
         public static string? AlarmBucketName => Environment.GetEnvironmentVariable("StorageBucket");
 
-        /// <summary>Prefix for environment variables containing device MAC to name mappings</summary>
-        public static string? DevicePrefix => Environment.GetEnvironmentVariable("DevicePrefix");
-
         /// <summary>Lambda function name for logging and identification</summary>
         public static string? FunctionName => Environment.GetEnvironmentVariable("FunctionName");
 
@@ -69,12 +68,6 @@ namespace UnifiWebhookEventReceiver.Configuration
 
         /// <summary>Download directory for temporary video files. Defaults to /tmp for Lambda compatibility.</summary>
         public static string DownloadDirectory => Environment.GetEnvironmentVariable("DownloadDirectory") ?? "/tmp";
-
-        /// <summary>X coordinate for archive button click. Defaults to 1274.</summary>
-        public static int ArchiveButtonX => int.TryParse(Environment.GetEnvironmentVariable("ArchiveButtonX"), out var archiveX) ? archiveX : 1274;
-
-        /// <summary>Y coordinate for archive button click. Defaults to 257.</summary>
-        public static int ArchiveButtonY => int.TryParse(Environment.GetEnvironmentVariable("ArchiveButtonY"), out var archiveY) ? archiveY : 257;
 
         /// <summary>X coordinate for download button click. Defaults to 1095.</summary>
         public static int DownloadButtonX => int.TryParse(Environment.GetEnvironmentVariable("DownloadButtonX"), out var downloadX) ? downloadX : 1095;
@@ -112,23 +105,170 @@ namespace UnifiWebhookEventReceiver.Configuration
 
         #endregion
 
-        #region Device Name Mapping
+        #region Device Metadata
+
+        private static DeviceMetadataCollection? _deviceMetadata;
+        private static readonly object _deviceMetadataLock = new object();
+        private static readonly JsonSerializerOptions _jsonOptions = new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        };
 
         /// <summary>
-        /// Gets the human-readable device name from environment variables using device MAC address.
+        /// Gets the parsed device metadata from the DeviceMetadata environment variable.
+        /// </summary>
+        public static DeviceMetadataCollection DeviceMetadata
+        {
+            get
+            {
+                if (_deviceMetadata == null)
+                {
+                    lock (_deviceMetadataLock)
+                    {
+                        if (_deviceMetadata == null)
+                        {
+                            _deviceMetadata = LoadDeviceMetadata();
+                        }
+                    }
+                }
+                return _deviceMetadata;
+            }
+        }
+
+        /// <summary>
+        /// Loads and parses device metadata from environment variable.
+        /// </summary>
+        /// <returns>Device metadata collection or empty collection if parsing fails</returns>
+        private static DeviceMetadataCollection LoadDeviceMetadata()
+        {
+            try
+            {
+                var deviceMetadataJson = Environment.GetEnvironmentVariable("DeviceMetadata");
+                if (string.IsNullOrEmpty(deviceMetadataJson))
+                {
+                    return new DeviceMetadataCollection();
+                }
+
+                var metadata = JsonSerializer.Deserialize<DeviceMetadataCollection>(deviceMetadataJson, _jsonOptions);
+
+                return metadata ?? new DeviceMetadataCollection();
+            }
+            catch
+            {
+                // Return empty collection if JSON parsing fails
+                return new DeviceMetadataCollection();
+            }
+        }
+
+        /// <summary>
+        /// Gets human-readable device name from MAC address using DeviceMetadata configuration.
+        /// Falls back to legacy environment variables if DeviceMetadata is not available.
         /// </summary>
         /// <param name="deviceMac">MAC address of the device</param>
         /// <returns>Human-readable device name or original MAC if not found</returns>
         public static string GetDeviceName(string deviceMac)
         {
-            if (string.IsNullOrEmpty(DevicePrefix) || string.IsNullOrEmpty(deviceMac))
+            if (string.IsNullOrEmpty(deviceMac))
             {
                 return deviceMac;
             }
 
-            var deviceName = Environment.GetEnvironmentVariable($"{DevicePrefix}{deviceMac}");
-            return string.IsNullOrEmpty(deviceName) ? deviceMac : deviceName;
+            // First, try to get device name from DeviceMetadata JSON
+            if (DeviceMetadata?.Devices != null)
+            {
+                var device = DeviceMetadata.Devices.Find(d => 
+                    string.Equals(d.DeviceMac, deviceMac, StringComparison.OrdinalIgnoreCase));
+
+                if (device != null)
+                {
+                    return device.DeviceName;
+                }
+            }
+
+            // Fallback to legacy environment variables for backward compatibility
+            string prefix = Environment.GetEnvironmentVariable("DevicePrefix") ?? string.Empty;
+            if (!string.IsNullOrEmpty(prefix))
+            {
+                string? deviceName = Environment.GetEnvironmentVariable($"{prefix}{deviceMac}");
+                if (!string.IsNullOrEmpty(deviceName))
+                {
+                    return deviceName;
+                }
+            }
+
+            // Return MAC address if no mapping found
+            return deviceMac;
         }
+
+        /// <summary>
+        /// Gets the MAC address for a given device name from the DeviceMetadata configuration.
+        /// </summary>
+        /// <param name="deviceName">The device name to find the MAC address for</param>
+        /// <returns>The MAC address of the device, or null if not found</returns>
+        public static string? GetDeviceMac(string deviceName)
+        {
+            if (DeviceMetadata?.Devices == null || string.IsNullOrEmpty(deviceName))
+                return null;
+
+            var device = DeviceMetadata.Devices.Find(d => 
+                string.Equals(d.DeviceName, deviceName, StringComparison.OrdinalIgnoreCase));
+
+            return device?.DeviceMac;
+        }
+
+        /// <summary>
+        /// Gets device-specific coordinates for archive and download buttons.
+        /// </summary>
+        /// <param name="deviceMac">The MAC address of the device</param>
+        /// <returns>Tuple containing archive and download button coordinates</returns>
+        public static ((int x, int y) archiveButton, (int x, int y) downloadButton) GetDeviceCoordinates(string deviceMac)
+        {
+            if (string.IsNullOrEmpty(deviceMac))
+            {
+                // Return default coordinates
+                return ((1205, 240), (1026, 258));
+            }
+
+            var device = DeviceMetadata.Devices.Find(d => 
+                string.Equals(d.DeviceMac, deviceMac, StringComparison.OrdinalIgnoreCase));
+
+            if (device != null)
+            {
+                // Calculate download button coordinates based on archive button position
+                int downloadX = device.ArchiveButtonX - 179;  // Offset for download button
+                int downloadY = device.ArchiveButtonY + 18;   // Offset for download button
+                
+                return ((device.ArchiveButtonX, device.ArchiveButtonY), (downloadX, downloadY));
+            }
+
+            // Return default coordinates if device not found
+            return ((1205, 240), (1026, 258));
+        }
+
+        #endregion
+
+        #region Legacy Support (Deprecated)
+
+        /// <summary>
+        /// Prefix for environment variables containing device MAC to name mappings.
+        /// DEPRECATED: Use DeviceMetadata instead.
+        /// </summary>
+        [Obsolete("Use DeviceMetadata environment variable instead", false)]
+        public static string? DevicePrefix => Environment.GetEnvironmentVariable("DevicePrefix");
+
+        /// <summary>
+        /// X coordinate for archive button click. Defaults to 1274.
+        /// DEPRECATED: Use GetDeviceCoordinates instead.
+        /// </summary>
+        [Obsolete("Use GetDeviceCoordinates instead", false)]
+        public static int ArchiveButtonX => int.TryParse(Environment.GetEnvironmentVariable("ArchiveButtonX"), out var archiveX) ? archiveX : 1274;
+
+        /// <summary>
+        /// Y coordinate for archive button click. Defaults to 257.
+        /// DEPRECATED: Use GetDeviceCoordinates instead.
+        /// </summary>
+        [Obsolete("Use GetDeviceCoordinates instead", false)]
+        public static int ArchiveButtonY => int.TryParse(Environment.GetEnvironmentVariable("ArchiveButtonY"), out var archiveY) ? archiveY : 257;
 
         #endregion
     }

@@ -263,7 +263,14 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         {
             try
             {
-                string eventLocalLink = credentials.hostname + alarm.eventPath;
+                // Ensure hostname has protocol prefix
+                string hostname = credentials.hostname;
+                if (!hostname.StartsWith("http://") && !hostname.StartsWith("https://"))
+                {
+                    hostname = "https://" + hostname;
+                }
+                
+                string eventLocalLink = hostname + alarm.eventPath;
                 _logger.LogLine($"Starting video download for event: {trigger.eventId}");
                 _logger.LogLine($"Event local link: {eventLocalLink}");
                 _logger.LogLine($"Using credentials hostname: {credentials.hostname}");

@@ -506,7 +506,7 @@ namespace UnifiWebhookEventReceiverTests
                 // Assert
                 Assert.Equal(200, result.StatusCode);
                 _mockS3StorageService.Verify(x => x.StoreAlarmEventAsync(It.IsAny<Alarm>(), It.IsAny<Trigger>()), Times.Once);
-                _mockUnifiProtectService.Verify(x => x.DownloadVideoAsync(It.IsAny<Trigger>(), credentials.hostname + alarm.eventPath, alarm.timestamp), Times.Once);
+                _mockUnifiProtectService.Verify(x => x.DownloadVideoAsync(It.IsAny<Trigger>(), "https://" + credentials.hostname + alarm.eventPath, alarm.timestamp), Times.Once);
                 _mockS3StorageService.Verify(x => x.StoreVideoFileAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Once);
             }
             finally
