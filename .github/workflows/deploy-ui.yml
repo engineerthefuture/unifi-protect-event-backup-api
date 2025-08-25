@@ -73,13 +73,13 @@ jobs:
 
       - name: Copy UI contents to S3 bucket
         run: |
-          BUCKET_NAME=bf-${{ steps.env.outputs.ENV_PREFIX }}-unifi-protect-event-backup-api-ui
+          BUCKET_NAME=bf-${{ steps.env.outputs.ENV_PREFIX }}-${{ vars.APP_NAME_UI }}
           aws s3 sync ui/ s3://$BUCKET_NAME/ --delete
 
       - name: Invalidate CloudFront cache
         run: |
           DISTRIBUTION_ID=$(aws cloudformation describe-stacks \
-            --stack-name bf-${{ steps.env.outputs.ENV_PREFIX }}-unifi-protect-ui \
+            --stack-name bf-${{ steps.env.outputs.ENV_PREFIX }}-${{ vars.APP_NAME_UI }} \
             --query "Stacks[0].Outputs[?OutputKey=='CloudFrontDistributionId'].OutputValue" \
             --output text)
           aws cloudfront create-invalidation --distribution-id $DISTRIBUTION_ID --paths '/*'
