@@ -540,7 +540,7 @@ jobs:
               UnifiPassword="${{ secrets.UNIFI_PASSWORD }}" \
               UnifiApiKey="${{ secrets.UNIFI_API_KEY }}" \
               UnifiApiMetadataPath="${{ secrets.UNIFI_API_METADATA_PATH }}" \
-              DeviceMetadata="${{ vars.DEVICE_METADATA }}" \
+              DeviceMetadata='${{ vars.DEVICE_METADATA }}' \
               DomainName="${{ steps.env.outputs.DOMAIN_NAME }}" \
               HostedZoneId="${{ steps.env.outputs.HOSTED_ZONE_ID }}" \
               BuildSha="${{ github.sha }}" \
