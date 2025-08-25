@@ -1,0 +1,85 @@
+name: Deploy UI CloudFormation Stack
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+      - 'feature-**'
+      - 'bugfix-**'
+      - 'hotfix-**'
+
+jobs:
+  deploy-ui:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+      OIDC_ROLE_NAME: ${{ vars.OIDC_ROLE_NAME }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Print referenced environment variables
+        run: |
+          echo "AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}"
+          echo "OIDC_ROLE_NAME: ${{ vars.OIDC_ROLE_NAME }}"
+          echo "OwnerName: ${{ vars.OWNER_NAME }}"
+          echo "AppName: ${{ vars.APP_NAME_UI }}"
+          echo "AppDescription: ${{ vars.APP_DESCRIPTION }}"
+          echo "HostedZoneId: ${{ vars.HOSTED_ZONE_ID }}"
+          echo "SupportEmail: ${{ vars.SUPPORT_EMAIL }}"
+
+      - name: Determine environment and set UI domain
+        id: env
+        run: |
+          if [[ "${{ github.ref_name }}" == "main" ]]; then
+            echo "ENV_PREFIX=prod" >> $GITHUB_OUTPUT
+            echo "DOMAIN_NAME_UI=${{ vars.PROD_DOMAIN_NAME_UI }}" >> $GITHUB_OUTPUT
+          else
+            echo "ENV_PREFIX=dev" >> $GITHUB_OUTPUT
+            echo "DOMAIN_NAME_UI=${{ vars.DEV_DOMAIN_NAME_UI }}" >> $GITHUB_OUTPUT
+          fi
+          echo "Deploying UI to environment: $ENV_PREFIX"
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.OIDC_ROLE_NAME }}
+          aws-region: us-east-1
+
+      - name: Deploy CloudFormation stack
+        run: |
+          aws cloudformation deploy \
+            --template-file templates/ui-cf-stack.yaml \
+            --stack-name bf-${{ steps.env.outputs.ENV_PREFIX }}-${{ vars.APP_NAME_UI }} \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --parameter-overrides \
+              OwnerName="${{ vars.OWNER_NAME }}" \
+              AppName="${{ vars.APP_NAME_UI }}" \
+              AppDescription="${{ vars.APP_DESCRIPTION }}" \
+              EnvPrefix="${{ steps.env.outputs.ENV_PREFIX }}" \
+              BucketName="bf-${{ steps.env.outputs.ENV_PREFIX }}-${{ vars.APP_NAME_UI }}" \
+              DomainName="${{ steps.env.outputs.DOMAIN_NAME_UI }}" \
+              HostedZoneId="${{ vars.HOSTED_ZONE_ID }}" \
+              SupportEmail="${{ vars.SUPPORT_EMAIL }}" \
+            --tags \
+              Owner="${{ vars.OWNER_NAME }}" \
+              AppName="${{ vars.APP_NAME_UI }}" \
+              Description="${{ vars.APP_DESCRIPTION }}" \
+              Environment="${{ steps.env.outputs.ENV_PREFIX }}"
+
+      - name: Copy UI contents to S3 bucket
+        run: |
+          BUCKET_NAME=bf-${{ steps.env.outputs.ENV_PREFIX }}-unifi-protect-event-backup-api-ui
+          aws s3 sync ui/ s3://$BUCKET_NAME/ --delete
+
+      - name: Invalidate CloudFront cache
+        run: |
+          DISTRIBUTION_ID=$(aws cloudformation describe-stacks \
+            --stack-name bf-${{ steps.env.outputs.ENV_PREFIX }}-unifi-protect-ui \
+            --query "Stacks[0].Outputs[?OutputKey=='CloudFrontDistributionId'].OutputValue" \
+            --output text)
+          aws cloudfront create-invalidation --distribution-id $DISTRIBUTION_ID --paths '/*'
