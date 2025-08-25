@@ -25,11 +25,11 @@ Parameters:
   AppName:
     Type: String
     Description: Name of the application
-    Default: unifi-protect-event-backup
+    Default: ""
   BucketName:
     Type: String
     Description: S3 bucket name for the static website
-    Default: !Sub "bf-${EnvPrefix}-${AppName}-ui"
+    Default: ""
   DomainName:
     Type: String
     Description: Custom domain name for the static site (e.g., site.brentfoster.me)
