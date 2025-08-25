@@ -179,8 +179,8 @@ Resources:
     Type: AWS::Route53::RecordSet
     Condition: UseCustomDomain
     Properties:
-      HostedZoneName: !Sub "${DomainName}."
-      Name: !Sub "${DomainName}."
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref DomainName
       Type: A
       AliasTarget:
         DNSName: !GetAtt WebsiteCloudFront.DomainName
@@ -190,8 +190,8 @@ Resources:
     Type: AWS::Route53::RecordSet
     Condition: UseCustomDomain
     Properties:
-      HostedZoneName: !Sub "${DomainName}."
-      Name: !Sub "${DomainName}."
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref DomainName
       Type: AAAA
       AliasTarget:
         DNSName: !GetAtt WebsiteCloudFront.DomainName
