@@ -912,20 +912,6 @@ The CloudFormation template automatically configures these Lambda environment va
 | `ArchiveButtonX` | CloudFormation parameter | X coordinate for archive button (default: 1274) |
 | `ArchiveButtonY` | CloudFormation parameter | Y coordinate for archive button (default: 257) |
 
-#### 📱 Pre-configured Device Mappings
-
-The template includes example device mappings:
-
-```yaml
-DeviceMac28704E113F64: "Backyard East"
-DeviceMacF4E2C67A2FE8: "Front"
-DeviceMac28704E113C44: "Side"
-DeviceMac28704E113F33: "Backyard West"
-DeviceMacF4E2C677E20F: "Door"
-```
-
-Update these in the CloudFormation template to match your Unifi device MAC addresses.
-
 ## 🧪 Testing
 
 ### 🔬 Unit Testing
