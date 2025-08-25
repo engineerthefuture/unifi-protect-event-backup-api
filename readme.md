@@ -66,7 +66,8 @@ This serverless application provides a comprehensive backup and retrieval system
 - **Dead Letter Queue**: Automatic retry mechanism for failed video downloads with rich failure metadata
 - **Automated Video Download**: Browser automation for video retrieval using HeadlessChromium optimized for AWS Lambda
 - **Data Storage**: Stores event data and videos in S3 with organized folder structure
-- **Device Mapping**: Maps device MAC addresses to human-readable names via environment variables
+- **Device Mapping**: Maps device MAC addresses to human-readable names via a single DeviceMetadata JSON configuration (set as a GitHub repository variable and passed to CloudFormation)
+- **Configurable UI Automation**: Device-specific UI coordinates are now managed in DeviceMetadata JSON, not environment variables
 - **Event Retrieval**: RESTful API for retrieving stored alarm events and video presigned URLs
 
 ### Technical Features
@@ -704,52 +705,34 @@ Fetches current camera metadata from your Unifi Protect system and stores it in 
 }
 ```
 
-#### ⚙️ OPTIONS /alarmevent
-Handles CORS preflight requests for web client support.
+### 📋 Device Metadata Configuration
 
-## ⚙️ Setup and Deployment
+Device and UI coordinate mapping is now managed via a single JSON environment variable, `DeviceMetadata`, set as a GitHub repository variable and passed to CloudFormation. Example:
 
-**🚀 New to this project? Start with the [Quickstart Guide](docs/QUICKSTART.md) for step-by-step setup instructions.**
+```
+{"Devices":[{"DeviceName":"Backyard East","DeviceMac":"28704E113F64","ArchiveButtonX":1205,"ArchiveButtonY":240},{"DeviceName":"Front","DeviceMac":"F4E2C67A2FE8","ArchiveButtonX":1205,"ArchiveButtonY":240},{"DeviceName":"Side","DeviceMac":"28704E113C44","ArchiveButtonX":1205,"ArchiveButtonY":240},{"DeviceName":"Backyard West","DeviceMac":"28704E113F33","ArchiveButtonX":1205,"ArchiveButtonY":240},{"DeviceName":"Door","DeviceMac":"F4E2C677E20F","ArchiveButtonX":1275,"ArchiveButtonY":260}]}
+```
 
-This project supports multi-environment deployment with automated CI/CD via GitHub Actions. Deploy to development environments from feature branches and production from the main branch.
+- Set this as the `DEVICEMETADATA` GitHub repository variable.
+- The Lambda function will use this for all device name and coordinate lookups.
 
-### 🌍 Multi-Environment Support
+### ⚙️ Environment Variables (Manual Deploy)
 
-| Environment | Trigger | Stack Name | S3 Buckets | Lambda Function |
-|-------------|---------|------------|------------|-----------------|
-| **Development** | Feature branches<br/>`feature/*`, `bugfix/*`, `hotfix/*`, `develop` | `bf-dev-unifi-protect-event-backup-api` | `bf-dev-s3-*` | `bf-dev-lambda-unifi-protect-event-backup-api` |
-| **Production** | Main branch<br/>`main` | `bf-prod-unifi-protect-event-backup-api` | `bf-prod-s3-*` | `bf-prod-lambda-unifi-protect-event-backup-api` |
+If deploying manually, configure these environment variables in your Lambda function:
 
-### 📋 Prerequisites
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `StorageBucket` | S3 bucket name for storing events | `my-unifi-events-bucket` |
+| `DeployedEnv` | Environment identifier | `prod` |
+| `FunctionName` | Lambda function name | `UnifiProtectEventReceiver` |
+| `UnifiHost` | Unifi Protect hostname or IP address | `192.168.1.1` |
+| `UnifiUsername` | Unifi Protect username | `admin` |
+| `UnifiPassword` | Unifi Protect password | `password123` |
+| `UnifiApiMetadataPath` | API path for camera metadata | `/proxy/protect/api/cameras` |
+| `DownloadDirectory` | Download directory path | `/tmp` |
+| `DeviceMetadata` | JSON string for device mapping and coordinates | See above |
 
-- ✅ .NET 8.0 SDK
-- ✅ AWS CLI configured with appropriate permissions  
-- ✅ AWS Lambda Tools for .NET (for manual deployment)
-- ✅ GitHub repository with Actions enabled (for automated deployment)
-- ✅ Unifi Protect credentials for video download functionality
-
-### 🔗 Unifi Protect Dependencies
-
-Before deploying this system, ensure your Unifi Protect environment meets these requirements:
-
-#### 👤 User and Role Configuration
-- **Camera Viewing Role**: A role exists that allows for Protect Camera Viewing Only
-- **Dedicated User Account**: A user exists that is a member of the Camera Viewing Only role
-- **Local Access Restriction**: The user account has "Restrict to Local Access" enabled with local credentials configured
-- **Credential Storage**: The local credentials are stored as `UNIFI_USERNAME` and `UNIFI_PASSWORD` repository secrets in your GitHub repo, which will be injected as environment variables in your Lambda function
-
-#### 🌐 Network Configuration
-- **Internet Accessibility**: Your Protect system must be internet accessible over TCP and UDP on port 443 for HTTPS communication
-- **Firewall Rules**: Ensure appropriate firewall rules allow inbound HTTPS traffic to your Unifi Protect system
-
-#### 🚨 Alarm Configuration
-- **Objects Trigger Alarm**: You must configure an alarm with an Object trigger with Scope that includes all preferred cameras and a Webhook action configured to post to the implemented alarmevent endpoint (published as an output in the CloudFormation Stack)
-- **Activity Trigger Alarm**: You must configure an alarm with an Activity trigger with Scope that includes all preferred cameras and a Webhook action configured to post to the implemented alarmevent endpoint (published as an output in the CloudFormation Stack)
-
-#### 🔒 Security Considerations
-- **Minimal Privileges**: Use a dedicated account with only Camera Viewing permissions to minimize security exposure
-- **Secrets Management**: Consider migrating credentials from GitHub repository secrets to AWS Secrets Manager for enhanced security, especially in multi-user AWS environments
-- **Network Security**: Implement proper network segmentation and access controls for your Unifi Protect system
+> **Note:** `ArchiveButtonX`, `ArchiveButtonY`, `DevicePrefix`, and `DeviceMac*` environment variables are no longer used. All device mapping and UI coordinates are now managed via the `DeviceMetadata` JSON.
 
 ## 🤖 Automated Deployment (Recommended)
 
@@ -921,7 +904,7 @@ The CloudFormation template automatically configures these Lambda environment va
 | `AlarmProcessingDlqUrl` | SQS DLQ URL | Dead letter queue for failed video downloads |
 | `DevicePrefix` | Fixed value: `DeviceMac` | Device mapping prefix |
 | `DeviceMac{MacAddress}` | Template values | Device name mappings |
-| `UnifiHost` | CloudFormation parameter | Unifi Protect hostname/IP |
+| `UnifiHost` | CloudFormation parameter | Unifi Protect hostname |
 | `UnifiUsername` | CloudFormation parameter | Unifi Protect username |
 | `UnifiPassword` | CloudFormation parameter | Unifi Protect password |
 | `UnifiApiMetadataPath` | CloudFormation parameter | Custom API path for camera metadata (default: `/proxy/protect/api/cameras`) |
@@ -1037,7 +1020,6 @@ If deploying manually, configure these environment variables in your Lambda func
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `StorageBucket` | S3 bucket name for storing events | `my-unifi-events-bucket` |
-| `DevicePrefix` | Prefix for device name mapping variables | `DeviceMac` |
 | `DeployedEnv` | Environment identifier | `prod` |
 | `FunctionName` | Lambda function name | `UnifiProtectEventReceiver` |
 | `UnifiHost` | Unifi Protect hostname or IP address | `192.168.1.1` |
@@ -1045,8 +1027,9 @@ If deploying manually, configure these environment variables in your Lambda func
 | `UnifiPassword` | Unifi Protect password | `password123` |
 | `UnifiApiMetadataPath` | API path for camera metadata | `/proxy/protect/api/cameras` |
 | `DownloadDirectory` | Download directory path | `/tmp` |
-| `ArchiveButtonX` | X coordinate for archive button click | `1274` |
-| `ArchiveButtonY` | Y coordinate for archive button click | `257` |
+| `DeviceMetadata` | JSON string for device mapping and coordinates | See above |
+
+> **Note:** `ArchiveButtonX`, `ArchiveButtonY`, `DevicePrefix`, and `DeviceMac*` environment variables are no longer used. All device mapping and UI coordinates are now managed via the `DeviceMetadata` JSON.
 
 ### 📱 Device Name Mapping
 
@@ -1078,7 +1061,7 @@ DeviceMac11:22:33:44:55:66 = "Backyard Camera"
      --parameter-overrides \
        OwnerName="Your Name" \
        AppName="unifi-protect-event-backup-api" \
-       AppDescription="Unifi webhook event processing"
+       AppDescription="Unifi webhook alarm event processing"
    ```
 
 4. **Deploy Lambda function**:
@@ -1248,470 +1231,6 @@ aws cloudformation update-stack \
    - Verify Lambda integration permissions
 
 #### 🐛 Debugging Commands
-
-```bash
-# Check CloudFormation stack status
-aws cloudformation describe-stacks --stack-name bf-prod-unifi-protect-event-backup-api
-
-# View CloudFormation events
-aws cloudformation describe-stack-events --stack-name bf-prod-unifi-protect-event-backup-api
-
-# Test Lambda function directly
-aws lambda invoke \
-  --function-name bf-prod-lambda-unifi-protect-event-backup-api \
-  --payload '{"body":"{\"alarm\":{\"triggers\":[{\"key\":\"test\",\"device\":\"test\",\"eventId\":\"test\"}]}}"}' \
-  response.json
-
-# Check API Gateway deployment
-aws apigateway get-deployments --rest-api-id YOUR_API_ID
-```
-
-## 📊 Data Structure
-
-### 📨 Incoming Webhook Format
-
-Unifi Protect sends webhook requests with the following structure:
-
-```json
-{
-    "alarm": {
-        "name": "Backup Alarm Event",
-        "sources": [
-            { "device": "28704E113F64", "type": "include" },
-            { "device": "F4E2C67A2FE8", "type": "include" }
-        ],
-        "conditions": [
-            { "condition": { "type": "is", "source": "motion" } },
-            { "condition": { "type": "is", "source": "person" } }
-        ],
-        "triggers": [
-            {
-                "key": "motion",
-                "device": "28704E113F33",
-                "eventId": "67b389ab005ec703e40075a5",
-                "zones": { "zone": [], "line": [], "loiter": [] }
-            }
-        ]
-    },
-    "timestamp": 1739819436108
-}
-```
-
-### 💾 Stored Event Format
-
-Events are processed and stored in S3 as JSON files with additional metadata:
-
-```json
-{
-  "name": "Motion Detection Alert",
-  "timestamp": 1704067200000,
-  "triggers": [
-    {
-      "key": "motion",
-      "device": "AA:BB:CC:DD:EE:FF",
-      "eventId": "12345",
-      "deviceName": "Front Door Camera",
-      "date": "2024-01-01T00:00:00",
-      "eventKey": "AA:BB:CC:DD:EE:FF_1704067200000.json"
-    }
-  ],
-  "sources": [...],
-  "conditions": [...],
-  "eventPath": "/path/to/event",
-  "eventLocalLink": "https://udm.local/protect/events/..."
-}
-```
-
-### 🗂️ S3 Storage Organization
-
-```
-my-unifi-events-bucket/
-├── events/
-│   ├── 2024-01-01/
-│   │   ├── AA:BB:CC:DD:EE:FF_1704067200000.json
-│   │   ├── AA:BB:CC:DD:EE:FF_1704067200000.mp4
-│   │   └── 11:22:33:44:55:66_1704070800000.json
-│   ├── 2024-01-02/
-│   │   ├── AA:BB:CC:DD:EE:FF_1704153600000.json
-│   │   └── AA:BB:CC:DD:EE:FF_1704153600000.mp4
-│   └── ...
-└── screenshots/
-    ├── 2024-01-01/
-    │   ├── AA:BB:CC:DD:EE:FF_1704067200000_login-screenshot.png
-    │   ├── AA:BB:CC:DD:EE:FF_1704067200000_pageload-screenshot.png
-    │   ├── AA:BB:CC:DD:EE:FF_1704067200000_afterarchivebuttonclick-screenshot.png
-    │   └── 11:22:33:44:55:66_1704070800000_login-screenshot.png
-    ├── 2024-01-02/
-    │   └── AA:BB:CC:DD:EE:FF_1704153600000_pageload-screenshot.png
-    └── ...
-```
-
-**File Descriptions:**
-- **Event JSON files**: Webhook payload data with device mappings and timestamps
-- **Video MP4 files**: Downloaded surveillance footage corresponding to alarm events
-- **Diagnostic Screenshots**: Browser automation screenshots for debugging, organized by date and event:
-  - `{eventId}_{deviceMac}_{timestamp}_login-screenshot.png`: Unifi Protect login page state
-  - `{eventId}_{deviceMac}_{timestamp}_pageload-screenshot.png`: Event page after navigation
-  - `{eventId}_{deviceMac}_{timestamp}_afterarchivebuttonclick-screenshot.png`: Archive button click state
-
-## 💻 Development
-
-### 📁 Project Structure
-
-```
-├── src/
-│   ├── UnifiWebhookEventHandler.cs     # Main Lambda handler
-│   └── Alarm.cs                        # Data models
-├── test/
-│   ├── UnifiWebhookEventReceiverTests.cs   # Unit tests
-│   └── UnifiWebhookEventReceiverTests.csproj
-├── templates/
-│   └── cf-stack-cs.yaml               # CloudFormation template
-├── UnifiWebhookEventReceiver.csproj   # Main project file
-└── UnifiWebhookEventReceiver.sln      # Solution file
-```
-
-### 🛠️ Key Technologies Used
-
-- **AWS Lambda with API Gateway**: Handles HTTP requests and webhook payloads
-- **[JSON Deserialization](https://www.newtonsoft.com/json/help/html/DeserializeObject.htm)**: Uses `Newtonsoft.Json` to parse incoming JSON payloads
-- **[Environment Variables](https://learn.microsoft.com/en-us/dotnet/api/system.environment.getenvironmentvariable)**: Retrieves AWS configuration settings dynamically
-- **[S3 File Uploading](https://docs.aws.amazon.com/AmazonS3/latest/userguide/upload-objects.html)**: Stores alarm event data as JSON files in an S3 bucket
-- **[Asynchronous Task Execution](https://learn.microsoft.com/en-us/dotnet/csharp/programming-guide/concepts/async/)**: Improves performance by handling I/O-bound operations efficiently
-
-### 📦 Dependencies
-
-- **[Newtonsoft.Json](https://www.newtonsoft.com/json)** – JSON framework for .NET used for parsing request bodies
-- **[Amazon.Lambda.Core](https://www.nuget.org/packages/Amazon.Lambda.Core/)** – Provides logging and runtime context for AWS Lambda functions
-- **[Amazon.S3 SDK](https://www.nuget.org/packages/AWSSDK.S3/)** – Interfaces with Amazon S3 for object storage
-- **[Amazon.Lambda.APIGatewayEvents](https://www.nuget.org/packages/Amazon.Lambda.APIGatewayEvents/)** – API Gateway integration types
-
-### 🧪 Running Tests
-
-The project includes **76 comprehensive unit tests** with detailed coverage analysis:
-
-```bash
-# Run all tests
-dotnet test
-
-# Run with comprehensive coverage collection
-dotnet test --collect:"XPlat Code Coverage" --settings test/coverlet.runsettings
-
-# Generate detailed HTML coverage report locally
-dotnet tool install --global dotnet-reportgenerator-globaltool
-reportgenerator \
-  -reports:"test/TestResults/*/coverage.opencover.xml" \
-  -targetdir:"coverage-html" \
-  -reporttypes:"Html;JsonSummary;Badges;TextSummary"
-```
-
-#### 📊 **Test Coverage Capabilities**
-- **Line Coverage**: 100% of critical paths covered
-- **Branch Coverage**: All conditional logic paths tested  
-- **Method Coverage**: Complete method-level test coverage
-- **Cyclomatic Complexity**: Code quality and maintainability metrics
-- **Interactive Reports**: Drill-down analysis with file and method details
-
-### 🏠 Local Development
-
-The function can be tested locally using the AWS Lambda Test Tool:
-
-```bash
-dotnet lambda-test-tool-3.1
-```
-
-## 🔒 Security and Access Control
-
-### 🏗️ Infrastructure Security
-
-The CloudFormation template implements security best practices:
-
-#### 🗄️ S3 Bucket Security
-- **Server-side encryption** with AES-256
-- **Public access blocked** at bucket level
-- **IAM-based access control** for Lambda function only
-- **Bucket policy** prevents unauthorized access
-
-#### 🌐 API Gateway Security
-- **API Key authentication** required for all endpoints
-- **Rate limiting** and throttling to prevent abuse
-- **Request/response logging** for audit trails
-- **CORS configuration** for controlled cross-origin access
-
-#### ⚡ Lambda Function Security
-- **Minimal IAM permissions** following principle of least privilege
-- **VPC isolation** (can be configured if needed)
-- **Environment variable encryption** at rest
-- **Function-level logging** and monitoring
-
-#### 🔑 IAM Role Permissions
-
-The Lambda execution role includes only necessary permissions:
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "s3:GetObject",
-        "s3:PutObject",
-        "s3:ListBucket"
-      ],
-      "Resource": [
-        "arn:aws:s3:::your-bucket-name",
-        "arn:aws:s3:::your-bucket-name/*"
-      ]
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "logs:CreateLogGroup",
-        "logs:CreateLogStream",
-        "logs:PutLogEvents"
-      ],
-      "Resource": "arn:aws:logs:*:*:*"
-    }
-  ]
-}
-```
-
-#### 🔐 GitHub Actions Security
-
-- **OIDC authentication** eliminates long-lived AWS credentials
-- **Temporary tokens** with limited scope and duration
-- **Branch-based access control** restricts deployments to main branch
-- **Repository secrets** protect sensitive configuration
-
-### 🛡️ Access Control Best Practices
-
-1. **API Key Management**
-   - Rotate API keys regularly
-   - Monitor API key usage in CloudWatch
-   - Use different keys for different environments
-
-2. **Network Security**
-   - Consider VPC deployment for enhanced isolation
-   - Use WAF for additional API protection
-   - Monitor unusual traffic patterns
-
-3. **Data Security**
-   - Event data is encrypted at rest in S3
-   - Implement retention policies for compliance
-   - Consider additional encryption for sensitive data
-
-4. **Monitoring and Alerting**
-   - Set up CloudWatch alarms for error rates
-   - Monitor failed authentication attempts
-   - Alert on unusual API usage patterns
-
-5. **Dead Letter Queue Management**
-   - Monitor DLQ message count regularly via CloudWatch alarms
-   - Review failed messages weekly to identify patterns
-   - Set up notifications when messages enter DLQ
-   - Implement automated retry for transient failures
-   - Document manual retry procedures for operations team
-
-### 📋 Compliance Considerations
-
-- **Data retention**: Configure S3 lifecycle policies
-- **Audit logging**: CloudTrail integration for API calls
-- **Access logging**: All requests logged to CloudWatch
-- **Change tracking**: CloudFormation tracks infrastructure changes
-
-## 📊 Monitoring and Logs
-
-### ☁️ CloudWatch Integration
-
-- **Function Logs**: All Lambda execution logs automatically sent to CloudWatch
-- **API Gateway Logs**: Request/response logging with configurable detail level
-- **Custom Metrics**: Application-specific metrics for monitoring
-- **Error Tracking**: Failed requests and exceptions logged with detailed error messages
-
-### 📈 Monitoring Dashboard
-
-Key metrics to monitor:
-
-1. **Lambda Metrics**:
-   - Duration, Error count, Throttles
-   - Concurrent executions, Dead letter queue errors
-
-2. **API Gateway Metrics**:
-   - Request count, Error rates (4XX/5XX)
-   - Integration latency, Client errors
-
-3. **SQS Metrics**:
-   - Messages sent, Messages received, Messages visible
-   - Dead letter queue message count, Age of oldest message
-
-4. **S3 Metrics**:
-   - Object count, Bucket size
-   - Request metrics, Error rates
-
-### 🚨 Alerting Setup
-
-Example CloudWatch alarms:
-
-```bash
-# High error rate alarm
-aws cloudwatch put-metric-alarm \
-  --alarm-name "Lambda-HighErrorRate" \
-  --alarm-description "Lambda function error rate > 5%" \
-  --metric-name Errors \
-  --namespace AWS/Lambda \
-  --statistic Sum \
-  --period 300 \
-  --threshold 5 \
-  --comparison-operator GreaterThanThreshold
-
-# API Gateway 5XX errors
-aws cloudwatch put-metric-alarm \
-  --alarm-name "API-Gateway-ServerErrors" \
-  --alarm-description "API Gateway 5XX error rate > 1%" \
-  --metric-name 5XXError \
-  --namespace AWS/ApiGateway \
-  --statistic Sum \
-  --period 300 \
-  --threshold 1 \
-  --comparison-operator GreaterThanThreshold
-
-# Dead Letter Queue monitoring
-aws cloudwatch put-metric-alarm \
-  --alarm-name "SQS-DLQ-MessagesVisible" \
-  --alarm-description "Messages in Dead Letter Queue" \
-  --metric-name ApproximateNumberOfVisibleMessages \
-  --namespace AWS/SQS \
-  --statistic Maximum \
-  --period 300 \
-  --threshold 1 \
-  --comparison-operator GreaterThanOrEqualToThreshold \
-  --dimensions Name=QueueName,Value=AlarmProcessingDeadLetterQueue
-```
-
-## 🔧 Troubleshooting
-
-### 🚀 Deployment Issues
-
-#### ❌ GitHub Actions Failures
-
-1. **Unit Tests Failing**
-   - Check test output in Actions tab
-   - Run tests locally: `dotnet test test/`
-   - Fix failing tests before pushing to main branch
-
-2. **OIDC Authentication Errors**
-   ```
-   Error: Could not assume role with OIDC
-   ```
-   - Verify IAM role exists and has correct trust policy
-   - Check repository variables are set correctly
-   - Ensure OIDC provider is configured in your AWS account
-
-3. **CloudFormation Deployment Failures**
-   ```
-   Error: Stack CREATE_FAILED
-   ```
-   - Check CloudFormation events in AWS Console
-   - Verify IAM permissions for stack operations
-   - Check for resource naming conflicts
-   - Validate template parameter constraints
-
-4. **Lambda Update Failures**
-   ```
-   Error: The role defined for the function cannot be assumed by Lambda
-   ```
-   - Verify IAM role trust policy includes `lambda.amazonaws.com`
-   - Check role permissions include Lambda execution permissions
-
-4. **Test Reporter Permission Issues**
-   ```
-   Error: HttpError: Resource not accessible by integration
-   ```
-   **Causes and Solutions:**
-   - **Missing Permissions**: Ensure workflow has `checks: write` and `pull-requests: write` permissions
-   - **Repository Settings**: Verify Actions can create check runs in repository settings
-   - **Branch Protection**: Check that branch protection rules don't block check creation
-   - **Token Scope**: The default `GITHUB_TOKEN` may have insufficient permissions
-   
-   **Workarounds:**
-   - The workflow includes `continue-on-error: true` for the test reporter step
-   - Test results are still uploaded as artifacts
-   - Test summary is displayed in workflow logs
-   - Tests still block deployment on failure regardless of reporter issues
-
-#### ⚡ Runtime Issues
-
-1. **Lambda Function Errors**
-   ```
-   ERROR: Request failed with status code 500
-   ```
-   - Check CloudWatch Logs for detailed error messages
-   - Verify environment variables are correctly set
-   - Test function with sample payloads
-
-2. **S3 Access Denied**
-   ```
-   ERROR: Access Denied when writing to S3
-   ```
-   - Verify Lambda execution role has S3 permissions
-   - Check S3 bucket policy allows Lambda function access
-   - Ensure bucket exists and is in the correct region
-
-3. **Video Download Failures**
-   ```
-   ERROR: No video files were downloaded
-   ```
-   - Check Dead Letter Queue for failed messages
-   - Verify Unifi Protect credentials are correct
-   - Check browser automation coordinates are accurate for your UI version
-   - Review CloudWatch logs for browser automation errors
-
-4. **Dead Letter Queue Messages**
-   ```
-   WARNING: Messages found in DLQ
-   ```
-   - Monitor DLQ message count in CloudWatch
-   - Review message attributes: `FailureReason`, `OriginalTimestamp`, `RetryAttempt`
-   - Manually re-queue messages to main processing queue after resolving issues
-   - Investigate root cause using Lambda execution logs
-   - Check bucket name matches environment variable
-   - Ensure bucket exists and is in the correct region
-
-3. **API Gateway Issues**
-   ```
-   ERROR: Missing Authentication Token
-   ```
-   - Verify API key is included in request headers
-   - Check API key is active and associated with usage plan
-   - Validate request URL and method
-
-4. **Device Mapping Issues**
-   ```
-   WARNING: Device name not found for MAC address
-   ```
-   - Check environment variables for device mappings
-   - Verify MAC address format matches expected pattern
-   - Update CloudFormation template with correct device mappings
-
-### 🔄 Operational Issues
-
-1. **High Error Rates**
-   - Check CloudWatch metrics for Lambda errors
-   - Review API Gateway logs for failed requests
-   - Monitor S3 operation failures
-
-2. **Performance Issues**
-   - Check Lambda duration metrics
-   - Monitor API Gateway latency
-   - Review S3 request patterns
-
-3. **Storage Issues**
-   - Monitor S3 bucket size and object count
-   - Check for failed S3 uploads
-   - Verify date-based folder structure
-
-### 🐛 Debugging Commands
 
 ```bash
 # Check GitHub Actions workflow status
