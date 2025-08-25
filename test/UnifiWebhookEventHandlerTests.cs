@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Amazon.Lambda.Core;
 using Newtonsoft.Json;
 using UnifiWebhookEventReceiver;
+using UnifiWebhookEventReceiver.Configuration;
 using Xunit;
 
 namespace UnifiWebhookEventReceiverTests
@@ -56,6 +57,50 @@ namespace UnifiWebhookEventReceiverTests
             // Basic validation that we got a response
             Assert.NotNull(response);
             Assert.True(response.StatusCode >= 200 && response.StatusCode < 600);
+        }
+
+        [Fact]
+        public async Task FunctionHandler_WithScheduledEventTrigger_ReturnsSuccessResponse()
+        {
+            // Arrange
+            SetTestEnvironment();
+            var context = new TestLambdaContext();
+            var handler = new UnifiWebhookEventHandler();
+            
+            // Create a request body that contains the scheduled event trigger
+            var scheduledEventBody = $"{{\"source\": \"{AppConfiguration.SOURCE_EVENT_TRIGGER}\"}}";
+            
+            using var stream = new MemoryStream(Encoding.UTF8.GetBytes(scheduledEventBody));
+
+            // Act
+            var response = await handler.FunctionHandler(stream, context);
+
+            // Assert
+            Assert.NotNull(response);
+            Assert.Equal(200, response.StatusCode);
+            Assert.Contains(AppConfiguration.MESSAGE_202, response.Body);
+        }
+
+        [Fact]
+        public async Task FunctionHandler_WithPartialScheduledEventTrigger_ReturnsSuccessResponse()
+        {
+            // Arrange
+            SetTestEnvironment();
+            var context = new TestLambdaContext();
+            var handler = new UnifiWebhookEventHandler();
+            
+            // Create a request body that partially contains the scheduled event trigger
+            var requestBody = $"Test message with {AppConfiguration.SOURCE_EVENT_TRIGGER} in the middle";
+            
+            using var stream = new MemoryStream(Encoding.UTF8.GetBytes(requestBody));
+
+            // Act
+            var response = await handler.FunctionHandler(stream, context);
+
+            // Assert
+            Assert.NotNull(response);
+            Assert.Equal(200, response.StatusCode);
+            Assert.Contains(AppConfiguration.MESSAGE_202, response.Body);
         }
 
         [Fact]
