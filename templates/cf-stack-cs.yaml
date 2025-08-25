@@ -151,22 +151,16 @@ Resources:
     Type: AWS::CertificateManager::Certificate
     Condition: UseUnifiDomain
     Properties:
-      DomainName: !Sub
-        - "${DevPrefix}${DomainName}"
-        - DevPrefix: !If [IsDevEnvironment, "dev-", ""]
-          DomainName: !If
+      DomainName: !If
+        - HasHttpsPrefix
+        - !Select [2, !Split ["/", !Ref UnifiHost]]
+        - !Ref UnifiHost
+      ValidationMethod: DNS
+      DomainValidationOptions:
+        - DomainName: !If
             - HasHttpsPrefix
             - !Select [2, !Split ["/", !Ref UnifiHost]]
             - !Ref UnifiHost
-      ValidationMethod: DNS
-      DomainValidationOptions:
-        - DomainName: !Sub
-            - "${DevPrefix}${DomainName}"
-            - DevPrefix: !If [IsDevEnvironment, "dev-", ""]
-              DomainName: !If
-                - HasHttpsPrefix
-                - !Select [2, !Split ["/", !Ref UnifiHost]]
-                - !Ref UnifiHost
           HostedZoneId: !Ref HostedZoneId
       CertificateExport: ENABLED
       Tags:
@@ -569,13 +563,10 @@ Resources:
     Condition: UseUnifiDomain
     Properties:
       HostedZoneId: !Ref HostedZoneId
-      Name: !Sub
-        - "${DevPrefix}${DomainName}"
-        - DevPrefix: !If [IsDevEnvironment, "dev-", ""]
-          DomainName: !If
-            - HasHttpsPrefix
-            - !Select [2, !Split ["/", !Ref UnifiHost]]
-            - !Ref UnifiHost
+      Name: !If
+        - HasHttpsPrefix
+        - !Select [2, !Split ["/", !Ref UnifiHost]]
+        - !Ref UnifiHost
       Type: A
       TTL: 300
       ResourceRecords:
@@ -761,13 +752,10 @@ Outputs:
   UnifiDomainName:
     Condition: UseUnifiDomain
     Description: UniFi domain name
-    Value: !Sub
-      - "${DevPrefix}${DomainName}"
-      - DevPrefix: !If [IsDevEnvironment, "dev-", ""]
-        DomainName: !If
-          - HasHttpsPrefix
-          - !Select [2, !Split ["/", !Ref UnifiHost]]
-          - !Ref UnifiHost
+    Value: !If
+      - HasHttpsPrefix
+      - !Select [2, !Split ["/", !Ref UnifiHost]]
+      - !Ref UnifiHost
   DNSRecordsCreated:
     Condition: UseCustomDomain
     Description: Confirmation that DNS records have been created
