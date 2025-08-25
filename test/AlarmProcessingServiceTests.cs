@@ -11,6 +11,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Net;
 using System.Threading.Tasks;
 using Amazon.Lambda.APIGatewayEvents;
@@ -315,6 +316,8 @@ namespace UnifiWebhookEventReceiverTests
             
             _mockCredentialsService.Setup(x => x.GetUnifiCredentialsAsync())
                 .ReturnsAsync(CreateValidCredentials());
+            _mockS3StorageService.Setup(x => x.GenerateS3Keys(It.IsAny<Trigger>(), It.IsAny<long>()))
+                .Returns(("test-event-key", "test-video-key"));
             _mockS3StorageService.Setup(x => x.StoreAlarmEventAsync(It.IsAny<Alarm>(), It.IsAny<Trigger>()))
                 .ReturnsAsync("test-event-key");
             
@@ -339,6 +342,8 @@ namespace UnifiWebhookEventReceiverTests
             
             _mockCredentialsService.Setup(x => x.GetUnifiCredentialsAsync())
                 .ReturnsAsync(CreateValidCredentials());
+            _mockS3StorageService.Setup(x => x.GenerateS3Keys(It.IsAny<Trigger>(), It.IsAny<long>()))
+                .Returns(("test-event-key", "test-video-key"));
             _mockS3StorageService.Setup(x => x.StoreAlarmEventAsync(It.IsAny<Alarm>(), It.IsAny<Trigger>()))
                 .ReturnsAsync("test-event-key");
             
@@ -367,6 +372,8 @@ namespace UnifiWebhookEventReceiverTests
             
             _mockCredentialsService.Setup(x => x.GetUnifiCredentialsAsync())
                 .ReturnsAsync(CreateValidCredentials());
+            _mockS3StorageService.Setup(x => x.GenerateS3Keys(It.IsAny<Trigger>(), It.IsAny<long>()))
+                .Returns(("test-event-key", "test-video-key"));
             _mockS3StorageService.Setup(x => x.StoreAlarmEventAsync(It.IsAny<Alarm>(), It.IsAny<Trigger>()))
                 .ReturnsAsync("test-event-key");
             
@@ -425,6 +432,193 @@ namespace UnifiWebhookEventReceiverTests
                 username = "testuser",
                 password = "testpass"
             };
+        }
+
+        [Fact]
+        public async Task ProcessAlarmAsync_WithValidAlarmAndMissingEventPath_StoresAlarmWithoutVideo()
+        {
+            // Arrange
+            SetValidAlarmBucketEnvironment();
+            var alarm = CreateValidAlarm();
+            alarm.eventPath = null; // No event path for video download
+
+            var credentials = new UnifiCredentials { hostname = "unifi.local", username = "admin", password = "password", apikey = "test-key" };
+            _mockCredentialsService.Setup(x => x.GetUnifiCredentialsAsync())
+                .ReturnsAsync(credentials);
+
+            _mockS3StorageService.Setup(x => x.GenerateS3Keys(It.IsAny<Trigger>(), It.IsAny<long>()))
+                .Returns(("events/2023/01/01/alm_123_1672531200000.json", "videos/2023/01/01/evt_123_1672531200000.mp4"));
+
+            _mockS3StorageService.Setup(x => x.StoreAlarmEventAsync(It.IsAny<Alarm>(), It.IsAny<Trigger>()))
+                .ReturnsAsync("events/2023/01/01/alm_123_1672531200000.json");
+
+            var expectedResponse = new APIGatewayProxyResponse { StatusCode = 200 };
+            _mockResponseHelper.Setup(x => x.CreateSuccessResponse(It.IsAny<Trigger>(), It.IsAny<long>()))
+                .Returns(expectedResponse);
+
+            // Act
+            var result = await _alarmProcessingService.ProcessAlarmAsync(alarm);
+
+            // Assert
+            Assert.Equal(200, result.StatusCode);
+            _mockS3StorageService.Verify(x => x.StoreAlarmEventAsync(It.IsAny<Alarm>(), It.IsAny<Trigger>()), Times.Once);
+            _mockUnifiProtectService.Verify(x => x.DownloadVideoAsync(It.IsAny<Trigger>(), It.IsAny<string>(), It.IsAny<long>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ProcessAlarmAsync_WithValidAlarmAndEventPath_DownloadsAndStoresVideo()
+        {
+            // Arrange
+            SetValidAlarmBucketEnvironment();
+            var alarm = CreateValidAlarm();
+            alarm.eventPath = "/some/event/path";
+
+            var credentials = new UnifiCredentials { hostname = "unifi.local", username = "admin", password = "password", apikey = "test-key" };
+            _mockCredentialsService.Setup(x => x.GetUnifiCredentialsAsync())
+                .ReturnsAsync(credentials);
+
+            _mockS3StorageService.Setup(x => x.GenerateS3Keys(It.IsAny<Trigger>(), It.IsAny<long>()))
+                .Returns(("events/2023/01/01/alm_123_1672531200000.json", "videos/2023/01/01/evt_123_1672531200000.mp4"));
+
+            _mockS3StorageService.Setup(x => x.StoreAlarmEventAsync(It.IsAny<Alarm>(), It.IsAny<Trigger>()))
+                .ReturnsAsync("events/2023/01/01/alm_123_1672531200000.json");
+
+            // Create a real temporary file for the test
+            var tempFilePath = Path.Combine(Path.GetTempPath(), $"test-video-{Guid.NewGuid()}.mp4");
+            var testVideoData = new byte[] { 0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70 }; // MP4 header bytes
+            await File.WriteAllBytesAsync(tempFilePath, testVideoData);
+
+            try
+            {
+                _mockUnifiProtectService.Setup(x => x.DownloadVideoAsync(It.IsAny<Trigger>(), It.IsAny<string>(), It.IsAny<long>()))
+                    .ReturnsAsync(tempFilePath);
+
+                _mockS3StorageService.Setup(x => x.StoreVideoFileAsync(It.IsAny<string>(), It.IsAny<string>()))
+                    .Returns(Task.CompletedTask);
+
+                var expectedResponse = new APIGatewayProxyResponse { StatusCode = 200 };
+                _mockResponseHelper.Setup(x => x.CreateSuccessResponse(It.IsAny<Trigger>(), It.IsAny<long>()))
+                    .Returns(expectedResponse);
+
+                // Act
+                var result = await _alarmProcessingService.ProcessAlarmAsync(alarm);
+
+                // Assert
+                Assert.Equal(200, result.StatusCode);
+                _mockS3StorageService.Verify(x => x.StoreAlarmEventAsync(It.IsAny<Alarm>(), It.IsAny<Trigger>()), Times.Once);
+                _mockUnifiProtectService.Verify(x => x.DownloadVideoAsync(It.IsAny<Trigger>(), credentials.hostname + alarm.eventPath, alarm.timestamp), Times.Once);
+                _mockS3StorageService.Verify(x => x.StoreVideoFileAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Once);
+            }
+            finally
+            {
+                // Clean up the temporary file
+                if (File.Exists(tempFilePath))
+                {
+                    File.Delete(tempFilePath);
+                }
+            }
+        }
+
+        [Fact]
+        public async Task ProcessAlarmAsync_WithVideoDownloadFailure_LogsErrorAndContinues()
+        {
+            // Arrange
+            SetValidAlarmBucketEnvironment();
+            var alarm = CreateValidAlarm();
+            alarm.eventPath = "/some/event/path";
+
+            var credentials = new UnifiCredentials { hostname = "unifi.local", username = "admin", password = "password", apikey = "test-key" };
+            _mockCredentialsService.Setup(x => x.GetUnifiCredentialsAsync())
+                .ReturnsAsync(credentials);
+
+            _mockS3StorageService.Setup(x => x.GenerateS3Keys(It.IsAny<Trigger>(), It.IsAny<long>()))
+                .Returns(("events/2023/01/01/alm_123_1672531200000.json", "videos/2023/01/01/evt_123_1672531200000.mp4"));
+
+            _mockS3StorageService.Setup(x => x.StoreAlarmEventAsync(It.IsAny<Alarm>(), It.IsAny<Trigger>()))
+                .ReturnsAsync("events/2023/01/01/alm_123_1672531200000.json");
+
+            _mockUnifiProtectService.Setup(x => x.DownloadVideoAsync(It.IsAny<Trigger>(), It.IsAny<string>(), It.IsAny<long>()))
+                .ThrowsAsync(new InvalidOperationException("Network error"));
+
+            var expectedResponse = new APIGatewayProxyResponse { StatusCode = 200 };
+            _mockResponseHelper.Setup(x => x.CreateSuccessResponse(It.IsAny<Trigger>(), It.IsAny<long>()))
+                .Returns(expectedResponse);
+
+            // Act
+            var result = await _alarmProcessingService.ProcessAlarmAsync(alarm);
+
+            // Assert
+            Assert.Equal(200, result.StatusCode);
+            _mockLogger.Verify(x => x.LogLine(It.Is<string>(s => s.Contains("Error downloading or storing video"))), Times.Once);
+            _mockS3StorageService.Verify(x => x.StoreVideoFileAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ProcessAlarmAsync_WithMissingStorageBucketConfig_ThrowsInvalidOperationException()
+        {
+            // Arrange
+            Environment.SetEnvironmentVariable("StorageBucket", null);
+            var alarm = CreateValidAlarm();
+
+            var credentials = new UnifiCredentials { hostname = "unifi.local", username = "admin", password = "password", apikey = "test-key" };
+            _mockCredentialsService.Setup(x => x.GetUnifiCredentialsAsync())
+                .ReturnsAsync(credentials);
+
+            var expectedResponse = new APIGatewayProxyResponse { StatusCode = 500 };
+            _mockResponseHelper.Setup(x => x.CreateErrorResponse(HttpStatusCode.InternalServerError, It.IsAny<string>()))
+                .Returns(expectedResponse);
+
+            try
+            {
+                // Act
+                var result = await _alarmProcessingService.ProcessAlarmAsync(alarm);
+
+                // Assert
+                Assert.Equal(500, result.StatusCode);
+                _mockLogger.Verify(x => x.LogLine(It.Is<string>(s => s.Contains("StorageBucket environment variable is not configured"))), Times.Once);
+            }
+            finally
+            {
+                SetValidAlarmBucketEnvironment();
+            }
+        }
+
+        [Theory]
+        [InlineData("")]
+        [InlineData("28704E113C44")]
+        [InlineData("UNKNOWN_DEVICE")]
+        public async Task ProcessAlarmAsync_WithDifferentDeviceTypes_MapsCorrectly(string deviceMac)
+        {
+            // Arrange
+            SetValidAlarmBucketEnvironment();
+            var alarm = CreateValidAlarm();
+            if (alarm.triggers != null && alarm.triggers.Count > 0)
+            {
+                alarm.triggers[0].device = deviceMac;
+            }
+
+            var credentials = new UnifiCredentials { hostname = "unifi.local", username = "admin", password = "password", apikey = "test-key" };
+            _mockCredentialsService.Setup(x => x.GetUnifiCredentialsAsync())
+                .ReturnsAsync(credentials);
+
+            _mockS3StorageService.Setup(x => x.GenerateS3Keys(It.IsAny<Trigger>(), It.IsAny<long>()))
+                .Returns(("events/2023/01/01/alm_123_1672531200000.json", "videos/2023/01/01/evt_123_1672531200000.mp4"));
+
+            _mockS3StorageService.Setup(x => x.StoreAlarmEventAsync(It.IsAny<Alarm>(), It.IsAny<Trigger>()))
+                .ReturnsAsync("events/2023/01/01/alm_123_1672531200000.json");
+
+            var expectedResponse = new APIGatewayProxyResponse { StatusCode = 200 };
+            _mockResponseHelper.Setup(x => x.CreateSuccessResponse(It.IsAny<Trigger>(), It.IsAny<long>()))
+                .Returns(expectedResponse);
+
+            // Act
+            var result = await _alarmProcessingService.ProcessAlarmAsync(alarm);
+
+            // Assert
+            Assert.Equal(200, result.StatusCode);
+            _mockS3StorageService.Verify(x => x.StoreAlarmEventAsync(
+                It.IsAny<Alarm>(), 
+                It.Is<Trigger>(t => t.device == deviceMac)), Times.Once);
         }
 
         #endregion
