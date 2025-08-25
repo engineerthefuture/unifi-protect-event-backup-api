@@ -1,0 +1,207 @@
+
+AWSTemplateFormatVersion: "2010-09-09"
+Description: CloudFormation stack for static website hosting with S3 and CloudFront for the Unifi Protect Event Backup API UI.
+
+# Stack-level tags
+Metadata:
+  AWS::CloudFormation::Interface:
+    Tags:
+      - Key: Owner
+        Value: !Ref OwnerName
+      - Key: Description
+        Value: !Ref AppDescription
+      - Key: Environment
+        Value: !Ref EnvPrefix
+      - Key: AppName
+        Value: !Ref AppName
+      - Key: SupportEmail
+        Value: !Ref SupportEmail
+
+Parameters:
+  EnvPrefix:
+    Type: String
+    Description: Prefix for the environment (dev, prod, staging)
+    Default: dev
+  AppName:
+    Type: String
+    Description: Name of the application
+    Default: ""
+  BucketName:
+    Type: String
+    Description: S3 bucket name for the static website
+    Default: ""
+  DomainName:
+    Type: String
+    Description: Custom domain name for the static site (e.g., site.brentfoster.me)
+    Default: ""
+  HostedZoneId:
+    Type: String
+    Description: Route53 Hosted Zone ID for the domain
+    Default: ""
+
+Conditions:
+  HasCustomDomain: !Not [!Equals [!Ref DomainName, ""]]
+  HasHostedZone: !Not [!Equals [!Ref HostedZoneId, ""]]
+  UseCustomDomain: !And [!Condition HasCustomDomain, !Condition HasHostedZone]
+
+Resources:
+
+  Certificate:
+    Type: AWS::CertificateManager::Certificate
+    Condition: UseCustomDomain
+    Properties:
+      DomainName: !Ref DomainName
+      ValidationMethod: DNS
+      DomainValidationOptions:
+        - DomainName: !Ref DomainName
+          HostedZoneId: !Ref HostedZoneId
+      Tags:
+        - Key: "Name"
+          Value: !Sub "bf-${EnvPrefix}-${AppName}-cert"
+
+  WebsiteBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BucketName
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      WebsiteConfiguration:
+        IndexDocument: index.html
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders:
+              - '*'
+            AllowedMethods:
+              - GET
+            AllowedOrigins:
+              - '*'
+            Id: OpenCors
+            MaxAge: '3600'
+      Tags:
+        - Key: "Name"
+          Value: !Sub "bf-${EnvPrefix}-${AppName}-ui"
+
+  CloudFrontOriginIdentity:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: !Sub "bf-${EnvPrefix}-origin-identity"
+
+  WebUIPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref WebsiteBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              CanonicalUser: !GetAtt CloudFrontOriginIdentity.S3CanonicalUserId
+            Action: "s3:GetObject"
+            Resource: !Sub "${WebsiteBucket.Arn}/*"
+
+  WebsiteCloudFront:
+    Type: AWS::CloudFront::Distribution
+    DependsOn:
+      - WebsiteBucket
+    Properties:
+      DistributionConfig:
+        Origins:
+          - DomainName: !GetAtt WebsiteBucket.RegionalDomainName
+            Id: !Ref WebsiteBucket
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub "origin-access-identity/cloudfront/${CloudFrontOriginIdentity}"
+            OriginCustomHeaders:
+              - HeaderName: Access-Control-Allow-Origin
+                HeaderValue: '*'
+        Enabled: true
+        Comment: !Sub "bf-${EnvPrefix} - ${AppName}"
+        Aliases: !If [UseCustomDomain, [!Ref DomainName], []]
+        DefaultRootObject: index.html
+        DefaultCacheBehavior:
+          TargetOriginId: !Ref WebsiteBucket
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods:
+            - HEAD
+            - DELETE
+            - POST
+            - GET
+            - OPTIONS
+            - PUT
+            - PATCH
+          CachedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          Compress: false
+          ForwardedValues:
+            QueryString: true
+            Cookies:
+              Forward: none
+            Headers:
+              - Access-Control-Request-Headers
+              - Access-Control-Request-Method
+              - Origin
+        PriceClass: PriceClass_100
+        Restrictions:
+          GeoRestriction:
+            RestrictionType: whitelist
+            Locations:
+              - US
+              - CA
+        ViewerCertificate: !If
+          - UseCustomDomain
+          - {
+              AcmCertificateArn: !Ref Certificate,
+              MinimumProtocolVersion: TLSv1.2_2021,
+              SslSupportMethod: sni-only
+            }
+          - { CloudFrontDefaultCertificate: true }
+        CustomErrorResponses:
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+      Tags:
+        - Key: "Name"
+          Value: !Sub "bf-${EnvPrefix}-ui-cdn"
+
+  CloudFrontAliasRecordA:
+    Type: AWS::Route53::RecordSet
+    Condition: UseCustomDomain
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref DomainName
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt WebsiteCloudFront.DomainName
+        HostedZoneId: Z2FDTNDATAQYW2
+
+  CloudFrontAliasRecordAAAA:
+    Type: AWS::Route53::RecordSet
+    Condition: UseCustomDomain
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref DomainName
+      Type: AAAA
+      AliasTarget:
+        DNSName: !GetAtt WebsiteCloudFront.DomainName
+        HostedZoneId: Z2FDTNDATAQYW2
+
+Outputs:
+  S3WebsiteURL:
+    Value: !GetAtt WebsiteBucket.WebsiteURL
+  CloudFrontDomain:
+    Value: !GetAtt WebsiteCloudFront.DomainName
+  CloudFrontDistributionId:
+    Description: "CloudFront Distribution ID"
+    Value: !Ref WebsiteCloudFront

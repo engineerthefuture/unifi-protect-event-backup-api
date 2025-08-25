@@ -123,7 +123,7 @@ Conditions:
   HasUnifiHostIp: !Not [!Equals [!Ref UnifiHostIp, ""]]
   UseUnifiDomain: !And [!And [!Condition HasUnifiHost, !Condition HasUnifiHostIp], !Condition HasHostedZone]
   HasHttpsPrefix: !Not [!Equals [!Select [0, !Split ["://", !Ref UnifiHost]], !Ref UnifiHost]]
-  IsDevEnvironment: !Equals [!Ref EnvPrefix, "dev"]
+  IsProdEnvironment: !Equals [!Ref EnvPrefix, "prod"]
 
 # Resources
 Resources: 
@@ -162,7 +162,11 @@ Resources:
             - !Select [2, !Split ["/", !Ref UnifiHost]]
             - !Ref UnifiHost
           HostedZoneId: !Ref HostedZoneId
-      CertificateExport: ENABLED
+      CertificateExport:
+        Fn::If:
+          - IsProdEnvironment
+          - ENABLED
+          - DISABLED
       Tags:
         - Key: "Name"
           Value: !Sub "${FunctionName}-unifi-cert"
