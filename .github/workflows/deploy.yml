@@ -12,6 +12,10 @@ on:
       - 'bugfix-**'
       - 'hotfix-**'
       - dev
+    paths:
+      - 'src/**'
+      - 'templates/cf-stack-cs.yaml'
+      - '.github/workflows/deploy.yml'
 
 jobs:
   # Build job: Compiles code, runs tests, and prepares deployment artifacts

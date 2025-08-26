@@ -8,6 +8,10 @@ on:
       - 'feature-**'
       - 'bugfix-**'
       - 'hotfix-**'
+    paths:
+      - 'ui/**'
+      - 'templates/ui-cf-stack.yaml'
+      - '.github/workflows/deploy-ui.yml'
 
 jobs:
   deploy-ui:
