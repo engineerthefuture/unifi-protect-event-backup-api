@@ -481,6 +481,64 @@ tags:
 
 
 paths:
+
+  /summary:
+    get:
+      summary: Get event summary for each camera
+      tags:
+        - Event Retrieval
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: Returns the latest event and event count for each camera in the last 24 hours, plus a total event count. Each camera's latest event includes a presigned video link.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    cameraName:
+                      type: string
+                      description: Name of the camera
+                    eventCount:
+                      type: integer
+                      description: Number of events in the last 24 hours for this camera
+                    latestEvent:
+                      type: object
+                      description: The most recent event object for this camera
+                      properties:
+                        eventId:
+                          type: string
+                        timestamp:
+                          type: integer
+                          format: int64
+                        eventType:
+                          type: string
+                        deviceName:
+                          type: string
+                    videoUrl:
+                      type: string
+                      format: uri
+                      description: Presigned S3 URL for the latest event's video
+                  required:
+                    - cameraName
+                    - eventCount
+                    - latestEvent
+                    - videoUrl
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /alarmevent:
     post:
       summary: Process Unifi Protect alarm webhook

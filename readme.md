@@ -474,7 +474,19 @@ See [DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed setup instructions.
 
 ### 🎯 Core Endpoints
 
-#### 1. 📨 Webhook Receiver - `POST /{stage}/alarmevent`
+#### 1. � Event Summary - `GET /{stage}/summary`
+Returns the latest event and event count for each camera in the last 24 hours, plus a total event count. Each camera's latest event includes a presigned video link.
+- **Purpose**: Get a summary of recent activity for all cameras
+- **Authentication**: API Key required
+- **Parameters**: None required
+- **Response**: JSON array with one entry per camera, each containing:
+  - `cameraName`: Name of the camera
+  - `eventCount`: Number of events in the last 24 hours
+  - `latestEvent`: The most recent event object
+  - `videoUrl`: Presigned S3 URL for the latest event's video
+  - `totalCount`: Total number of events in the last 24 hours (across all cameras)
+
+#### 2. �📨 Webhook Receiver - `POST /{stage}/alarmevent`
 Receives and queues alarm events from Unifi Protect systems for delayed processing
 - **Purpose**: Validate webhook data and queue for processing after configurable delay
 - **Authentication**: API Key required
@@ -482,7 +494,7 @@ Receives and queues alarm events from Unifi Protect systems for delayed processi
 - **Response**: Immediate success with queue information (eventId, processing delay, estimated completion time)
 - **Processing**: Events queued in SQS with 2-minute delay for improved video download reliability
 
-#### 2. 🔍 Event Retrieval - `GET /{stage}/?eventId={eventId}`
+#### 3. 🔍 Event Retrieval - `GET /{stage}/?eventId={eventId}`
 Retrieves stored alarm event data and video by event ID
 - **Purpose**: Fetch specific alarm event JSON data and video download URL using the Unifi Protect event ID
 - **Authentication**: API Key required
@@ -490,7 +502,7 @@ Retrieves stored alarm event data and video by event ID
 - **Response**: Complete alarm event JSON object with presigned video download URL
 - **Optimization**: Uses eventId as filename prefix for direct file lookup without JSON parsing
 
-#### 3. 📹 Latest Video Access - `GET /{stage}/latestvideo`
+#### 4. 📹 Latest Video Access - `GET /{stage}/latestvideo`
 Provides presigned URL for downloading the most recent video file from all stored events
 - **Purpose**: Get secure download URL for the latest MP4 video file
 - **Authentication**: API Key required
@@ -500,7 +512,7 @@ Provides presigned URL for downloading the most recent video file from all store
 - **Optimization**: Efficiently searches from today's date folder backwards, day by day
 - **Payload Limit Solution**: Uses presigned URLs to handle large video files (>6MB) that exceed API Gateway limits
 
-#### 4. 📊 Camera Metadata - `GET /{stage}/metadata`
+#### 5. 📊 Camera Metadata - `GET /{stage}/metadata`
 Fetches and stores current camera metadata from the Unifi Protect API
 - **Purpose**: Retrieve camera configuration, names, and technical specifications from your Unifi Protect system
 - **Authentication**: API Key required
@@ -566,7 +578,48 @@ npx swagger-parser validate docs/openapi.yaml
 npx spectral lint docs/openapi.yaml
 ```
 
+
 ### 📋 Quick Reference
+
+#### 📈 GET /summary
+Returns a summary of the latest event and event count for each camera in the last 24 hours, plus a total event count. Each camera's latest event includes a presigned video link.
+
+**Parameters**: None required
+
+**Response**: JSON array, one entry per camera:
+- `cameraName`: Name of the camera
+- `eventCount`: Number of events in the last 24 hours
+- `latestEvent`: The most recent event object
+- `videoUrl`: Presigned S3 URL for the latest event's video
+- `totalCount`: Total number of events in the last 24 hours (across all cameras)
+
+**Example Response**:
+```json
+[
+  {
+    "cameraName": "Front Door Camera",
+    "eventCount": 5,
+    "latestEvent": {
+      "eventId": "67b389ab005ec703e40075a5",
+      "timestamp": 1739819436108,
+      "eventType": "motion",
+      "deviceName": "Front Door Camera"
+    },
+    "videoUrl": "https://s3.amazonaws.com/bucket/2025-01-17/28704E113F33_1739819436108.mp4?X-Amz-Signature=..."
+  },
+  {
+    "cameraName": "Backyard Camera",
+    "eventCount": 2,
+    "latestEvent": {
+      "eventId": "aabbccddeeff001122334455",
+      "timestamp": 1739819436123,
+      "eventType": "person",
+      "deviceName": "Backyard Camera"
+    },
+    "videoUrl": "https://s3.amazonaws.com/bucket/2025-01-17/112233445566_1739819436123.mp4?X-Amz-Signature=..."
+  }
+]
+```
 
 #### 📨 POST /alarmevent
 Processes incoming alarm webhook events from Unifi Protect.

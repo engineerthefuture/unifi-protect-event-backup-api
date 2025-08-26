@@ -1,3 +1,4 @@
+
 /************************
  * Unifi Webhook Event Receiver
  * AppConfiguration.cs
@@ -49,6 +50,9 @@ namespace UnifiWebhookEventReceiver.Configuration
 
         /// <summary>API route for latest video download</summary>
         public const string ROUTE_LATEST_VIDEO = "latestvideo";
+
+    /// <summary>API route for event summary</summary>
+    public const string ROUTE_SUMMARY = "summary";
 
         /// <summary>Event source identifier for AWS scheduled events</summary>
         public const string SOURCE_EVENT_TRIGGER = "aws.events";

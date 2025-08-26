@@ -27,7 +27,29 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
     /// </summary>
     public class S3StorageService : IS3StorageService
     {
-    private readonly IAmazonS3 _s3Client;
+            /// <summary>
+            /// Retrieves a video file by event ID from S3.
+            /// </summary>
+            /// <param name="eventId">The event ID to search for</param>
+            /// <returns>API Gateway response with the video file</returns>
+            public async Task<APIGatewayProxyResponse> GetVideoByEventIdAsync(string eventId)
+            {
+                var configError = ValidateEventIdConfiguration(eventId);
+                if (configError != null)
+                    return configError;
+
+                var (eventKey, videoKey, timestamp, errorResponse) = await SearchEventByIdAsync(eventId);
+                if (errorResponse != null)
+                    return errorResponse;
+
+                var eventData = await RetrieveEventDataAsync(videoKey!);
+                var videoExists = await VerifyVideoFileExistsAsync(videoKey!, eventId);
+                if (videoExists != null)
+                    return videoExists;
+
+                return await BuildEventVideoResponse(eventKey!, videoKey!, eventId, timestamp, eventData);
+            }
+        private readonly IAmazonS3 _s3Client;
         private readonly IResponseHelper _responseHelper;
         private readonly ILambdaLogger _logger;
 
@@ -37,68 +59,50 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// <param name="s3Client">AWS S3 client</param>
         /// <param name="responseHelper">Response helper service</param>
         /// <param name="logger">Lambda logger instance</param>
-    public S3StorageService(IAmazonS3 s3Client, IResponseHelper responseHelper, ILambdaLogger logger)
+        public S3StorageService(IAmazonS3 s3Client, IResponseHelper responseHelper, ILambdaLogger logger)
         {
             _s3Client = s3Client ?? throw new ArgumentNullException(nameof(s3Client));
             _responseHelper = responseHelper ?? throw new ArgumentNullException(nameof(responseHelper));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
-        /// <summary>
-        /// Stores alarm event data in S3 as JSON.
-        /// </summary>
-        /// <param name="alarm">The alarm data to store</param>
-        /// <param name="trigger">The specific trigger information</param>
-        /// <returns>The S3 key where the data was stored</returns>
+        // --- Public interface methods ---
+
         [ExcludeFromCodeCoverage] // Requires AWS S3 connectivity
         public async Task<string> StoreAlarmEventAsync(Alarm alarm, Trigger trigger)
         {
             ArgumentNullException.ThrowIfNull(alarm);
             ArgumentNullException.ThrowIfNull(trigger);
-                
             if (string.IsNullOrEmpty(AppConfiguration.AlarmBucketName))
-            {
                 throw new InvalidOperationException("StorageBucket environment variable is not configured");
-            }
-
             var (eventKey, _) = GenerateS3Keys(trigger, alarm.timestamp);
             var alarmJson = JsonConvert.SerializeObject(alarm);
-
             await UploadStringContentAsync(AppConfiguration.AlarmBucketName, eventKey, alarmJson, "application/json");
             return eventKey;
         }
 
-        /// <summary>
-        /// Stores a video file in S3.
-        /// </summary>
-        /// <param name="videoFilePath">Path to the video file to upload</param>
-        /// <param name="s3Key">S3 key for the file</param>
-        /// <returns>Task representing the upload operation</returns>
         [ExcludeFromCodeCoverage] // Requires AWS S3 connectivity
         public async Task StoreVideoFileAsync(string videoFilePath, string s3Key)
         {
             _logger.LogLine($"Video file path: {videoFilePath}");
             _logger.LogLine($"S3 key: {s3Key}");
             _logger.LogLine($"Bucket name: {AppConfiguration.AlarmBucketName}");
-            
             if (string.IsNullOrEmpty(AppConfiguration.AlarmBucketName))
             {
                 _logger.LogLine("ERROR: StorageBucket environment variable is not configured");
                 throw new InvalidOperationException("StorageBucket environment variable is not configured");
             }
-
             if (!File.Exists(videoFilePath))
             {
                 _logger.LogLine($"ERROR: Video file does not exist: {videoFilePath}");
                 throw new FileNotFoundException($"Video file not found: {videoFilePath}");
             }
-
             var videoData = await File.ReadAllBytesAsync(videoFilePath);
             _logger.LogLine($"Successfully read video file: {videoData.Length} bytes");
-            
             _logger.LogLine("About to upload video data to S3...");
             await UploadBinaryContentAsync(AppConfiguration.AlarmBucketName, s3Key, videoData, "video/mp4");
         }
+
 
         /// <summary>
         /// Stores a raw JSON string in S3 at the specified key.
@@ -113,90 +117,158 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 throw new InvalidOperationException("StorageBucket environment variable is not configured");
             await UploadStringContentAsync(AppConfiguration.AlarmBucketName, s3Key, json, "application/json");
         }
+        /// <param name="responseHelper">Response helper service</param>
+        /// <param name="logger">Lambda logger instance</param>
+            // (Constructor already defined above, remove duplicate)
 
         /// <summary>
-        /// Retrieves the latest video file from S3.
+        /// Returns a summary of the last event and event count per camera in the last 24 hours, with a presigned video link for each.
         /// </summary>
-        /// <returns>API Gateway response with the video file</returns>
-        public async Task<APIGatewayProxyResponse> GetLatestVideoAsync()
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S3776:Refactor this method to reduce its Cognitive Complexity", Justification = "Business logic is inherently complex.")]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S1541:The Cyclomatic Complexity of this method is too high", Justification = "Business logic is inherently complex.")]
+    public async Task<APIGatewayProxyResponse> GetEventSummaryAsync()
         {
-            _logger.LogLine("Executing Get latest video function");
-
-            try
+            _logger.LogLine("[GetEventSummaryAsync] Starting event summary aggregation.");
+            var now = DateTime.UtcNow;
+            var since = now.AddHours(-24);
+            var bucket = AppConfiguration.AlarmBucketName;
+            var prefixes = new List<string> { now.ToString("yyyy-MM-dd"), since.ToString("yyyy-MM-dd") };
+            if (bucket == null)
             {
-                // Validate configuration
-                var configError = ValidateLatestVideoConfiguration();
-                if (configError != null) return configError;
-
-                // Search for the latest video
-                var searchResult = await SearchForLatestVideoAsync();
-                if (searchResult.ErrorResponse != null) return searchResult.ErrorResponse;
-
-                // Verify video exists
-                var verificationError = await VerifyVideoExistsAsync(searchResult.VideoKey!);
-                if (verificationError != null) return verificationError;
-
-                // Get event data
-                var eventData = await RetrieveEventDataAsync(searchResult.VideoKey!);
-
-                // Build and return response
-                return await BuildLatestVideoResponse(searchResult.VideoKey!, searchResult.Timestamp, eventData);
+                throw new InvalidOperationException("StorageBucket environment variable is not configured");
             }
-            catch (Exception e)
+            var allObjects = await ListAllEventObjectsAsync(bucket, prefixes);
+            var filteredEvents = await ParseAndFilterEventsAsync(allObjects, bucket, since);
+            var summary = SummarizeEvents(filteredEvents);
+            var result = await BuildCameraSummariesAsync(summary, bucket);
+            _logger.LogLine($"[GetEventSummaryAsync] Returning summary for {result.Count} cameras, total events in 24h: {summary.Values.Sum(x => x.count)}");
+            var response = new
             {
-                _logger.LogLine($"Error retrieving latest video: {e.Message}");
-                return _responseHelper.CreateErrorResponse(HttpStatusCode.InternalServerError, $"Error retrieving latest video: {e.Message}");
-            }
+                cameras = result,
+                totalCount = summary.Values.Sum(x => x.count)
+            };
+            return new APIGatewayProxyResponse
+            {
+                StatusCode = 200,
+                Body = JsonConvert.SerializeObject(response, Formatting.Indented),
+                Headers = _responseHelper.GetStandardHeaders()
+            };
         }
 
-        /// <summary>
-        /// Retrieves a video file by event ID from S3.
-        /// </summary>
-        /// <param name="eventId">The event ID to search for</param>
-        /// <returns>API Gateway response with the video file</returns>
-        public async Task<APIGatewayProxyResponse> GetVideoByEventIdAsync(string eventId)
+        // Helper: List all S3 objects for the given prefixes
+        private async Task<List<S3Object>> ListAllEventObjectsAsync(string bucket, List<string> prefixes)
         {
-            _logger.LogLine($"Executing Get video by eventId function for eventId: {eventId}");
-
-            try
+            var allObjects = new List<S3Object>();
+            foreach (var prefix in prefixes.Distinct())
             {
-                // Validate configuration and parameters
-                var configValidation = ValidateEventIdConfiguration(eventId);
-                if (configValidation != null) return configValidation;
-
-                // Search for the event
-                var searchResult = await SearchEventByIdAsync(eventId);
-                if (searchResult.ErrorResponse != null) return searchResult.ErrorResponse;
-
-                // Verify video file exists
-                var verificationResult = await VerifyVideoFileExistsAsync(searchResult.VideoKey!, eventId);
-                if (verificationResult != null) return verificationResult;
-
-                // Retrieve event data (optional, don't fail if missing)
-                var eventData = await RetrieveEventDataAsync(searchResult.EventKey!);
-
-                // Generate presigned URL and build response
-                return await BuildEventVideoResponse(searchResult.EventKey!, searchResult.VideoKey!,
-                    eventId, searchResult.Timestamp, eventData);
+                try
+                {
+                    _logger.LogLine($"[ListAllEventObjectsAsync] Listing S3 objects with prefix: {prefix}/");
+                    var listReq = new ListObjectsV2Request { BucketName = bucket, Prefix = $"{prefix}/" };
+                    var listResp = await _s3Client.ListObjectsV2Async(listReq);
+                    allObjects.AddRange(listResp.S3Objects.Where(o => o.Key.EndsWith(".json")));
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogLine($"[ListAllEventObjectsAsync] S3 list error for prefix {prefix}/: {ex.Message}");
+                }
             }
-            catch (AmazonS3Exception ex) when (ex.ErrorCode == "NoSuchKey")
+            return allObjects;
+        }
+
+        // Helper: Parse and filter events from S3 objects
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S3267:Loop should be simplified by calling Select(obj => obj.Key)", Justification = "Full S3Object is required for event processing.")]
+    private async Task<List<(Alarm alarm, Trigger trigger, string videoKey, string deviceName, long timestamp)>> ParseAndFilterEventsAsync(List<S3Object> objects, string bucket, DateTime since)
+        {
+            var filtered = new List<(Alarm, Trigger, string, string, long)>();
+            foreach (var obj in objects)
             {
-                _logger.LogLine($"Video or event data not found in S3 for eventId {eventId}: {ex.Message}");
-                return _responseHelper.CreateErrorResponse(HttpStatusCode.NotFound,
-                    $"Video file for event {eventId} is not available. The video may have been automatically deleted due to the 30-day retention policy or the video download may have failed during event processing.");
+                try
+                {
+                    _logger.LogLine($"[ParseAndFilterEventsAsync] Processing S3 object: {obj.Key}");
+                    var getResp = await _s3Client.GetObjectAsync(bucket, obj.Key);
+                    using var reader = new StreamReader(getResp.ResponseStream);
+                    var json = await reader.ReadToEndAsync();
+                    var alarm = JsonConvert.DeserializeObject<Alarm>(json);
+                    if (alarm == null || alarm.triggers == null || alarm.triggers.Count == 0)
+                    {
+                        _logger.LogLine($"[ParseAndFilterEventsAsync] Skipping object {obj.Key}: No triggers or invalid alarm data.");
+                        continue;
+                    }
+                    var trigger = alarm.triggers[0];
+                    var deviceId = trigger.device;
+                    var deviceName = trigger.deviceName ?? deviceId;
+                    var ts = alarm.timestamp;
+                    if (ts < ((DateTimeOffset)since).ToUnixTimeMilliseconds())
+                    {
+                        _logger.LogLine($"[ParseAndFilterEventsAsync] Skipping object {obj.Key}: Event timestamp {ts} is older than 24h window.");
+                        continue;
+                    }
+                    var videoKey = trigger.videoKey ?? string.Empty;
+                    filtered.Add((alarm, trigger, videoKey, deviceName, ts));
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogLine($"[ParseAndFilterEventsAsync] S3 get/parse error for {obj.Key}: {ex.Message}");
+                }
             }
-            catch (AmazonS3Exception ex)
+            return filtered;
+        }
+
+        // Helper: Summarize events by device
+    private static Dictionary<string, (Alarm lastEvent, int count, string? videoKey, string? deviceName, long timestamp)> SummarizeEvents(List<(Alarm alarm, Trigger trigger, string videoKey, string deviceName, long timestamp)> events)
+        {
+            var summary = new Dictionary<string, (Alarm lastEvent, int count, string? videoKey, string? deviceName, long timestamp)>();
+            foreach (var (alarm, trigger, videoKey, deviceName, ts) in events)
             {
-                _logger.LogLine($"S3 error retrieving video by eventId {eventId}: {ex.ErrorCode} - {ex.Message}");
-                return _responseHelper.CreateErrorResponse(HttpStatusCode.InternalServerError,
-                    $"Storage service error while retrieving event {eventId}. Please try again later.");
+                var deviceId = trigger.device;
+                if (!summary.TryGetValue(deviceId, out var existing) || existing.timestamp < ts)
+                {
+                    summary[deviceId] = (alarm, 1, videoKey, deviceName, ts);
+                }
+                else
+                {
+                    summary[deviceId] = (existing.lastEvent, existing.count + 1, existing.videoKey, existing.deviceName, existing.timestamp);
+                }
             }
-            catch (Exception e)
+            return summary;
+        }
+
+        // Helper: Build camera summaries with presigned URLs
+        private async Task<List<object>> BuildCameraSummariesAsync(Dictionary<string, (Alarm lastEvent, int count, string? videoKey, string? deviceName, long timestamp)> summary, string bucket)
+        {
+            var result = new List<object>();
+            foreach (var (deviceId, (lastEvent, count, videoKey, deviceName, timestamp)) in summary)
             {
-                _logger.LogLine($"Unexpected error retrieving video by eventId {eventId}: {e.Message}");
-                return _responseHelper.CreateErrorResponse(HttpStatusCode.InternalServerError,
-                    $"An unexpected error occurred while retrieving event {eventId}. Please try again later.");
+                string? presignedUrl = null;
+                if (!string.IsNullOrEmpty(videoKey))
+                {
+                    try
+                    {
+                        var req = new GetPreSignedUrlRequest
+                        {
+                            BucketName = bucket,
+                            Key = videoKey,
+                            Expires = DateTime.UtcNow.AddHours(1)
+                        };
+                        presignedUrl = await _s3Client.GetPreSignedURLAsync(req);
+                        _logger.LogLine($"[BuildCameraSummariesAsync] Generated presigned URL for video: {videoKey}");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogLine($"[BuildCameraSummariesAsync] Failed to generate presigned URL for {videoKey}: {ex.Message}");
+                    }
+                }
+                result.Add(new
+                {
+                    cameraId = deviceId,
+                    cameraName = deviceName,
+                    lastEvent,
+                    lastVideoUrl = presignedUrl,
+                    count24h = count
+                });
             }
+            return result;
         }
 
         /// <summary>
@@ -377,15 +449,6 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             }
         }
 
-        private APIGatewayProxyResponse? ValidateLatestVideoConfiguration()
-        {
-            if (string.IsNullOrWhiteSpace(AppConfiguration.AlarmBucketName))
-            {
-                _logger.LogLine("StorageBucket environment variable is not configured");
-                return _responseHelper.CreateErrorResponse(HttpStatusCode.InternalServerError, "Server configuration error: StorageBucket not configured");
-            }
-            return null;
-        }
 
         [ExcludeFromCodeCoverage] // Requires AWS S3 connectivity
         private async Task<(string? VideoKey, long Timestamp, APIGatewayProxyResponse? ErrorResponse)> SearchForLatestVideoAsync()
