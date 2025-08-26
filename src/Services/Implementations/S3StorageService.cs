@@ -139,7 +139,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 for (int i = 0; i < 2; i++)
                 {
                     var date = now.AddDays(-i);
-                    var prefix = $"events/{date:yyyy-MM-dd}/";
+                    var prefix = $"{date:yyyy-MM-dd}/";
                     var listReq = new ListObjectsV2Request { BucketName = bucket, Prefix = prefix };
                     var listResp = await _s3Client.ListObjectsV2Async(listReq);
                     foreach (var obj in listResp.S3Objects.Select(o => o.Key).Where(k => k.EndsWith(".json")))

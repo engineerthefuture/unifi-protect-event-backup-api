@@ -177,14 +177,8 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             else if (domainName.StartsWith("http://"))
                 domainName = domainName.Substring(7); // Remove "http://"
                 
-            // Prepend "dev-" if we're in a dev environment
             var deployedEnv = Environment.GetEnvironmentVariable("DeployedEnv")?.ToLower();
-            if (deployedEnv == "dev")
-            {
-                domainName = $"dev-{domainName}";
-                _logger.LogLine($"Prepending 'dev-' for dev environment: {domainName}");
-            }
-                
+
             // Always use HTTPS with the domain name
             var hostname = $"https://{domainName}";
 
