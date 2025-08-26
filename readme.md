@@ -514,10 +514,10 @@ Fetches and stores current camera metadata from the Unifi Protect API
 
 
 **Complete API Documentation:**
-- [openapi.yaml](openapi.yaml) (OpenAPI 3.0 spec)
+- [docs/openapi.yaml](docs/openapi.yaml) (OpenAPI 3.0 spec)
 - [Swagger UI (OpenAPI) – GitHub Pages](https://engineerthefuture.github.io/unifi-protect-event-backup-api/index.html)
 
-The full OpenAPI 3.0 specification is available in the [`openapi.yaml`](openapi.yaml) file and includes:
+The full OpenAPI 3.0 specification is available in the [`docs/openapi.yaml`](docs/openapi.yaml) file and includes:
 
 - 📝 **Complete endpoint documentation** with detailed request/response schemas
 - 🎯 **Interactive examples** for all supported event types (motion, person, vehicle detection)
@@ -531,39 +531,39 @@ The full OpenAPI 3.0 specification is available in the [`openapi.yaml`](openapi.
 #### **1. View Interactive Documentation**
 ```bash
 # Swagger UI
-npx swagger-ui-serve openapi.yaml
+npx swagger-ui-serve docs/openapi.yaml
 
 # Redoc
-npx redoc-cli serve openapi.yaml
+npx redoc-cli serve docs/openapi.yaml
 ```
 
 #### **2. Generate Client SDKs**
 ```bash
 # TypeScript/JavaScript client
 npx @openapitools/openapi-generator-cli generate \
-  -i openapi.yaml \
+  -i docs/openapi.yaml \
   -g typescript-axios \
   -o ./generated-client
 
 # Python client
 openapi-generator-cli generate \
-  -i openapi.yaml \
+  -i docs/openapi.yaml \
   -g python \
   -o ./python-client
 ```
 
 #### **3. API Testing**
-- Import `openapi.yaml` into **Postman**, **Insomnia**, or **Bruno**
+- Import `docs/openapi.yaml` into **Postman**, **Insomnia**, or **Bruno**
 - Use with **curl** for command-line testing
-- Create mock servers with **Prism**: `npx @stoplight/prism mock openapi.yaml`
+- Create mock servers with **Prism**: `npx @stoplight/prism mock docs/openapi.yaml`
 
 #### **4. Validation**
 ```bash
 # Validate specification
-npx swagger-parser validate openapi.yaml
+npx swagger-parser validate docs/openapi.yaml
 
 # Lint for best practices
-npx spectral lint openapi.yaml
+npx spectral lint docs/openapi.yaml
 ```
 
 ### 📋 Quick Reference
@@ -1303,7 +1303,7 @@ aws sqs send-message \
 ## 📚 Documentation
 
 - 🚀 **[Quickstart Guide](docs/QUICKSTART.md)** - Step-by-step setup for new AWS accounts
-- 📖 **[API Documentation](openapi.yaml)** - Complete OpenAPI 3.0 specification
+- 📖 **[API Documentation](docs/openapi.yaml)** - Complete OpenAPI 3.0 specification
 - 🚀 **[Deployment Guide](docs/DEPLOYMENT.md)** - Multi-environment deployment instructions
 
 ## 📄 License

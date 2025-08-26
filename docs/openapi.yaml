@@ -4,81 +4,12 @@ info:
   description: |
     AWS Lambda function that receives and processes webhook events from Unifi Dream Machine Protect systems, 
     storing alarm event data and video files in S3 for backup and analysis.
-    
-    ## Features
-    - Real-time webhook processing from Unifi Protect systems
-    - Asynchronous video processing with SQS delay queues
-    - Secure S3 storage with date-organized folder structure
-    - Device MAC address to human-readable name mapping
-    - RESTful event retrieval API
-    - Direct video file download with optimized search
-    - Comprehensive CORS support for web clients
-    
-    ## Architecture
-    This serverless application uses AWS Lambda, API Gateway, SQS, and S3 to provide a scalable, 
-    cost-effective solution for backing up Unifi Protect alarm events and video files. 
-    
-    ### Event Processing Flow:
-    1. **Webhook Receipt**: API Gateway receives Unifi Protect webhook
-    2. **Immediate Response**: Lambda returns 200 OK and queues event for processing
-    3. **Delayed Processing**: SQS delivers message after 2-minute delay
-    4. **Video Download**: Lambda processes event and downloads video from Unifi Protect
-    5. **Storage**: Event data and video files stored in S3 with date organization
-    
-    The delay ensures video files are fully available in Unifi Protect before download attempts,
-    significantly improving reliability and reducing failed downloads.
-    
-    ## Video Download Optimization
-    The latest video endpoint uses an efficient search algorithm that leverages the date-organized
-    folder structure in S3. Instead of scanning all objects, it starts from today's date folder
-    and works backwards day by day until a video is found, making retrieval fast and cost-effective.
-    
-    ## Authentication
-    All endpoints require an API key passed in the `X-API-Key` header. The API key is generated 
-    during CloudFormation deployment and can be retrieved from the AWS API Gateway console.
-    
-    ## Rate Limiting
-    API Gateway enforces rate limiting and throttling to prevent abuse. Default limits are:
-    - Burst: 5000 requests
-    - Rate: 10000 requests per second
-    
-    ## Data Retention
-    Events are stored indefinitely in S3. Configure S3 lifecycle policies for automatic archival 
-    or deletion based on your retention requirements.
-  version: 1.0.0
-  contact:
-    name: Brent Foster
-    email: brent@brentfoster.me
-    url: https://github.com/engineerthefuture/unifi-protect-event-backup-api
-  license:
-    name: MIT
-    url: https://opensource.org/licenses/MIT
-  termsOfService: https://github.com/engineerthefuture/unifi-protect-event-backup-api/blob/main/LICENSE
-
-servers:
-  - url: https://your-api-id.execute-api.us-east-1.amazonaws.com/prod
-    description: Production AWS API Gateway endpoint
-  - url: https://your-api-id.execute-api.us-west-2.amazonaws.com/prod
-    description: Production AWS API Gateway endpoint (US West)
-  - url: https://staging-api-id.execute-api.us-east-1.amazonaws.com/staging
-    description: Staging environment (optional)
-
-security:
-  - ApiKeyAuth: []
-
-paths:
-  /alarmevent:
-    post:
-      summary: Process Unifi Protect alarm webhook
-      description: |
-        Receives webhook events from Unifi Dream Machine Protect systems and queues them for delayed processing.
-        
-        **Processing Steps:**
-        1. Validates incoming JSON payload structure
-        2. Extracts alarm triggers and device information
-        3. Queues event for processing with configurable delay (default: 2 minutes)
-        4. Returns immediate success response with queue information
-        
+    # This file has moved.
+    #
+    # The OpenAPI specification is now located at:
+    #   docs/openapi.yaml
+    #
+    # Please update any references to use the new location.
         **Delayed Processing Benefits:**
         - Ensures video files are fully available before download attempts
         - Improves reliability and reduces failed downloads
