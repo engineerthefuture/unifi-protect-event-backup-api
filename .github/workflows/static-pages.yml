@@ -37,6 +37,8 @@ jobs:
         uses: actions/checkout@v4
       - name: Setup Pages
         uses: actions/configure-pages@v5
+      - name: Copy openapi.yaml to api folder
+        run: cp docs/openapi.yaml docs/api/openapi.yaml
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
