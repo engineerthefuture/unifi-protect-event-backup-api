@@ -126,64 +126,138 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// </summary>
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S3776:Refactor this method to reduce its Cognitive Complexity", Justification = "Business logic is inherently complex.")]
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S1541:The Cyclomatic Complexity of this method is too high", Justification = "Business logic is inherently complex.")]
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S134:Refactor this code to not nest more than 3 control flow statements.", Justification = "Business logic is inherently complex.")]
     public async Task<APIGatewayProxyResponse> GetEventSummaryAsync()
         {
+            _logger.LogLine("[GetEventSummaryAsync] Starting event summary aggregation.");
             var now = DateTime.UtcNow;
             var since = now.AddHours(-24);
             var bucket = AppConfiguration.AlarmBucketName;
-            var summary = new Dictionary<string, (Alarm lastEvent, int count, string? videoKey, string? deviceName, long timestamp)>();
-            int totalCount = 0;
-            var events = new List<(Alarm alarm, Trigger trigger, string videoKey, string deviceName, long timestamp)>();
-
-            // List objects for the last 2 days (to cover UTC day boundary)
             var prefixes = new List<string> { now.ToString("yyyy-MM-dd"), since.ToString("yyyy-MM-dd") };
+            if (bucket == null)
+            {
+                throw new InvalidOperationException("StorageBucket environment variable is not configured");
+            }
+            var allObjects = await ListAllEventObjectsAsync(bucket, prefixes);
+            var filteredEvents = await ParseAndFilterEventsAsync(allObjects, bucket, since);
+            var summary = SummarizeEvents(filteredEvents);
+            var result = await BuildCameraSummariesAsync(summary, bucket);
+            _logger.LogLine($"[GetEventSummaryAsync] Returning summary for {result.Count} cameras, total events in 24h: {summary.Values.Sum(x => x.count)}");
+            var response = new
+            {
+                cameras = result,
+                totalCount = summary.Values.Sum(x => x.count)
+            };
+            return new APIGatewayProxyResponse
+            {
+                StatusCode = 200,
+                Body = JsonConvert.SerializeObject(response, Formatting.Indented),
+                Headers = _responseHelper.GetStandardHeaders()
+            };
+        }
+
+        // Helper: List all S3 objects for the given prefixes
+        private async Task<List<S3Object>> ListAllEventObjectsAsync(string bucket, List<string> prefixes)
+        {
+            var allObjects = new List<S3Object>();
             foreach (var prefix in prefixes.Distinct())
             {
-                var listReq = new ListObjectsV2Request { BucketName = bucket, Prefix = $"{prefix}/" };
-                ListObjectsV2Response listResp;
-                try { listResp = await _s3Client.ListObjectsV2Async(listReq); }
-                catch (Exception ex) { _logger.LogLine($"S3 list error: {ex.Message}"); continue; }
-                foreach (var obj in listResp.S3Objects.Where(o => o.Key.EndsWith(".json")))
+                try
                 {
-                    try
-                    {
-                        var getResp = await _s3Client.GetObjectAsync(bucket, obj.Key);
-                        using var reader = new StreamReader(getResp.ResponseStream);
-                        var json = await reader.ReadToEndAsync();
-                        var alarm = JsonConvert.DeserializeObject<Alarm>(json);
-                        if (alarm == null || alarm.triggers == null || alarm.triggers.Count == 0) continue;
-                        var trigger = alarm.triggers[0];
-                        var deviceId = trigger.device;
-                        var deviceName = trigger.deviceName ?? deviceId;
-                        var ts = alarm.timestamp;
-                        if (ts < ((DateTimeOffset)since).ToUnixTimeMilliseconds()) continue;
-                        var videoKey = trigger.videoKey;
-                        events.Add((alarm, trigger, videoKey ?? string.Empty, deviceName, ts));
-                        if (!summary.TryGetValue(deviceId, out var existing) || existing.timestamp < ts)
-                            summary[deviceId] = (alarm, 1, videoKey, deviceName, ts);
-                        else
-                            summary[deviceId] = (existing.lastEvent, existing.count + 1, existing.videoKey, existing.deviceName, existing.timestamp);
-                        totalCount++;
-                    }
-                    catch (Exception ex) { _logger.LogLine($"S3 get/parse error: {ex.Message}"); }
+                    _logger.LogLine($"[ListAllEventObjectsAsync] Listing S3 objects with prefix: {prefix}/");
+                    var listReq = new ListObjectsV2Request { BucketName = bucket, Prefix = $"{prefix}/" };
+                    var listResp = await _s3Client.ListObjectsV2Async(listReq);
+                    allObjects.AddRange(listResp.S3Objects.Where(o => o.Key.EndsWith(".json")));
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogLine($"[ListAllEventObjectsAsync] S3 list error for prefix {prefix}/: {ex.Message}");
                 }
             }
+            return allObjects;
+        }
 
-            // Generate presigned URLs for latest video per camera
+        // Helper: Parse and filter events from S3 objects
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S3267:Loop should be simplified by calling Select(obj => obj.Key)", Justification = "Full S3Object is required for event processing.")]
+    private async Task<List<(Alarm alarm, Trigger trigger, string videoKey, string deviceName, long timestamp)>> ParseAndFilterEventsAsync(List<S3Object> objects, string bucket, DateTime since)
+        {
+            var filtered = new List<(Alarm, Trigger, string, string, long)>();
+            foreach (var obj in objects)
+            {
+                try
+                {
+                    _logger.LogLine($"[ParseAndFilterEventsAsync] Processing S3 object: {obj.Key}");
+                    var getResp = await _s3Client.GetObjectAsync(bucket, obj.Key);
+                    using var reader = new StreamReader(getResp.ResponseStream);
+                    var json = await reader.ReadToEndAsync();
+                    var alarm = JsonConvert.DeserializeObject<Alarm>(json);
+                    if (alarm == null || alarm.triggers == null || alarm.triggers.Count == 0)
+                    {
+                        _logger.LogLine($"[ParseAndFilterEventsAsync] Skipping object {obj.Key}: No triggers or invalid alarm data.");
+                        continue;
+                    }
+                    var trigger = alarm.triggers[0];
+                    var deviceId = trigger.device;
+                    var deviceName = trigger.deviceName ?? deviceId;
+                    var ts = alarm.timestamp;
+                    if (ts < ((DateTimeOffset)since).ToUnixTimeMilliseconds())
+                    {
+                        _logger.LogLine($"[ParseAndFilterEventsAsync] Skipping object {obj.Key}: Event timestamp {ts} is older than 24h window.");
+                        continue;
+                    }
+                    var videoKey = trigger.videoKey ?? string.Empty;
+                    filtered.Add((alarm, trigger, videoKey, deviceName, ts));
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogLine($"[ParseAndFilterEventsAsync] S3 get/parse error for {obj.Key}: {ex.Message}");
+                }
+            }
+            return filtered;
+        }
+
+        // Helper: Summarize events by device
+    private static Dictionary<string, (Alarm lastEvent, int count, string? videoKey, string? deviceName, long timestamp)> SummarizeEvents(List<(Alarm alarm, Trigger trigger, string videoKey, string deviceName, long timestamp)> events)
+        {
+            var summary = new Dictionary<string, (Alarm lastEvent, int count, string? videoKey, string? deviceName, long timestamp)>();
+            foreach (var (alarm, trigger, videoKey, deviceName, ts) in events)
+            {
+                var deviceId = trigger.device;
+                if (!summary.TryGetValue(deviceId, out var existing) || existing.timestamp < ts)
+                {
+                    summary[deviceId] = (alarm, 1, videoKey, deviceName, ts);
+                }
+                else
+                {
+                    summary[deviceId] = (existing.lastEvent, existing.count + 1, existing.videoKey, existing.deviceName, existing.timestamp);
+                }
+            }
+            return summary;
+        }
+
+        // Helper: Build camera summaries with presigned URLs
+        private async Task<List<object>> BuildCameraSummariesAsync(Dictionary<string, (Alarm lastEvent, int count, string? videoKey, string? deviceName, long timestamp)> summary, string bucket)
+        {
             var result = new List<object>();
             foreach (var (deviceId, (lastEvent, count, videoKey, deviceName, timestamp)) in summary)
             {
                 string? presignedUrl = null;
                 if (!string.IsNullOrEmpty(videoKey))
                 {
-                    var req = new GetPreSignedUrlRequest
+                    try
                     {
-                        BucketName = bucket,
-                        Key = videoKey,
-                        Expires = DateTime.UtcNow.AddHours(1)
-                    };
-                    presignedUrl = await _s3Client.GetPreSignedURLAsync(req);
+                        var req = new GetPreSignedUrlRequest
+                        {
+                            BucketName = bucket,
+                            Key = videoKey,
+                            Expires = DateTime.UtcNow.AddHours(1)
+                        };
+                        presignedUrl = await _s3Client.GetPreSignedURLAsync(req);
+                        _logger.LogLine($"[BuildCameraSummariesAsync] Generated presigned URL for video: {videoKey}");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogLine($"[BuildCameraSummariesAsync] Failed to generate presigned URL for {videoKey}: {ex.Message}");
+                    }
                 }
                 result.Add(new
                 {
@@ -194,22 +268,8 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                     count24h = count
                 });
             }
-
-            var response = new
-            {
-                cameras = result,
-                totalCount
-            };
-            return new APIGatewayProxyResponse
-            {
-                StatusCode = 200,
-                Body = JsonConvert.SerializeObject(response, Formatting.Indented),
-                Headers = _responseHelper.GetStandardHeaders()
-            };
+            return result;
         }
-
-
-    // Other methods would go here...
 
         /// <summary>
         /// Generates S3 file keys for event data and video files.
