@@ -1,10 +1,35 @@
 openapi: 3.0.3
 info:
   title: Unifi Protect Event Backup API
+  version: 1.0.0
   description: |
-    AWS Lambda function that receives and processes webhook events from Unifi Dream Machine Protect systems, 
+    AWS Lambda function that receives and processes webhook events from Unifi Dream Machine Protect systems,
     storing alarm event data and video files in S3 for backup and analysis.
-    
+  contact:
+    name: Brent Foster
+    url: https://github.com/engineerthefuture/unifi-protect-event-backup-api
+
+servers:
+  - url: https://{api}.execute-api.{region}.amazonaws.com/{stage}
+    variables:
+      api:
+        default: your-api-id
+      region:
+        default: us-east-1
+      stage:
+        default: prod
+
+security:
+  - ApiKeyAuth: []
+
+paths:
+  /alarmevent:
+    post:
+      summary: Process Unifi Protect alarm webhook
+      description: |
+        Receives webhook events from Unifi Protect systems, validates and queues them for delayed processing.
+        The endpoint returns immediately with queue metadata; processing (video download, enrichment, storage)
+        is performed asynchronously.
       operationId: processAlarmEvent
       tags:
         - Alarm Events
@@ -17,7 +42,7 @@ info:
             examples:
               motionDetection:
                 summary: Motion Detection Event
-                description: Typical motion detection event from outdoor camera
+                description: Typical motion detection event from an outdoor camera
                 value:
                   alarm:
                     name: "Backup Alarm Event"
@@ -39,7 +64,6 @@ info:
                   timestamp: 1739819436108
               personDetection:
                 summary: Person Detection Event
-                description: AI-powered person detection with zone information
                 value:
                   alarm:
                     name: "Person Detection Alarm"
@@ -61,7 +85,6 @@ info:
                   timestamp: 1739819500000
               vehicleDetection:
                 summary: Vehicle Detection Event
-                description: Vehicle detection with multiple zones triggered
                 value:
                   alarm:
                     name: "Vehicle Detection Alarm"
@@ -88,102 +111,34 @@ info:
             application/json:
               schema:
                 $ref: '#/components/schemas/QueuedEventResponse'
-              examples:
-                motionQueued:
-                  summary: Motion event queued
-                  value:
-                    msg: "Alarm event has been queued for processing"
-                    eventId: "67b389ab005ec703e40075a5"
-                    device: "28704E113F33"
-                    processingDelay: 120
-                    messageId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-                    estimatedProcessingTime: "2025-01-17T20:47:56 UTC"
-                personQueued:
-                  summary: Person detection queued
-                  value:
-                    msg: "Alarm event has been queued for processing"
-                    eventId: "67b389ab005ec703e40075a7"
-                    device: "F4E2C67A2FE8"
-                    processingDelay: 120
-                    messageId: "b2c3d4e5-f6g7-8901-bcde-f23456789012"
-                    estimatedProcessingTime: "2025-01-17T20:47:00 UTC"
         '400':
-          description: Bad request - Invalid or malformed data
+          description: Bad request - invalid or malformed data
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-              examples:
-                invalidJson:
-                  summary: Invalid JSON format
-                  value:
-                    msg: "ERROR 400: malformed or invalid request format"
-                missingAlarm:
-                  summary: Missing alarm object
-                  value:
-                    msg: "ERROR 400: No alarm object found in request"
-                noTriggers:
-                  summary: Missing triggers
-                  value:
-                    msg: "ERROR 400: you must have triggers in your payload"
-                invalidTimestamp:
-                  summary: Invalid timestamp
-                  value:
-                    msg: "ERROR 400: timestamp must be a valid Unix timestamp in milliseconds"
         '401':
-          description: Unauthorized - Invalid or missing API key
+          description: Unauthorized - invalid or missing API key
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-              examples:
-                missingKey:
-                  summary: Missing API key
-                  value:
-                    message: "Unauthorized"
-                invalidKey:
-                  summary: Invalid API key
-                  value:
-                    message: "Forbidden"
         '429':
-          description: Too Many Requests - Rate limit exceeded
+          description: Too many requests - rate limit exceeded
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-              example:
-                msg: "Rate limit exceeded. Please reduce request frequency."
         '500':
           description: Internal server error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-              examples:
-                configError:
-                  summary: Configuration error
-                  value:
-                    msg: "Server configuration error: StorageBucket not configured"
-                s3Error:
-                  summary: Storage error
-                  value:
-                    msg: "Failed to store event in S3: Access denied"
-    
+
     options:
       summary: CORS preflight request
-      description: |
-        Handles CORS preflight requests for web client support.
-        
-        **CORS Configuration:**
-        - **Allow-Origin**: `*` (configurable for production)
-        - **Allow-Methods**: `OPTIONS, POST, GET`
-        - **Allow-Headers**: `Content-Type, X-API-Key`
-        - **Max-Age**: 86400 seconds (24 hours)
-        
-        **Usage:**
-        Web browsers automatically send OPTIONS requests before cross-origin POST/GET requests.
-        This endpoint ensures proper CORS headers are returned to allow web applications to
-        interact with the API from different domains.
+      description: Returns CORS headers for browser preflight requests
       operationId: handleCorsOptions
       tags:
         - CORS
@@ -194,52 +149,24 @@ info:
             Access-Control-Allow-Origin:
               schema:
                 type: string
-                example: "*"
-              description: Allowed origins for cross-origin requests
+              example: "*"
             Access-Control-Allow-Methods:
               schema:
                 type: string
-                example: "OPTIONS,POST,GET"
-              description: Allowed HTTP methods
+              example: "OPTIONS,POST,GET"
             Access-Control-Allow-Headers:
               schema:
                 type: string
-                example: "Content-Type,X-API-Key"
-              description: Allowed request headers
+              example: "Content-Type,X-API-Key"
             Access-Control-Max-Age:
               schema:
                 type: integer
-                example: 86400
-              description: Preflight cache duration in seconds
+              example: 86400
 
   /:
     get:
       summary: Download video by event ID
-      description: |
-        Downloads a video file by searching for the specified Unifi Protect event ID and returning a presigned URL for direct download.
-        
-        **How it works:**
-        1. Searches through date-organized S3 folders (YYYY-MM-DD) for JSON event files
-        2. Parses each event file to find the matching eventId in trigger data
-        3. Locates the corresponding video file (.mp4)
-        4. Generates a secure, time-limited presigned URL for direct S3 download
-        5. Returns complete event context and metadata along with download URL
-        
-        **Event ID Source:**
-        Event IDs are Unifi Protect's internal identifiers found in the `trigger.eventId` field of stored alarm events.
-        These are typically 24-character hexadecimal strings (e.g., `67b389ab005ec703e40075a5`).
-        
-        **Why Presigned URL?**
-        Video files typically exceed API Gateway's 6MB payload limit, so this endpoint returns a secure, 
-        time-limited URL that allows direct download from S3. This approach is more efficient and can handle videos of any size.
-        
-        **Search Efficiency:**
-        Uses backwards chronological search starting from today, examining up to 90 days of date folders.
-        The search stops as soon as the matching event is found, making it efficient even with large datasets.
-        
-        **Response Data:**
-        Returns comprehensive information including download URL, event metadata, device details, 
-        trigger information, and complete alarm context from the original event.
+      description: Returns a presigned S3 URL for the video file that matches the provided eventId.
       operationId: getVideoByEventId
       tags:
         - Video Retrieval
@@ -250,29 +177,7 @@ info:
           schema:
             type: string
             pattern: '^[a-fA-F0-9]{24}$'
-            minLength: 24
-            maxLength: 24
-          description: |
-            Unifi Protect event identifier for video download.
-            
-            **Format Requirements:**
-            - **Length**: Exactly 24 hexadecimal characters
-            - **Source**: Found in the trigger.eventId field of stored alarm events
-            - **Purpose**: Used to locate and download the corresponding video file
-            
-            **Examples:**
-            - `67b389ab005ec703e40075a5` (Motion detection video)
-            - `67b389ab005ec703e40075a6` (Person detection video)
-            
-            **How to obtain:**
-            Event IDs are included in webhook payloads from Unifi Protect and stored in the alarm event JSON files.
-          examples:
-            motionVideo:
-              summary: Motion detection video
-              value: "67b389ab005ec703e40075a5"
-            personVideo:
-              summary: Person detection video
-              value: "67b389ab005ec703e40075a6"
+          description: Unifi Protect event identifier (24 hex chars)
       responses:
         '200':
           description: Video download URL successfully generated
@@ -280,74 +185,200 @@ info:
             application/json:
               schema:
                 $ref: '#/components/schemas/VideoDownloadResponse'
-              examples:
-                motionVideoResponse:
-                  summary: Motion detection video download
-                  value:
-                    downloadUrl: "https://s3.amazonaws.com/bucket/2025-01-17/28704E113F33_1739819436108.mp4?X-Amz-Signature=..."
-                    filename: "event_67b389ab005ec703e40075a5_2025-01-17_20-43-56.mp4"
-                    videoKey: "2025-01-17/28704E113F33_1739819436108.mp4"
-                    eventKey: "2025-01-17/28704E113F33_1739819436108.json"
-                    eventId: "67b389ab005ec703e40075a5"
-                    timestamp: 1739819436108
-                    eventDate: "2025-01-17 20:43:56"
-                    expiresAt: "2025-01-17 21:43:56 UTC"
-                    eventData:
-                      name: "Motion Detection Alert"
-                      timestamp: 1739819436108
-                      triggers:
-                        - key: "motion"
-                          device: "28704E113F33"
-                          eventId: "67b389ab005ec703e40075a5"
-                          deviceName: "Backyard West"
-                          zones:
-                            zone: []
-                            line: []
-                            loiter: []
-                    message: "Use the downloadUrl to download the video file directly. URL expires in 1 hour."
-                personVideoResponse:
-                  summary: Person detection video download
-                  value:
-                    downloadUrl: "https://s3.amazonaws.com/bucket/2025-01-17/F4E2C67A2FE8_1739819500000.mp4?X-Amz-Signature=..."
-                    filename: "event_67b389ab005ec703e40075a6_2025-01-17_20-45-00.mp4"
-                    videoKey: "2025-01-17/F4E2C67A2FE8_1739819500000.mp4"
-                    eventKey: "2025-01-17/F4E2C67A2FE8_1739819500000.json"
-                    eventId: "67b389ab005ec703e40075a6"
-                    timestamp: 1739819500000
-                    eventDate: "2025-01-17 20:45:00"
-                    expiresAt: "2025-01-17 21:45:00 UTC"
-                    eventData:
-                      name: "Person Detection Alert"
-                      timestamp: 1739819500000
-                      triggers:
-                        - key: "person"
-                          device: "F4E2C67A2FE8"
-                          eventId: "67b389ab005ec703e40075a6"
-                          deviceName: "Front Camera"
-                          zones:
-                            zone: ["entrance", "driveway"]
-                            line: []
-                            loiter: []
-                    message: "Use the downloadUrl to download the video file directly. URL expires in 1 hour."
         '400':
-          description: Bad request - Missing or invalid eventId parameter
+          description: Missing or invalid eventId
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-              examples:
-                missingEventId:
-                  summary: Missing eventId parameter
-                  value:
-                    msg: "Missing required parameter. Provide 'eventId' for video download."
-                invalidEventId:
-                  summary: Invalid event ID format
-                  value:
-                    msg: "EventId parameter is required"
-                malformedEventId:
-                  summary: Malformed event ID
-                  value:
-                    msg: "ERROR 400: eventId must be a 24-character hexadecimal string"
+        '404':
+          description: Event or video not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /latestvideo:
+    get:
+      summary: Get latest video download URL
+      description: Finds the most recent video file and returns a presigned S3 URL.
+      operationId: getLatestVideo
+      tags:
+        - Video Retrieval
+      responses:
+        '200':
+          description: Latest video metadata and download URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VideoDownloadResponse'
+        '404':
+          description: No video files found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /metadata:
+    get:
+      summary: Fetch camera metadata from Unifi Protect and store in S3
+      description: Retrieves camera metadata from Unifi Protect and saves it as metadata/cameras.json in S3.
+      operationId: fetchMetadata
+      tags:
+        - Metadata
+      responses:
+        '200':
+          description: Metadata fetched and stored successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  metadata:
+                    type: object
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key required for all requests
+
+  schemas:
+    UnifiWebhookRequest:
+      type: object
+      required:
+        - alarm
+        - timestamp
+      properties:
+        alarm:
+          $ref: '#/components/schemas/AlarmObject'
+        timestamp:
+          type: integer
+          format: int64
+          example: 1739819436108
+
+    AlarmObject:
+      type: object
+      required:
+        - name
+        - triggers
+      properties:
+        name:
+          type: string
+        sources:
+          type: array
+          items:
+            $ref: '#/components/schemas/AlarmSource'
+        conditions:
+          type: array
+          items:
+            $ref: '#/components/schemas/AlarmCondition'
+        triggers:
+          type: array
+          items:
+            $ref: '#/components/schemas/AlarmTrigger'
+
+    AlarmSource:
+      type: object
+      properties:
+        device:
+          type: string
+        type:
+          type: string
+
+    AlarmCondition:
+      type: object
+      properties:
+        condition:
+          type: object
+          properties:
+            type:
+              type: string
+            source:
+              type: string
+
+    AlarmTrigger:
+      type: object
+      required:
+        - key
+        - device
+        - eventId
+      properties:
+        key:
+          type: string
+        device:
+          type: string
+        eventId:
+          type: string
+        zones:
+          type: object
+
+    QueuedEventResponse:
+      type: object
+      properties:
+        msg:
+          type: string
+        eventId:
+          type: string
+        device:
+          type: string
+        processingDelay:
+          type: integer
+        messageId:
+          type: string
+        estimatedProcessingTime:
+          type: string
+
+    VideoDownloadResponse:
+      type: object
+      properties:
+        downloadUrl:
+          type: string
+          format: uri
+        filename:
+          type: string
+        videoKey:
+          type: string
+        eventKey:
+          type: string
+        timestamp:
+          type: integer
+        eventDate:
+          type: string
+        expiresAt:
+          type: string
+        eventData:
+          type: object
+
+    ErrorResponse:
+      type: object
+      properties:
+        msg:
+          type: string
+
+tags:
+  - name: Alarm Events
+    description: Processing of incoming alarm webhook events
+  - name: Video Retrieval
+    description: Endpoints to retrieve video files and presigned URLs
+  - name: Metadata
+    description: Fetch and store camera metadata
+  - name: CORS
+    description: Cross-Origin Resource Sharing support
+
+externalDocs:
+  url: https://github.com/engineerthefuture/unifi-protect-event-backup-api
+  description: Project documentation and README
         '404':
           description: Event or video not found
           content:
