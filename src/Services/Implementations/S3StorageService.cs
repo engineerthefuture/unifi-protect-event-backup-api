@@ -140,7 +140,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             var prefixes = new List<string> { now.ToString("yyyy-MM-dd"), since.ToString("yyyy-MM-dd") };
             foreach (var prefix in prefixes.Distinct())
             {
-                var listReq = new ListObjectsV2Request { BucketName = bucket, Prefix = $"events/{prefix}/" };
+                var listReq = new ListObjectsV2Request { BucketName = bucket, Prefix = $"{prefix}/" };
                 ListObjectsV2Response listResp;
                 try { listResp = await _s3Client.ListObjectsV2Async(listReq); }
                 catch (Exception ex) { _logger.LogLine($"S3 list error: {ex.Message}"); continue; }
