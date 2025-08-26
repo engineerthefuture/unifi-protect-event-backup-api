@@ -165,7 +165,7 @@ Resources:
       CertificateExport:
         Fn::If:
           - IsProdEnvironment
-          - ENABLED
+          - DISABLED
           - DISABLED
       Tags:
         - Key: "Name"
