@@ -1,5 +1,6 @@
 # Unifi Protect Event Backup API
 
+
 [![.NET](https://img.shields.io/badge/.NET-8.0-512BD4?style=flat-square&logo=dotnet)](https://dotnet.microsoft.com/)
 [![AWS Lambda](https://img.shields.io/badge/AWS-Lambda-FF9900?style=flat-square&logo=amazon-aws)](https://aws.amazon.com/lambda/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
@@ -511,7 +512,10 @@ Fetches and stores current camera metadata from the Unifi Protect API
 
 ### 📖 OpenAPI 3.0 Specification
 
-**Complete API Documentation**: [openapi.yaml](openapi.yaml)
+
+**Complete API Documentation:**
+- [openapi.yaml](openapi.yaml) (OpenAPI 3.0 spec)
+- [Swagger UI (OpenAPI) – GitHub Pages](https://engineerthefuture.github.io/unifi-protect-event-backup-api/index.html)
 
 The full OpenAPI 3.0 specification is available in the [`openapi.yaml`](openapi.yaml) file and includes:
 
