@@ -3,10 +3,10 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Threading.Tasks;
-using Amazon.Lambda.APIGatewayEvents;
 using Amazon.Lambda.Core;
 using Amazon.S3;
 using Amazon.S3.Model;
+using Amazon.Lambda.APIGatewayEvents;
 using Moq;
 
 #nullable enable
@@ -17,9 +17,69 @@ using Xunit;
 
 namespace UnifiWebhookEventReceiverTests
 {
-    public class S3StorageServiceTests
-    {
-        private readonly Mock<AmazonS3Client> _mockS3Client;
+        public class S3StorageServiceTests
+        {
+            [Fact]
+            public async Task GetEventSummaryAsync_ReturnsSummaryWithPresignedUrls()
+            {
+                // Arrange
+                var now = DateTime.UtcNow;
+                var bucket = "test-bucket";
+                var prefix = $"events/{now:yyyy-MM-dd}/";
+                var deviceId = "camera-1";
+                var deviceName = "Front Door";
+                var eventId = "evt_abc123";
+                var videoKey = $"videos/{eventId}.mp4";
+                var alarm = new Alarm
+                {
+                    timestamp = ((DateTimeOffset)now).ToUnixTimeMilliseconds(),
+                    triggers = new List<Trigger> {
+                        new Trigger {
+                            key = "motion",
+                            device = deviceId,
+                            eventId = eventId,
+                            deviceName = deviceName,
+                            videoKey = videoKey
+                        }
+                    }
+                };
+                var alarmJson = Newtonsoft.Json.JsonConvert.SerializeObject(alarm);
+                var s3Object = new S3Object { Key = $"{prefix}{eventId}.json" };
+                var listResp = new ListObjectsV2Response { S3Objects = new List<S3Object> { s3Object } };
+                var getResp = new GetObjectResponse
+                {
+                    ResponseStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(alarmJson))
+                };
+                _mockS3Client.Setup(x => x.ListObjectsV2Async(It.IsAny<ListObjectsV2Request>(), default))
+                    .ReturnsAsync(listResp);
+                _mockS3Client.Setup(x => x.GetObjectAsync(bucket, s3Object.Key, default))
+                    .ReturnsAsync(getResp);
+                _mockS3Client.Setup(x => x.GetPreSignedURL(It.Is<GetPreSignedUrlRequest>(r => r.Key == videoKey)))
+                    .Returns("https://presigned-url/video.mp4");
+                _mockResponseHelper.Setup(x => x.GetStandardHeaders())
+                    .Returns(new Dictionary<string, string> { { "Content-Type", "application/json" } });
+
+                // Act
+                var result = await ((IS3StorageService)_s3StorageService).GetEventSummaryAsync();
+
+                // Assert
+                Assert.Equal(200, result.StatusCode);
+                Assert.NotNull(result.Body);
+                var body = Newtonsoft.Json.Linq.JObject.Parse(result.Body);
+                Assert.True(body["cameras"] is not null);
+                var cameras = body["cameras"] as Newtonsoft.Json.Linq.JArray;
+                Assert.NotNull(cameras);
+                Assert.Single(cameras);
+                var cam = cameras[0];
+                Assert.Equal(deviceId, cam["cameraId"]);
+                Assert.Equal(deviceName, cam["cameraName"]);
+                Assert.Equal(1, cam["count24h"]);
+                Assert.Equal("https://presigned-url/video.mp4", cam["lastVideoUrl"]);
+                Assert.True(cam["lastEvent"] != null);
+                Assert.NotNull(body["totalCount"]);
+                Assert.Equal(1, (int)(body["totalCount"] ?? 0));
+            }
+    private readonly Mock<IAmazonS3> _mockS3Client;
         private readonly Mock<IResponseHelper> _mockResponseHelper;
         private readonly Mock<ILambdaLogger> _mockLogger;
         private readonly S3StorageService _s3StorageService;
@@ -30,7 +90,7 @@ namespace UnifiWebhookEventReceiverTests
             Environment.SetEnvironmentVariable("StorageBucket", "test-bucket");
             
             // Create AWS client mock using constructor with region
-            _mockS3Client = new Mock<AmazonS3Client>(Amazon.RegionEndpoint.USEast1);
+            _mockS3Client = new Mock<IAmazonS3>();
             _mockResponseHelper = new Mock<IResponseHelper>();
             _mockLogger = new Mock<ILambdaLogger>();
             _s3StorageService = new S3StorageService(_mockS3Client.Object, _mockResponseHelper.Object, _mockLogger.Object);
@@ -47,7 +107,7 @@ namespace UnifiWebhookEventReceiverTests
         [Fact]
         public void Constructor_WithNullResponseHelper_ThrowsArgumentNullException()
         {
-            var mockS3Client = new Mock<AmazonS3Client>(Amazon.RegionEndpoint.USEast1);
+            var mockS3Client = new Mock<IAmazonS3>();
             // Act & Assert
             Assert.Throws<ArgumentNullException>(() => 
                 new S3StorageService(mockS3Client.Object, null!, _mockLogger.Object));
@@ -56,7 +116,7 @@ namespace UnifiWebhookEventReceiverTests
         [Fact]
         public void Constructor_WithNullLogger_ThrowsArgumentNullException()
         {
-            var mockS3Client = new Mock<AmazonS3Client>(Amazon.RegionEndpoint.USEast1);
+            var mockS3Client = new Mock<IAmazonS3>();
             // Act & Assert
             Assert.Throws<ArgumentNullException>(() => 
                 new S3StorageService(mockS3Client.Object, _mockResponseHelper.Object, null!));
@@ -152,63 +212,6 @@ namespace UnifiWebhookEventReceiverTests
             }
         }
 
-        [Fact]
-        public async Task GetLatestVideoAsync_WithMissingBucketConfiguration_ReturnsServerError()
-        {
-            // Arrange
-            // Save original environment variable value
-            var originalStorageBucket = Environment.GetEnvironmentVariable("StorageBucket");
-            
-            try
-            {
-                // Clear the environment variable to trigger validation error
-                Environment.SetEnvironmentVariable("StorageBucket", null);
-                
-                var expectedResponse = new APIGatewayProxyResponse
-                {
-                    StatusCode = 500,
-                    Body = "Server configuration error: StorageBucket not configured"
-                };
-                _mockResponseHelper.Setup(x => x.CreateErrorResponse(HttpStatusCode.InternalServerError, "Server configuration error: StorageBucket not configured"))
-                    .Returns(expectedResponse);
-
-                // Act
-                var result = await _s3StorageService.GetLatestVideoAsync();
-
-                // Assert
-                Assert.Equal(500, result.StatusCode);
-            }
-            finally
-            {
-                // Restore original environment variable value
-                if (originalStorageBucket != null)
-                    Environment.SetEnvironmentVariable("StorageBucket", originalStorageBucket);
-                else
-                    Environment.SetEnvironmentVariable("StorageBucket", null);
-            }
-        }
-
-        [Fact]
-        public async Task GetLatestVideoAsync_WithExceptionHandling_ReturnsInternalServerError()
-        {
-            // Arrange
-            _mockS3Client.Setup(x => x.ListObjectsV2Async(It.IsAny<ListObjectsV2Request>(), default))
-                .ThrowsAsync(new Exception("S3 connection error"));
-
-            var expectedResponse = new APIGatewayProxyResponse
-            {
-                StatusCode = 500,
-                Body = "Error retrieving latest video: S3 connection error"
-            };
-            _mockResponseHelper.Setup(x => x.CreateErrorResponse(HttpStatusCode.InternalServerError, "Error retrieving latest video: S3 connection error"))
-                .Returns(expectedResponse);
-
-            // Act
-            var result = await _s3StorageService.GetLatestVideoAsync();
-
-            // Assert
-            Assert.Equal(500, result.StatusCode);
-        }
 
         [Fact]
         public async Task GetVideoByEventIdAsync_WithInvalidEventId_ReturnsBadRequest()
@@ -640,31 +643,6 @@ namespace UnifiWebhookEventReceiverTests
             Assert.True(expectedTimestamp >= 0);
         }
 
-        [Fact]
-        public async Task GetLatestVideoAsync_WithMissingBucketInEnvironment_ReturnsServerError()
-        {
-            // Arrange
-            var originalBucket = Environment.GetEnvironmentVariable("StorageBucket");
-            Environment.SetEnvironmentVariable("StorageBucket", null);
-            
-            var expectedResponse = new APIGatewayProxyResponse { StatusCode = 500 };
-            _mockResponseHelper.Setup(x => x.CreateErrorResponse(HttpStatusCode.InternalServerError, 
-                "Server configuration error: StorageBucket not configured"))
-                .Returns(expectedResponse);
-
-            try
-            {
-                // Act
-                var result = await _s3StorageService.GetLatestVideoAsync();
-
-                // Assert
-                Assert.Equal(500, result.StatusCode);
-            }
-            finally
-            {
-                Environment.SetEnvironmentVariable("StorageBucket", originalBucket);
-            }
-        }
 
         [Fact]
         public async Task GetVideoByEventIdAsync_WithEmptyStorageBucket_ReturnsServerError()

@@ -9,6 +9,17 @@
  * Created: 08-18-2025
  ***********************/
 
+/************************
+ * Unifi Webhook Event Receiver
+ * IS3StorageService.cs
+ * 
+ * Interface for S3 storage operations.
+ * Defines the contract for storing and retrieving files from S3.
+ * 
+ * Author: Brent Foster
+ * Created: 08-18-2025
+ ***********************/
+
 using Amazon.Lambda.APIGatewayEvents;
 using Amazon.S3.Model;
 
@@ -19,6 +30,11 @@ namespace UnifiWebhookEventReceiver.Services
     /// </summary>
     public interface IS3StorageService
     {
+    /// <summary>
+    /// Returns a summary of the last event and event count per camera in the last 24 hours, with a presigned video link for each.
+    /// </summary>
+    /// <returns>API Gateway response with summary data</returns>
+    Task<APIGatewayProxyResponse> GetEventSummaryAsync();
         /// <summary>
         /// Stores alarm event data in S3 as JSON.
         /// </summary>
@@ -35,11 +51,6 @@ namespace UnifiWebhookEventReceiver.Services
         /// <returns>Task representing the upload operation</returns>
         Task StoreVideoFileAsync(string videoFilePath, string s3Key);
 
-        /// <summary>
-        /// Retrieves the latest video file from S3.
-        /// </summary>
-        /// <returns>API Gateway response with the video file</returns>
-        Task<APIGatewayProxyResponse> GetLatestVideoAsync();
 
         /// <summary>
         /// Retrieves a video file by event ID from S3.

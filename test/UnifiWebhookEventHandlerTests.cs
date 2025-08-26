@@ -12,6 +12,34 @@ namespace UnifiWebhookEventReceiverTests
 {
     public class UnifiWebhookEventHandlerTests
     {
+        [Fact]
+        public async Task FunctionHandler_GetSummary_ReturnsSummaryResponse()
+        {
+            // Arrange
+            SetTestEnvironment();
+            var context = new TestLambdaContext();
+            var handler = new UnifiWebhookEventHandler();
+            var apiRequest = new Amazon.Lambda.APIGatewayEvents.APIGatewayProxyRequest
+            {
+                HttpMethod = "GET",
+                Path = "/summary",
+                Headers = new System.Collections.Generic.Dictionary<string, string> { { "X-API-Key", "test-key" } }
+            };
+            var requestBody = JsonConvert.SerializeObject(apiRequest);
+            using var stream = new MemoryStream(Encoding.UTF8.GetBytes(requestBody));
+
+            // Act
+            var response = await handler.FunctionHandler(stream, context);
+
+            // Assert
+            Assert.NotNull(response);
+            Assert.Equal(200, response.StatusCode);
+            Assert.NotNull(response.Body);
+            var body = Newtonsoft.Json.Linq.JObject.Parse(response.Body);
+            Assert.True(body["cameras"] != null);
+            Assert.True(body["totalCount"] != null);
+        }
+
         private static void SetTestEnvironment()
         {
             Environment.SetEnvironmentVariable("StorageBucket", "test-bucket");

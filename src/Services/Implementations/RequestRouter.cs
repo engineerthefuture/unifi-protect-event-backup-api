@@ -143,7 +143,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             return routeInfo.Method switch
             {
                 "POST" when routeInfo.Route == AppConfiguration.ROUTE_ALARM => await HandleAlarmWebhook(request),
-                "GET" when routeInfo.Route == AppConfiguration.ROUTE_LATEST_VIDEO => await HandleLatestVideoRequest(),
+                "GET" when routeInfo.Route == AppConfiguration.ROUTE_SUMMARY => await _s3StorageService.GetEventSummaryAsync(),
                 "GET" => await HandleVideoDownloadRequest(request),
                 "PUT" or "PATCH" or "HEAD" or "DELETE" => CreateMethodNotAllowedResponse(routeInfo.Method),
                 _ => CreateInvalidRouteResponse(routeInfo.Route, routeInfo.Method)
@@ -238,13 +238,6 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             }
         }
 
-        /// <summary>
-        /// Handles latest video GET requests.
-        /// </summary>
-        private async Task<APIGatewayProxyResponse> HandleLatestVideoRequest()
-        {
-            return await _s3StorageService.GetLatestVideoAsync();
-        }
 
         /// <summary>
         /// Handles video download GET requests.
