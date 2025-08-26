@@ -39,477 +39,101 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/UnifiWebhookRequest'
-            examples:
-              motionDetection:
-                summary: Motion Detection Event
-                description: Typical motion detection event from an outdoor camera
-                value:
-                  alarm:
-                    name: "Backup Alarm Event"
-                    sources:
-                      - device: "28704E113F64"
-                        type: "include"
-                    conditions:
-                      - condition:
-                          type: "is"
-                          source: "motion"
+            openapi: 3.0.3
+            info:
+              title: Unifi Protect Event Backup API
+              version: 1.0.0
+              description: Minimal cleaned OpenAPI spec for Swagger UI
+
+            paths:
+              /alarmevent:
+                post:
+                  summary: Process Unifi Protect alarm webhook
+                  requestBody:
+                    required: true
+                    content:
+                      application/json:
+                        schema:
+                          $ref: '#/components/schemas/UnifiWebhookRequest'
+                  responses:
+                    '200':
+                      description: OK
+                      content:
+                        application/json:
+                          schema:
+                            $ref: '#/components/schemas/QueuedEventResponse'
+                    '400':
+                      description: Bad request
+                      content:
+                        application/json:
+                          schema:
+                            $ref: '#/components/schemas/ErrorResponse'
+
+              /:
+                get:
+                  summary: Download video by event ID
+                  parameters:
+                    - name: eventId
+                      in: query
+                      required: true
+                      schema:
+                        type: string
+                  responses:
+                    '200':
+                      description: OK
+                      content:
+                        application/json:
+                          schema:
+                            $ref: '#/components/schemas/VideoDownloadResponse'
+
+            components:
+              schemas:
+                UnifiWebhookRequest:
+                  type: object
+                  properties:
+                    alarm:
+                      $ref: '#/components/schemas/AlarmObject'
+                    timestamp:
+                      type: integer
+
+                AlarmObject:
+                  type: object
+                  properties:
+                    name:
+                      type: string
                     triggers:
-                      - key: "motion"
-                        device: "28704E113F33"
-                        eventId: "67b389ab005ec703e40075a5"
-                        zones:
-                          zone: []
-                          line: []
-                          loiter: []
-                  timestamp: 1739819436108
-              personDetection:
-                summary: Person Detection Event
-                value:
-                  alarm:
-                    name: "Person Detection Alarm"
-                    sources:
-                      - device: "F4E2C67A2FE8"
-                        type: "include"
-                    conditions:
-                      - condition:
-                          type: "is"
-                          source: "person"
-                    triggers:
-                      - key: "person"
-                        device: "F4E2C67A2FE8"
-                        eventId: "67b389ab005ec703e40075a6"
-                        zones:
-                          zone: ["entrance", "driveway"]
-                          line: []
-                          loiter: []
-                  timestamp: 1739819500000
-              vehicleDetection:
-                summary: Vehicle Detection Event
-                value:
-                  alarm:
-                    name: "Vehicle Detection Alarm"
-                    sources:
-                      - device: "28704E113C44"
-                        type: "include"
-                    conditions:
-                      - condition:
-                          type: "is"
-                          source: "vehicle"
-                    triggers:
-                      - key: "vehicle"
-                        device: "28704E113C44"
-                        eventId: "67b389ab005ec703e40075a7"
-                        zones:
-                          zone: ["street", "driveway"]
-                          line: ["property_line"]
-                          loiter: []
-                  timestamp: 1739819600000
-      responses:
-        '200':
-          description: Event successfully queued for processing
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/QueuedEventResponse'
-        '400':
-          description: Bad request - invalid or malformed data
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '401':
-          description: Unauthorized - invalid or missing API key
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '429':
-          description: Too many requests - rate limit exceeded
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                      type: array
+                      items:
+                        $ref: '#/components/schemas/AlarmTrigger'
 
-    options:
-      summary: CORS preflight request
-      description: Returns CORS headers for browser preflight requests
-      operationId: handleCorsOptions
-      tags:
-        - CORS
-      responses:
-        '200':
-          description: CORS headers provided
-          headers:
-            Access-Control-Allow-Origin:
-              schema:
-                type: string
-              example: "*"
-            Access-Control-Allow-Methods:
-              schema:
-                type: string
-              example: "OPTIONS,POST,GET"
-            Access-Control-Allow-Headers:
-              schema:
-                type: string
-              example: "Content-Type,X-API-Key"
-            Access-Control-Max-Age:
-              schema:
-                type: integer
-              example: 86400
+                AlarmTrigger:
+                  type: object
+                  properties:
+                    key:
+                      type: string
+                    device:
+                      type: string
+                    eventId:
+                      type: string
 
-  /:
-    get:
-      summary: Download video by event ID
-      description: Returns a presigned S3 URL for the video file that matches the provided eventId.
-      operationId: getVideoByEventId
-      tags:
-        - Video Retrieval
-      parameters:
-        - name: eventId
-          in: query
-          required: true
-          schema:
-            type: string
-            pattern: '^[a-fA-F0-9]{24}$'
-          description: Unifi Protect event identifier (24 hex chars)
-      responses:
-        '200':
-          description: Video download URL successfully generated
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/VideoDownloadResponse'
-        '400':
-          description: Missing or invalid eventId
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '404':
-          description: Event or video not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                QueuedEventResponse:
+                  type: object
+                  properties:
+                    msg:
+                      type: string
 
-  /latestvideo:
-    get:
-      summary: Get latest video download URL
-      description: Finds the most recent video file and returns a presigned S3 URL.
-      operationId: getLatestVideo
-      tags:
-        - Video Retrieval
-      responses:
-        '200':
-          description: Latest video metadata and download URL
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/VideoDownloadResponse'
-        '404':
-          description: No video files found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                VideoDownloadResponse:
+                  type: object
+                  properties:
+                    downloadUrl:
+                      type: string
 
-  /metadata:
-    get:
-      summary: Fetch camera metadata from Unifi Protect and store in S3
-      description: Retrieves camera metadata from Unifi Protect and saves it as metadata/cameras.json in S3.
-      operationId: fetchMetadata
-      tags:
-        - Metadata
-      responses:
-        '200':
-          description: Metadata fetched and stored successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                  metadata:
-                    type: object
-        '401':
-          description: Unauthorized - missing or invalid API key
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                ErrorResponse:
+                  type: object
+                  properties:
+                    msg:
+                      type: string
 
-components:
-  securitySchemes:
-    ApiKeyAuth:
-      type: apiKey
-      in: header
-      name: X-API-Key
-      description: API key required for all requests
-
-  schemas:
-    UnifiWebhookRequest:
-      type: object
-      required:
-        - alarm
-        - timestamp
-      properties:
-        alarm:
-          $ref: '#/components/schemas/AlarmObject'
-        timestamp:
-          type: integer
-          format: int64
-          example: 1739819436108
-
-    AlarmObject:
-      type: object
-      required:
-        - name
-        - triggers
-      properties:
-        name:
-          type: string
-        sources:
-          type: array
-          items:
-            $ref: '#/components/schemas/AlarmSource'
-        conditions:
-          type: array
-          items:
-            $ref: '#/components/schemas/AlarmCondition'
-        triggers:
-          type: array
-          items:
-            $ref: '#/components/schemas/AlarmTrigger'
-
-    AlarmSource:
-      type: object
-      properties:
-        device:
-          type: string
-        type:
-          type: string
-
-    AlarmCondition:
-      type: object
-      properties:
-        condition:
-          type: object
-          properties:
-            type:
-              type: string
-            source:
-              type: string
-
-    AlarmTrigger:
-      type: object
-      required:
-        - key
-        - device
-        - eventId
-      properties:
-        key:
-          type: string
-        device:
-          type: string
-        eventId:
-          type: string
-        zones:
-          type: object
-
-    QueuedEventResponse:
-      type: object
-      properties:
-        msg:
-          type: string
-        eventId:
-          type: string
-        device:
-          type: string
-        processingDelay:
-          type: integer
-        messageId:
-          type: string
-        estimatedProcessingTime:
-          type: string
-
-    VideoDownloadResponse:
-      type: object
-      properties:
-        downloadUrl:
-          type: string
-          format: uri
-        filename:
-          type: string
-        videoKey:
-          type: string
-        eventKey:
-          type: string
-        timestamp:
-          type: integer
-        eventDate:
-          type: string
-        expiresAt:
-          type: string
-        eventData:
-          type: object
-
-    ErrorResponse:
-      type: object
-      properties:
-        msg:
-          type: string
-
-tags:
-  - name: Alarm Events
-    description: Processing of incoming alarm webhook events
-  - name: Video Retrieval
-    description: Endpoints to retrieve video files and presigned URLs
-  - name: Metadata
-    description: Fetch and store camera metadata
-  - name: CORS
-    description: Cross-Origin Resource Sharing support
-
-externalDocs:
-  url: https://github.com/engineerthefuture/unifi-protect-event-backup-api
-  description: Project documentation and README
-        '404':
-          description: Event or video not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              examples:
-                eventNotFound:
-                  summary: Event with specified eventId not found
-                  value:
-                    msg: "Event with eventId 67b389ab005ec703e40075a5 not found"
-                videoFileNotFound:
-                  summary: Event found but video file missing
-                  value:
-                    msg: "Video file for event 67b389ab005ec703e40075a5 not found"
-                searchTimeout:
-                  summary: Event not found within search timeframe
-                  value:
-                    msg: "Event with eventId 67b389ab005ec703e40075a5 not found"
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              examples:
-                s3Error:
-                  summary: S3 access error
-                  value:
-                    msg: "Failed to retrieve event from S3: Access denied"
-                configError:
-                  summary: Configuration error
-                  value:
-                    msg: "Server configuration error: StorageBucket not configured"
-
-  /latestvideo:
-    get:
-      summary: Get latest video download URL
-      description: |
-        Finds the most recent video file (.mp4) from stored alarm events and returns a presigned URL for download.
-        
-        **Why Presigned URL?**
-        Video files typically exceed API Gateway's 6MB payload limit, so instead of returning the video data directly,
-        this endpoint returns a secure, time-limited URL that allows direct download from S3. This approach is more
-        efficient and can handle videos of any size.
-        
-        **Search Algorithm:**
-        This endpoint uses an optimized search that efficiently searches through date-organized 
-        folders in S3 to find the most recent video file. It starts from today's date folder 
-        and works backwards day by day until a video is found, making it much more efficient 
-        than scanning all objects in the bucket.
-        
-        **Search Process:**
-        1. Start from today's date folder (YYYY-MM-DD format)
-        2. Search for .mp4 files in that folder
-        3. If found, return metadata for the one with the highest timestamp
-        4. If not found, move to previous day and repeat
-        5. Continue for up to 30 days maximum
-        
-        **File Format:**
-        Video files follow the naming pattern: `{eventId}_{deviceMac}_{timestamp}.mp4`
-        - **deviceMac**: 12-character hexadecimal MAC address
-        - **timestamp**: Unix timestamp in milliseconds when the event occurred
-        
-        **Storage Organization:**
-        Videos are stored in S3 with date-based organization:
-        `s3://{bucket}/{YYYY-MM-DD}/{eventId}_{deviceMac}_{timestamp}.mp4`
-        
-        **Response Format:**
-        Returns JSON containing:
-        - **downloadUrl**: Presigned S3 URL for direct download (expires in 1 hour)
-        - **filename**: Suggested filename for download
-        - **metadata**: Event timestamp, date, and video key information
-        - **eventData**: Complete alarm event details including device name, trigger type, zones, and timestamps
-        
-        **Security:**
-        - Presigned URLs expire after 1 hour for security
-        - URLs include proper Content-Disposition headers for filename handling
-        - Direct S3 access without requiring API credentials
-        
-        **Use Cases:**
-        - Quick access to most recent security footage
-        - Automated monitoring systems that can handle URLs
-        - Mobile applications for security alerts
-        - Integration with notification systems
-      operationId: getLatestVideo
-      tags:
-        - Video Retrieval
-      responses:
-        '200':
-          description: Latest video metadata and download URL successfully retrieved
-          content:
-            application/json:
-              schema:
-                type: object
-                required:
-                  - downloadUrl
-                  - filename
-                  - videoKey
-                  - eventKey
-                  - timestamp
-                  - eventDate
-                  - expiresAt
-                  - message
-                properties:
-                  downloadUrl:
-                    type: string
-                    format: uri
-                    description: |
-                      Presigned S3 URL for direct video download. This URL expires after 1 hour for security.
-                      The URL includes proper headers to suggest the filename when downloaded.
-                    example: "https://s3.amazonaws.com/bucket/2025-01-17/28704E113F33_1739819436108.mp4?AWSAccessKeyId=...&Expires=...&Signature=..."
-                  filename:
-                    type: string
-                    description: |
-                      Suggested filename for the video download based on the event timestamp.
-                      Format: latest_video_{YYYY-MM-DD_HH-mm-ss}.mp4
-                    example: "latest_video_2025-01-17_20-43-56.mp4"
-                  videoKey:
-                    type: string
-                    description: |
-                      S3 object key for the video file, useful for logging and tracking.
-                      Format: {YYYY-MM-DD}/{eventId}_{deviceMac}_{timestamp}.mp4
-                    example: "2025-01-17/28704E113F33_1739819436108.mp4"
-                  eventKey:
-                    type: string
-                    description: |
-                      S3 object key for the corresponding event JSON data.
-                      Format: {YYYY-MM-DD}/{eventId}_{deviceMac}_{timestamp}.json
-                    example: "2025-01-17/28704E113F33_1739819436108.json"
-                  timestamp:
                     type: integer
                     format: int64
                     description: |
