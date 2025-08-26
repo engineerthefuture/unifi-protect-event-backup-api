@@ -41,7 +41,6 @@ jobs:
             echo "LAMBDA_NAME=bf-prod-lambda-unifi-protect-event-backup-api" >> $GITHUB_OUTPUT
             echo "S3_KEY_PREFIX=bf-prod-lambda-unifi-protect-event-backup-api" >> $GITHUB_OUTPUT
             echo "DOMAIN_NAME=${{ vars.PROD_DOMAIN_NAME }}" >> $GITHUB_OUTPUT
-            echo "UNIFI_HOST=${{ secrets.PROD_UNIFI_HOST }}" >> $GITHUB_OUTPUT
             echo "HOSTED_ZONE_ID=${{ vars.HOSTED_ZONE_ID }}" >> $GITHUB_OUTPUT
           else
             echo "ENV_PREFIX=dev" >> $GITHUB_OUTPUT
@@ -51,7 +50,6 @@ jobs:
             echo "LAMBDA_NAME=bf-dev-lambda-unifi-protect-event-backup-api" >> $GITHUB_OUTPUT
             echo "S3_KEY_PREFIX=bf-dev-lambda-unifi-protect-event-backup-api" >> $GITHUB_OUTPUT
             echo "DOMAIN_NAME=${{ vars.DEV_DOMAIN_NAME }}" >> $GITHUB_OUTPUT
-            echo "UNIFI_HOST=${{ secrets.DEV_UNIFI_HOST }}" >> $GITHUB_OUTPUT
             echo "HOSTED_ZONE_ID=${{ vars.HOSTED_ZONE_ID }}" >> $GITHUB_OUTPUT
           fi
           echo "Deploying to environment: $ENV_PREFIX"
