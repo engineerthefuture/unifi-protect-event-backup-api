@@ -4,32 +4,7 @@ info:
   description: |
     AWS Lambda function that receives and processes webhook events from Unifi Dream Machine Protect systems, 
     storing alarm event data and video files in S3 for backup and analysis.
-    # This file has moved.
-    #
-    # The OpenAPI specification is now located at:
-    #   docs/openapi.yaml
-    #
-    # Please update any references to use the new location.
-        **Delayed Processing Benefits:**
-        - Ensures video files are fully available before download attempts
-        - Improves reliability and reduces failed downloads
-        - Provides immediate webhook response for better system performance
-        
-        **Asynchronous Processing:**
-        After the delay period, the system:
-        1. Maps device MAC addresses to human-readable names
-        2. Downloads video files from Unifi Protect
-        3. Stores enriched event data and videos in S3 with date-based organization
-        
-        **Storage Format:**
-        Events are stored as JSON files in S3 with the path structure:
-        `{bucket}/{YYYY-MM-DD}/{eventId}_{deviceMac}_{timestamp}.json`
-        
-        **Error Handling:**
-        - Malformed JSON returns 400 Bad Request
-        - Missing required fields return 400 Bad Request
-        - SQS configuration errors return 500 Internal Server Error
-        - All errors include descriptive error messages
+    
       operationId: processAlarmEvent
       tags:
         - Alarm Events
