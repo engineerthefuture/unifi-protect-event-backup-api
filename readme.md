@@ -21,19 +21,19 @@ An enterprise-grade AWS Lambda function that receives and processes webhook even
 
 ## 📚 Table of Contents
 
-- [Overview](#overview)
-- [Features](#features)
-- [Video Download Capabilities](#video-download-capabilities)
-- [Architecture](#architecture)
-- [API Endpoints](#api-endpoints)
-- [Setup and Deployment](#setup-and-deployment)
-- [Testing](#testing)
-- [Security and Access Control](#security-and-access-control)
-- [Monitoring and Logs](#monitoring-and-logs)
-- [Data Structure](#data-structure)
-- [Development](#development)
-- [Troubleshooting](#troubleshooting)
-- [Contributing](#contributing)
+- [Overview](#-overview)
+- [Features](#-features)
+- [Video Download Capabilities](#-video-download-capabilities)
+- [Architecture](#-architecture)
+- [API Endpoints](#-api-endpoints)
+- [Setup and Deployment](#-setup-and-deployment)
+- [Testing](#-testing)
+- [Security and Access Control](#-security-and-access-control)
+- [Monitoring and Logs](#-monitoring-and-logs)
+- [Data Structure](#-data-structure)
+- [Development](#-development)
+- [Troubleshooting](#-troubleshooting)
+- [Contributing](#-contributing)
 
 ## 🎯 Recent Updates
 
