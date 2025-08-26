@@ -140,6 +140,11 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             {
                 return await HandleMetadataRequest();
             }
+            if (routeInfo.Method == "GET" && routeInfo.Route == AppConfiguration.ROUTE_LATEST_VIDEO)
+            {
+                // Dedicated handler for /latestvideo that does NOT require eventId
+                return await _s3StorageService.GetLatestVideoAsync();
+            }
             return routeInfo.Method switch
             {
                 "POST" when routeInfo.Route == AppConfiguration.ROUTE_ALARM => await HandleAlarmWebhook(request),
