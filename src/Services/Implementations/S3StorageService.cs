@@ -132,7 +132,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             {
                 var now = DateTime.UtcNow;
                 var bucket = AppConfiguration.AlarmBucketName!;
-                var cameras = new Dictionary<string, CameraSummary>();
+                var cameras = new Dictionary<string, CameraSummaryMulti>();
                 int totalCount = 0;
                 var headers = _responseHelper.GetStandardHeaders();
 
@@ -152,31 +152,30 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                             var trigger = alarm.triggers[0];
                             var cameraId = trigger.device;
                             var cameraName = trigger.deviceName ?? cameraId;
-                            var videoKey = trigger.videoKey;
+                            var videoKey = obj.Replace(".json", ".mp4");
+                            var originalFileName = trigger.originalFileName ?? System.IO.Path.GetFileName(videoKey);
                             if (string.IsNullOrEmpty(cameraId) || string.IsNullOrEmpty(videoKey))
                                 continue;
 
+                            var url = await GetPresignedUrlAsync(bucket, videoKey, now);
+                            var eventObj = new CameraEventSummary {
+                                eventData = alarm,
+                                videoUrl = url,
+                                originalFileName = originalFileName
+                            };
+
                             if (!cameras.TryGetValue(cameraId, out var cam))
                             {
-                                var url = await GetPresignedUrlAsync(bucket, videoKey, now);
-                                cameras[cameraId] = new CameraSummary
-                                {
+                                cam = new CameraSummaryMulti {
                                     cameraId = cameraId,
                                     cameraName = cameraName,
-                                    lastEvent = alarm,
-                                    lastVideoUrl = url,
-                                    count24h = 1
+                                    events = new List<CameraEventSummary>(),
+                                    count24h = 0
                                 };
+                                cameras[cameraId] = cam;
                             }
-                            else
-                            {
-                                cam.count24h++;
-                                if (alarm.timestamp > (cam.lastEvent?.timestamp ?? 0))
-                                {
-                                    cam.lastEvent = alarm;
-                                    cam.lastVideoUrl = await GetPresignedUrlAsync(bucket, videoKey, now);
-                                }
-                            }
+                            cam.events.Add(eventObj);
+                            cam.count24h++;
                             totalCount++;
                         }
                         catch (Exception ex)
@@ -229,14 +228,20 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             return await _s3Client.GetPreSignedURLAsync(req);
         }
 
-    private sealed class CameraSummary
-        {
-            public string cameraId { get; set; } = string.Empty;
-            public string cameraName { get; set; } = string.Empty;
-            public Alarm? lastEvent { get; set; }
-            public string lastVideoUrl { get; set; } = string.Empty;
-            public int count24h { get; set; }
-        }
+    private sealed class CameraSummaryMulti
+    {
+        public string cameraId { get; set; } = string.Empty;
+        public string cameraName { get; set; } = string.Empty;
+        public List<CameraEventSummary> events { get; set; } = new();
+        public int count24h { get; set; }
+    }
+
+    private sealed class CameraEventSummary
+    {
+        public Alarm? eventData { get; set; }
+        public string videoUrl { get; set; } = string.Empty;
+        public string originalFileName { get; set; } = string.Empty;
+    }
 
         /// <summary>
         /// Stores a raw JSON string in S3 at the specified key.

@@ -168,7 +168,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// </summary>
         /// <param name="credentials">UniFi credentials containing hostname</param>
         /// <returns>Complete API URL for camera metadata</returns>
-        private string BuildApiUrl(UnifiCredentials credentials)
+        private static string BuildApiUrl(UnifiCredentials credentials)
         {
             // Extract the hostname part (removing https:// or http:// if present)
             var domainName = credentials.hostname.TrimEnd('/');
@@ -176,8 +176,6 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 domainName = domainName.Substring(8); // Remove "https://"
             else if (domainName.StartsWith("http://"))
                 domainName = domainName.Substring(7); // Remove "http://"
-                
-            var deployedEnv = Environment.GetEnvironmentVariable("DeployedEnv")?.ToLower();
 
             // Always use HTTPS with the domain name
             var hostname = $"https://{domainName}";
