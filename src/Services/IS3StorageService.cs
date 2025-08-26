@@ -30,11 +30,17 @@ namespace UnifiWebhookEventReceiver.Services
     /// </summary>
     public interface IS3StorageService
     {
-    /// <summary>
-    /// Returns a summary of the last event and event count per camera in the last 24 hours, with a presigned video link for each.
-    /// </summary>
-    /// <returns>API Gateway response with summary data</returns>
-    Task<APIGatewayProxyResponse> GetEventSummaryAsync();
+        /// <summary>
+        /// Returns the latest video file and associated event data as a presigned download link.
+        /// </summary>
+        /// <returns>API Gateway response with the latest video</returns>
+        Task<APIGatewayProxyResponse> GetLatestVideoAsync();
+
+        /// <summary>
+        /// Returns a summary of the last event and event count per camera in the last 24 hours, with a presigned video link for each.
+        /// </summary>
+        /// <returns>API Gateway response with summary data</returns>
+        Task<APIGatewayProxyResponse> GetEventSummaryAsync();
         /// <summary>
         /// Stores alarm event data in S3 as JSON.
         /// </summary>

@@ -614,15 +614,9 @@ namespace UnifiWebhookEventReceiverTests
             // Arrange
             string? json = null;
             var key = "test/null.json";
-            
-            _mockS3Client.Setup(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default))
-                .ReturnsAsync(new PutObjectResponse());
 
-            // Act
-            await _s3StorageService.StoreJsonStringAsync(json!, key);
-
-            // Assert
-            _mockS3Client.Verify(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default), Times.Once);
+            // Act & Assert
+            await Assert.ThrowsAsync<ArgumentNullException>(() => _s3StorageService.StoreJsonStringAsync(json!, key));
         }
 
         [Theory]
