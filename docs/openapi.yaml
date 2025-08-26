@@ -39,8 +39,101 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/UnifiWebhookRequest'
-            openapi: 3.0.3
-            info:
+            examples:
+              motionDetection:
+                summary: Motion Detection Event
+                value:
+                  alarm:
+                    name: "Backup Alarm Event"
+                    sources:
+                      - device: "28704E113F64"
+                        type: "include"
+                    conditions:
+                      - condition:
+                          type: "is"
+                          source: "motion"
+                    triggers:
+                      - key: "motion"
+                        device: "28704E113F33"
+                        eventId: "67b389ab005ec703e40075a5"
+                        zones:
+                          zone: []
+                          line: []
+                          loiter: []
+                  timestamp: 1739819436108
+              personDetection:
+                summary: Person Detection Event
+                value:
+                  alarm:
+                    name: "Person Detection Alarm"
+                    sources:
+                      - device: "F4E2C67A2FE8"
+                        type: "include"
+                    conditions:
+                      - condition:
+                          type: "is"
+                          source: "person"
+                    triggers:
+                      - key: "person"
+                        device: "F4E2C67A2FE8"
+                        eventId: "67b389ab005ec703e40075a6"
+                        zones:
+                          zone: ["entrance", "driveway"]
+                          line: []
+                          loiter: []
+                  timestamp: 1739819500000
+              vehicleDetection:
+                summary: Vehicle Detection Event
+                value:
+                  alarm:
+                    name: "Vehicle Detection Alarm"
+                    sources:
+                      - device: "28704E113C44"
+                        type: "include"
+                    conditions:
+                      - condition:
+                          type: "is"
+                          source: "vehicle"
+                    triggers:
+                      - key: "vehicle"
+                        device: "28704E113C44"
+                        eventId: "67b389ab005ec703e40075a7"
+                        zones:
+                          zone: ["street", "driveway"]
+                          line: ["property_line"]
+                          loiter: []
+                  timestamp: 1739819600000
+      responses:
+        '200':
+          description: Event successfully queued for processing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueuedEventResponse'
+        '400':
+          description: Bad request - Invalid or malformed data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Too Many Requests - Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
               title: Unifi Protect Event Backup API
               version: 1.0.0
               description: Minimal cleaned OpenAPI spec for Swagger UI
