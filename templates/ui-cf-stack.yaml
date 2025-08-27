@@ -89,17 +89,6 @@ Resources:
         S3Bucket: !Ref LambdaEdgeDeploymentBucket
         S3Key: !Ref AuthorizationLambdaEdgeS3Key
 
-# Lambda@Edge deployment bucket parameter (dev/prod)
-Parameters:
-  LambdaEdgeDeploymentBucket:
-    Type: String
-    Description: S3 bucket for Lambda@Edge deployment package
-    Default: "bf-dev-s3-deployments"
-  AuthorizationLambdaEdgeS3Key:
-    Type: String
-    Description: S3 key for Lambda@Edge deployment package
-    Default: "bf-dev-ui-auth-lambda-edge/lambda.zip"
-
   # Lambda@Edge execution role
   AuthorizationLambdaEdgeRole:
     Type: AWS::IAM::Role
