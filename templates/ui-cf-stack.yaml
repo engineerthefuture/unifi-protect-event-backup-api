@@ -17,7 +17,33 @@ Metadata:
       - Key: SupportEmail
         Value: !Ref SupportEmail
 
-# ...existing code...
+
+Parameters:
+  EnvPrefix:
+    Type: String
+    Description: Prefix for the environment (dev, prod, staging)
+    Default: dev
+  AppName:
+    Type: String
+    Description: Name of the application
+    Default: ""
+  BucketName:
+    Type: String
+    Description: S3 bucket name for the static website
+    Default: ""
+  DomainName:
+    Type: String
+    Description: Custom domain name for the static site (e.g., site.brentfoster.me)
+    Default: ""
+  HostedZoneId:
+    Type: String
+    Description: Route53 Hosted Zone ID for the domain
+    Default: ""
+
+Conditions:
+  HasCustomDomain: !Not [!Equals [!Ref DomainName, ""]]
+  HasHostedZone: !Not [!Equals [!Ref HostedZoneId, ""]]
+  UseCustomDomain: !And [!Condition HasCustomDomain, !Condition HasHostedZone]
 
 Resources:
 
@@ -52,33 +78,6 @@ Resources:
         - ALLOW_CUSTOM_AUTH
       SupportedIdentityProviders:
         - COGNITO
-
-Parameters:
-  EnvPrefix:
-    Type: String
-    Description: Prefix for the environment (dev, prod, staging)
-    Default: dev
-  AppName:
-    Type: String
-    Description: Name of the application
-    Default: ""
-  BucketName:
-    Type: String
-    Description: S3 bucket name for the static website
-    Default: ""
-  DomainName:
-    Type: String
-    Description: Custom domain name for the static site (e.g., site.brentfoster.me)
-    Default: ""
-  HostedZoneId:
-    Type: String
-    Description: Route53 Hosted Zone ID for the domain
-    Default: ""
-
-Conditions:
-  HasCustomDomain: !Not [!Equals [!Ref DomainName, ""]]
-  HasHostedZone: !Not [!Equals [!Ref HostedZoneId, ""]]
-  UseCustomDomain: !And [!Condition HasCustomDomain, !Condition HasHostedZone]
 
 Resources:
 
