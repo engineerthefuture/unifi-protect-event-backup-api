@@ -74,8 +74,12 @@ namespace UnifiWebhookEventReceiverTests
                 Assert.Equal(deviceId, cam["cameraId"]);
                 Assert.Equal(deviceName, cam["cameraName"]);
                 Assert.Equal(1, cam["count24h"]);
-                Assert.Equal("https://presigned-url/video.mp4", cam["lastVideoUrl"]);
-                Assert.True(cam["lastEvent"] != null);
+                var events = cam["events"] as Newtonsoft.Json.Linq.JArray;
+                Assert.NotNull(events);
+                Assert.Single(events);
+                var evt = events[0];
+                Assert.Equal("https://presigned-url/video.mp4", evt["videoUrl"]);
+                Assert.True(evt["eventData"] != null);
                 Assert.NotNull(body["totalCount"]);
                 Assert.Equal(1, (int)(body["totalCount"] ?? 0));
             }
