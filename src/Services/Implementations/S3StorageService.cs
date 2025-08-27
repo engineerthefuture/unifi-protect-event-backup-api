@@ -176,9 +176,16 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                                 await _s3Client.GetObjectMetadataAsync(headRequest);
                                 videoExists = true;
                             }
-                            catch (AmazonS3Exception e) when (e.ErrorCode == "NoSuchKey")
+                            catch (AmazonS3Exception e) when (e.ErrorCode == "NoSuchKey" || e.ErrorCode == "NotFound")
                             {
+                                // Treat as missing video, do not log as error
                                 videoExists = false;
+                            }
+                            catch (AmazonS3Exception e)
+                            {
+                                // Log and skip only for other S3 errors
+                                _logger.LogLine($"Error checking video existence for {videoKey}: {e.Message}");
+                                continue;
                             }
 
                             var sanitizedAlarm = CloneAlarmWithoutSourcesAndConditions(alarm);
