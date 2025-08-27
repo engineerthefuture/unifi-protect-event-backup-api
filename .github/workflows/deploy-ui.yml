@@ -76,8 +76,7 @@ jobs:
         run: |
           cd authorization-lambda-at-edge
           npm install --omit=dev
-          cd src
-          zip -r ../lambda.zip . ../node_modules
+          zip -r lambda.zip src node_modules package.json
           cd ..
 
       - name: Upload Lambda@Edge deployment package to S3
@@ -89,7 +88,7 @@ jobs:
             DEPLOY_BUCKET=bf-dev-s3-deployments
             S3_KEY=bf-dev-ui-auth-lambda-edge/lambda.zip
           fi
-          aws s3 cp lambda.zip s3://$DEPLOY_BUCKET/$S3_KEY
+          aws s3 cp authorization-lambda-at-edge/lambda.zip s3://$DEPLOY_BUCKET/$S3_KEY
           echo "LAMBDA_EDGE_DEPLOYMENT_BUCKET=$DEPLOY_BUCKET" >> $GITHUB_ENV
           echo "AUTH_LAMBDA_EDGE_S3_KEY=$S3_KEY" >> $GITHUB_ENV
 
