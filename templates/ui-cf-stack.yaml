@@ -44,6 +44,16 @@ Parameters:
     Description: Route53 Hosted Zone ID for the domain
     Default: ""
 
+  LambdaEdgeDeploymentBucket:
+    Type: String
+    Description: S3 bucket for Lambda@Edge deployment package
+    Default: "bf-dev-s3-deployments"
+
+  AuthorizationLambdaEdgeS3Key:
+    Type: String
+    Description: S3 key for Lambda@Edge deployment package
+    Default: "bf-dev-ui-auth-lambda-edge/lambda.zip"
+
 ############################################################
 # Conditions: Used for optional resources (e.g. custom domain)
 ############################################################
@@ -77,7 +87,7 @@ Resources:
       Timeout: 5
       Code:
         S3Bucket: !Ref LambdaEdgeDeploymentBucket
-        S3Key: !Sub "${AuthorizationLambdaEdgeS3Key}"
+        S3Key: !Ref AuthorizationLambdaEdgeS3Key
 
 # Lambda@Edge deployment bucket parameter (dev/prod)
 Parameters:
