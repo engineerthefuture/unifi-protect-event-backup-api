@@ -1,3 +1,26 @@
+
+AWSTemplateFormatVersion: "2010-09-09"
+Description: CloudFormation stack for static website hosting with S3 and CloudFront for the Unifi Protect Event Backup API UI.
+
+# Stack-level tags
+Metadata:
+  AWS::CloudFormation::Interface:
+    Tags:
+      - Key: Owner
+        Value: !Ref OwnerName
+      - Key: Description
+        Value: !Ref AppDescription
+      - Key: Environment
+        Value: !Ref EnvPrefix
+      - Key: AppName
+        Value: !Ref AppName
+      - Key: SupportEmail
+        Value: !Ref SupportEmail
+
+# ...existing code...
+
+Resources:
+
   CognitoUserPool:
     Type: AWS::Cognito::UserPool
     Properties:
@@ -29,25 +52,6 @@
         - ALLOW_CUSTOM_AUTH
       SupportedIdentityProviders:
         - COGNITO
-
-
-AWSTemplateFormatVersion: "2010-09-09"
-Description: CloudFormation stack for static website hosting with S3 and CloudFront for the Unifi Protect Event Backup API UI.
-
-# Stack-level tags
-Metadata:
-  AWS::CloudFormation::Interface:
-    Tags:
-      - Key: Owner
-        Value: !Ref OwnerName
-      - Key: Description
-        Value: !Ref AppDescription
-      - Key: Environment
-        Value: !Ref EnvPrefix
-      - Key: AppName
-        Value: !Ref AppName
-      - Key: SupportEmail
-        Value: !Ref SupportEmail
 
 Parameters:
   EnvPrefix:
