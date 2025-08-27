@@ -92,6 +92,13 @@ jobs:
           echo "LAMBDA_EDGE_DEPLOYMENT_BUCKET=$DEPLOY_BUCKET" >> $GITHUB_ENV
           echo "AUTH_LAMBDA_EDGE_S3_KEY=$S3_KEY" >> $GITHUB_ENV
 
+      - name: Calculate Lambda@Edge deployment package SHA256
+        id: lambda_sha
+        run: |
+          LAMBDA_SHA=$(sha256sum authorization-lambda-at-edge/lambda.zip | awk '{print $1}')
+          echo "LAMBDA_EDGE_CODE_SHA=$LAMBDA_SHA" >> $GITHUB_ENV
+          echo "Lambda@Edge code SHA: $LAMBDA_SHA"
+
       - name: Deploy CloudFormation stack (us-east-1 for Lambda@Edge)
         id: cfn_deploy
         env:
@@ -112,6 +119,7 @@ jobs:
               SupportEmail="${{ vars.SUPPORT_EMAIL }}" \
               LambdaEdgeDeploymentBucket="$LAMBDA_EDGE_DEPLOYMENT_BUCKET" \
               AuthorizationLambdaEdgeS3Key="$AUTH_LAMBDA_EDGE_S3_KEY" \
+              LambdaEdgeCodeSha="$LAMBDA_EDGE_CODE_SHA" \
             --tags \
               Owner="${{ vars.OWNER_NAME }}" \
               AppName="${{ vars.APP_NAME_UI }}" \

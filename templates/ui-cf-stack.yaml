@@ -54,6 +54,11 @@ Parameters:
     Description: S3 key for Lambda@Edge deployment package
     Default: "bf-dev-ui-auth-lambda-edge/lambda.zip"
 
+  LambdaEdgeCodeSha:
+    Type: String
+    Description: SHA256 hash of Lambda@Edge deployment package (forces version update)
+    Default: "manual-default"
+
 ############################################################
 # Conditions: Used for optional resources (e.g. custom domain)
 ############################################################
@@ -72,6 +77,7 @@ Resources:
     Type: AWS::Lambda::Version
     Properties:
       FunctionName: !Ref AuthorizationLambdaEdge
+      Description: !Sub "Lambda@Edge version for code SHA: ${LambdaEdgeCodeSha}"
     DeletionPolicy: Retain
 
   # Lambda@Edge function for JWT authorization using Cognito
