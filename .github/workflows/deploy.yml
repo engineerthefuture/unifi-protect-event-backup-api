@@ -554,7 +554,7 @@ jobs:
               HostedZoneId="${{ steps.env.outputs.HOSTED_ZONE_ID }}" \
               BuildSha="${{ github.sha }}" \
               BuildTimestamp="${{ steps.timestamp.outputs.BUILD_TIMESTAMP }}" \
-              RetentionDays=${{ env.MAX_RETENTION_DAYS }} \
+              RetentionDays=${{ vars.MAX_RETENTION_DAYS }} \
             --tags \
               Owner="${{ vars.OWNER_NAME }}" \
               AppName="${{ vars.APP_NAME }}" \
