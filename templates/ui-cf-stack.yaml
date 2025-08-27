@@ -1,3 +1,67 @@
+
+# CloudFormation template for static website hosting with S3, CloudFront, Route53, ACM, and Cognito for the Unifi Protect Event Backup API UI.
+AWSTemplateFormatVersion: "2010-09-09"
+Description: CloudFormation stack for static website hosting with S3 and CloudFront for the Unifi Protect Event Backup API UI.
+
+# Stack-level tags
+Metadata:
+  AWS::CloudFormation::Interface:
+    Tags:
+      - Key: Owner
+        Value: !Ref OwnerName
+      - Key: Description
+        Value: !Ref AppDescription
+      - Key: Environment
+        Value: !Ref EnvPrefix
+      - Key: AppName
+        Value: !Ref AppName
+      - Key: SupportEmail
+        Value: !Ref SupportEmail
+
+############################################################
+# Parameters: Customize stack for different environments   #
+############################################################
+
+############################################################
+# Parameters: Customize stack for different environments   #
+############################################################
+Parameters:
+  EnvPrefix:
+    Type: String
+    Description: Prefix for the environment (dev, prod, staging)
+    Default: dev
+  AppName:
+    Type: String
+    Description: Name of the application
+    Default: ""
+  BucketName:
+    Type: String
+    Description: S3 bucket name for the static website
+    Default: ""
+  DomainName:
+    Type: String
+    Description: Custom domain name for the static site (e.g., site.brentfoster.me)
+    Default: ""
+  HostedZoneId:
+    Type: String
+    Description: Route53 Hosted Zone ID for the domain
+    Default: ""
+
+############################################################
+# Conditions: Used for optional resources (e.g. custom domain)
+############################################################
+Conditions:
+  HasCustomDomain: !Not [!Equals [!Ref DomainName, ""]]
+  HasHostedZone: !Not [!Equals [!Ref HostedZoneId, ""]]
+  UseCustomDomain: !And [!Condition HasCustomDomain, !Condition HasHostedZone]
+
+
+
+############################################################
+# Resources: Main infrastructure components                #
+############################################################
+Resources:
+
   # Lambda@Edge function for JWT authorization using Cognito
   AuthorizationLambdaEdge:
     Type: AWS::Lambda::Function
@@ -72,66 +136,6 @@
                   - logs:CreateLogStream
                   - logs:PutLogEvents
                 Resource: "*"
-
-
-# CloudFormation template for static website hosting with S3, CloudFront, Route53, ACM, and Cognito for the Unifi Protect Event Backup API UI.
-AWSTemplateFormatVersion: "2010-09-09"
-Description: CloudFormation stack for static website hosting with S3 and CloudFront for the Unifi Protect Event Backup API UI.
-
-# Stack-level tags
-Metadata:
-  AWS::CloudFormation::Interface:
-    Tags:
-      - Key: Owner
-        Value: !Ref OwnerName
-      - Key: Description
-        Value: !Ref AppDescription
-      - Key: Environment
-        Value: !Ref EnvPrefix
-      - Key: AppName
-        Value: !Ref AppName
-      - Key: SupportEmail
-        Value: !Ref SupportEmail
-
-############################################################
-# Parameters: Customize stack for different environments   #
-############################################################
-Parameters:
-  EnvPrefix:
-    Type: String
-    Description: Prefix for the environment (dev, prod, staging)
-    Default: dev
-  AppName:
-    Type: String
-    Description: Name of the application
-    Default: ""
-  BucketName:
-    Type: String
-    Description: S3 bucket name for the static website
-    Default: ""
-  DomainName:
-    Type: String
-    Description: Custom domain name for the static site (e.g., site.brentfoster.me)
-    Default: ""
-  HostedZoneId:
-    Type: String
-    Description: Route53 Hosted Zone ID for the domain
-    Default: ""
-
-############################################################
-# Conditions: Used for optional resources (e.g. custom domain)
-############################################################
-Conditions:
-  HasCustomDomain: !Not [!Equals [!Ref DomainName, ""]]
-  HasHostedZone: !Not [!Equals [!Ref HostedZoneId, ""]]
-  UseCustomDomain: !And [!Condition HasCustomDomain, !Condition HasHostedZone]
-
-
-
-############################################################
-# Resources: Main infrastructure components                #
-############################################################
-Resources:
 
   # Cognito User Pool for authentication (email sign-up/sign-in)
   CognitoUserPool:
