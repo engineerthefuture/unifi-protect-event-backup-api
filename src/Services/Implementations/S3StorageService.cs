@@ -506,10 +506,9 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             _logger.LogLine("Searching for latest video file in S3 bucket using date-organized approach: " + AppConfiguration.AlarmBucketName);
 
             DateTime searchDate = DateTime.UtcNow.Date;
-            const int maxDaysToSearch = 30;
             int daysSearched = 0;
 
-            while (daysSearched < maxDaysToSearch)
+            while (daysSearched < AppConfiguration.MaxRetentionDays)
             {
                 string dateFolder = searchDate.ToString("yyyy-MM-dd");
                 _logger.LogLine($"Searching for videos in date folder: {dateFolder}");
@@ -709,10 +708,9 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             _logger.LogLine($"Searching for event file with eventId prefix: {eventId}");
 
             DateTime searchDate = DateTime.UtcNow.Date;
-            const int maxDaysToSearch = 90;
             int daysSearched = 0;
 
-            while (daysSearched < maxDaysToSearch)
+            while (daysSearched < AppConfiguration.MaxRetentionDays)
             {
                 string dateFolder = searchDate.ToString("yyyy-MM-dd");
                 _logger.LogLine($"Searching for eventId {eventId} in date folder: {dateFolder}");
@@ -725,7 +723,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 searchDate = searchDate.AddDays(-1);
                 daysSearched++;
             }
-            return (null, null, 0, _responseHelper.CreateErrorResponse(HttpStatusCode.NotFound, $"Event with ID {eventId} not found in the last {maxDaysToSearch} days."));
+            return (null, null, 0, _responseHelper.CreateErrorResponse(HttpStatusCode.NotFound, $"Event with ID {eventId} not found in the last {AppConfiguration.MaxRetentionDays} days."));
         }
 
         private async Task<(string? EventKey, string? VideoKey, long Timestamp)> SearchEventInDateFolderAsync(string eventId, string dateFolder)

@@ -1,4 +1,5 @@
 
+
 /************************
  * Unifi Webhook Event Receiver
  * AppConfiguration.cs
@@ -22,6 +23,8 @@ namespace UnifiWebhookEventReceiver.Configuration
     /// </summary>
     public static class AppConfiguration
     {
+        /// <summary>Maximum retention period (in days) for event data, matching S3 lifecycle rule.</summary>
+        public static int MaxRetentionDays => int.TryParse(Environment.GetEnvironmentVariable("MaxRetentionDays"), out var days) ? days : 30;
         #region Constants
 
         /// <summary>Error message template for 500 Internal Server Error responses</summary>

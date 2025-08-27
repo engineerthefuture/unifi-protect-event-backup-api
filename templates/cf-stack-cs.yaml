@@ -19,6 +19,11 @@ Metadata:
     
 # Parameters
 Parameters:
+  RetentionDays:
+    Type: Number
+    Description: Number of days to retain event data in S3 and for API search.
+    Default: 30
+    MinValue: 1
   AppName:
     Default: unifi-protect-event-backup-api
     Type: String
@@ -274,8 +279,8 @@ Resources:
               Rules:
                 - Id: DeleteAfter30Days
                   Status: Enabled
-                  ExpirationInDays: 30
-                  NoncurrentVersionExpirationInDays: 30
+                  ExpirationInDays: !Ref RetentionDays
+                  NoncurrentVersionExpirationInDays: !Ref RetentionDays
             Tags: 
               - Key: "Name"
                 Value: !Sub "${BucketName}"
@@ -607,6 +612,7 @@ Resources:
           SupportEmail: !Ref SupportEmail
           BuildSha: !Ref BuildSha
           BuildTimestamp: !Ref BuildTimestamp
+          MaxRetentionDays: !Ref RetentionDays
       Tags: 
         - Key: "FunctionName"
           Value: !Sub "${FunctionName}"
