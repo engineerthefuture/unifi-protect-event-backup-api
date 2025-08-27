@@ -527,7 +527,7 @@ Fetches and stores current camera metadata from the Unifi Protect API
 
 **Complete API Documentation:**
 - [docs/openapi.yaml](docs/openapi.yaml) (OpenAPI 3.0 spec)
-- [Swagger UI (OpenAPI) – GitHub Pages](https://engineerthefuture.github.io/unifi-protect-event-backup-api/api/index.html)
+- [Swagger UI (OpenAPI) – GitHub Pages](https://engineerthefuture.github.io/unifi-protect-event-backup-api/)
 
 The full OpenAPI 3.0 specification is available in the [`docs/openapi.yaml`](docs/openapi.yaml) file and includes:
 
