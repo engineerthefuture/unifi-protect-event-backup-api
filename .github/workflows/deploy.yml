@@ -14,6 +14,7 @@ on:
       - dev
     paths:
       - 'src/**'
+      - 'test/**'
       - 'templates/cf-stack-cs.yaml'
       - '.github/workflows/deploy.yml'
 
