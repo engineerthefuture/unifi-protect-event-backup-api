@@ -40,29 +40,29 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             var eventData = await RetrieveEventDataAsync(videoKey!);
             return await BuildLatestVideoResponse(videoKey!, timestamp, eventData);
         }
-        // ...existing code continues...
-            /// <summary>
-            /// Retrieves a video file by event ID from S3.
-            /// </summary>
-            /// <param name="eventId">The event ID to search for</param>
-            /// <returns>API Gateway response with the video file</returns>
-            public async Task<APIGatewayProxyResponse> GetVideoByEventIdAsync(string eventId)
-            {
-                var configError = ValidateEventIdConfiguration(eventId);
-                if (configError != null)
-                    return configError;
 
-                var (eventKey, videoKey, timestamp, errorResponse) = await SearchEventByIdAsync(eventId);
-                if (errorResponse != null)
-                    return errorResponse;
+        /// <summary>
+        /// Retrieves a video file by event ID from S3.
+        /// </summary>
+        /// <param name="eventId">The event ID to search for</param>
+        /// <returns>API Gateway response with the video file</returns>
+        public async Task<APIGatewayProxyResponse> GetVideoByEventIdAsync(string eventId)
+        {
+            var configError = ValidateEventIdConfiguration(eventId);
+            if (configError != null)
+                return configError;
 
-                var eventData = await RetrieveEventDataAsync(videoKey!);
-                var videoExists = await VerifyVideoFileExistsAsync(videoKey!, eventId);
-                if (videoExists != null)
-                    return videoExists;
+            var (eventKey, videoKey, timestamp, errorResponse) = await SearchEventByIdAsync(eventId);
+            if (errorResponse != null)
+                return errorResponse;
 
-                return await BuildEventVideoResponse(eventKey!, videoKey!, eventId, timestamp, eventData);
-            }
+            var eventData = await RetrieveEventDataAsync(videoKey!);
+            var videoExists = await VerifyVideoFileExistsAsync(videoKey!, eventId);
+            if (videoExists != null)
+                return videoExists;
+
+            return await BuildEventVideoResponse(eventKey!, videoKey!, eventId, timestamp, eventData);
+        }
         private readonly IAmazonS3 _s3Client;
         private readonly IResponseHelper _responseHelper;
         private readonly ILambdaLogger _logger;
@@ -117,9 +117,6 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             await UploadBinaryContentAsync(AppConfiguration.AlarmBucketName, s3Key, videoData, "video/mp4");
         }
 
-        // Helper: Summarize events by device
-    // ...existing code...
-
         /// <summary>
         /// Returns a summary of the last event and event count per camera in the last 24 hours, with a presigned video link for each.
         /// </summary>
@@ -134,6 +131,9 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 var bucket = AppConfiguration.AlarmBucketName!;
                 var cameras = new Dictionary<string, CameraSummaryMulti>();
                 int totalCount = 0;
+                int objectsCount = 0;
+                int activityCount = 0;
+                var triggerKeyCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
                 var headers = _responseHelper.GetStandardHeaders();
 
                 for (int i = 0; i < 2; i++)
@@ -150,6 +150,15 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                             if (alarm == null || alarm.triggers == null || alarm.triggers.Count == 0)
                                 continue;
                             var trigger = alarm.triggers[0];
+                            // Count trigger keys for all triggers in the event
+                            foreach (var t in alarm.triggers)
+                            {
+                                if (!string.IsNullOrEmpty(t.key))
+                                {
+                                    if (!triggerKeyCounts.TryAdd(t.key, 1))
+                                        triggerKeyCounts[t.key]++;
+                                }
+                            }
                             var cameraId = trigger.device;
                             var cameraName = trigger.deviceName ?? cameraId;
                             var videoKey = obj.Replace(".json", ".mp4");
@@ -177,6 +186,12 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                             cam.events.Add(eventObj);
                             cam.count24h++;
                             totalCount++;
+
+                            // Count event types
+                            if (alarm.name == "Backup Alarm Event: Objects")
+                                objectsCount++;
+                            else if (alarm.name == "Backup Alarm Event: Activity")
+                                activityCount++;
                         }
                         catch (Exception ex)
                         {
@@ -185,9 +200,24 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                     }
                 }
 
+                // Limit to last 3 events per camera, sorted by timestamp descending
+                foreach (var cam in cameras.Values)
+                {
+                    cam.events = cam.events
+                        .OrderByDescending(e => e.eventData?.timestamp ?? 0)
+                        .Take(3)
+                        .ToList();
+                }
+                var perCameraCounts = string.Join(", ", cameras.Values.Select(c => $"{c.cameraName} ({c.cameraId}): {c.count24h}"));
+                var triggerKeySummary = string.Join(", ", triggerKeyCounts.Select(kvp => $"{kvp.Key}: {kvp.Value}"));
+                var summaryMessage = $"In the past 24 hours, there were {totalCount} total events across all cameras: {objectsCount} 'Objects' events and {activityCount} 'Activity' events. Per camera: {perCameraCounts}. Trigger keys: {triggerKeySummary}.";
                 var response = new {
                     cameras = cameras.Values,
-                    totalCount
+                    totalCount,
+                    objectsCount,
+                    activityCount,
+                    triggerKeyCounts,
+                    summaryMessage
                 };
                 return new APIGatewayProxyResponse {
                     StatusCode = 200,
@@ -228,20 +258,20 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             return await _s3Client.GetPreSignedURLAsync(req);
         }
 
-    private sealed class CameraSummaryMulti
-    {
-        public string cameraId { get; set; } = string.Empty;
-        public string cameraName { get; set; } = string.Empty;
-        public List<CameraEventSummary> events { get; set; } = new();
-        public int count24h { get; set; }
-    }
+        private sealed class CameraSummaryMulti
+        {
+            public string cameraId { get; set; } = string.Empty;
+            public string cameraName { get; set; } = string.Empty;
+            public List<CameraEventSummary> events { get; set; } = new();
+            public int count24h { get; set; }
+        }
 
-    private sealed class CameraEventSummary
-    {
-        public Alarm? eventData { get; set; }
-        public string videoUrl { get; set; } = string.Empty;
-        public string originalFileName { get; set; } = string.Empty;
-    }
+        private sealed class CameraEventSummary
+        {
+            public Alarm? eventData { get; set; }
+            public string videoUrl { get; set; } = string.Empty;
+            public string originalFileName { get; set; } = string.Empty;
+        }
 
         /// <summary>
         /// Stores a raw JSON string in S3 at the specified key.
