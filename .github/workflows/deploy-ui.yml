@@ -28,12 +28,10 @@ jobs:
 
       - name: Print referenced environment variables
         run: |
-          echo "AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}"
           echo "OIDC_ROLE_NAME: ${{ vars.OIDC_ROLE_NAME }}"
           echo "OwnerName: ${{ vars.OWNER_NAME }}"
           echo "AppName: ${{ vars.APP_NAME_UI }}"
           echo "AppDescription: ${{ vars.APP_DESCRIPTION }}"
-          echo "HostedZoneId: ${{ vars.HOSTED_ZONE_ID }}"
           echo "SupportEmail: ${{ vars.SUPPORT_EMAIL }}"
 
       - name: Determine environment and set UI domain
@@ -54,7 +52,7 @@ jobs:
           role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.OIDC_ROLE_NAME }}
           aws-region: us-east-1
 
-      - name: Patch Lambda@Edge code in CloudFormation template
+      - name: Patch Lambda@Edge code in index.js and CloudFormation template
         run: |
           set -e
           STACK_NAME=bf-${{ steps.env.outputs.ENV_PREFIX }}-${{ vars.APP_NAME_UI }}
@@ -65,9 +63,13 @@ jobs:
           fi
           JWKS=$(curl -s "https://cognito-idp.us-east-1.amazonaws.com/$USER_POOL_ID/.well-known/jwks.json")
           JWKS_ESCAPED=$(echo "$JWKS" | sed 's/\"/\\\"/g' | tr -d '\n')
-          # Replace USERPOOLID
+          # Patch index.js for local dev/test
+          sed -i.bak \
+            -e "s|var USERPOOLID = '.*';|var USERPOOLID = '$USER_POOL_ID';|g" \
+            -e "s|var JWKS = '.*';|var JWKS = '$JWKS_ESCAPED';|g" \
+            authorization-lambda-at-edge/src/index.js
+          # Patch CloudFormation template inline Lambda code
           sed -i.bak "s|##USERPOOLID##|$USER_POOL_ID|g" templates/ui-cf-stack.yaml
-          # Replace JWKS
           sed -i.bak "s|##JWKS##|$JWKS_ESCAPED|g" templates/ui-cf-stack.yaml
 
       - name: Deploy CloudFormation stack (us-east-1 for Lambda@Edge)

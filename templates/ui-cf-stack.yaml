@@ -276,7 +276,7 @@ Resources:
                 - Authorization
             LambdaFunctionAssociations:
               - EventType: viewer-request
-                LambdaFunctionARN: !GetAtt AuthorizationLambdaEdge.Arn
+                LambdaFunctionARN: !GetAtt AuthorizationLambdaEdge.Version
         DefaultCacheBehavior:
           TargetOriginId: !Ref WebsiteBucket
           ViewerProtocolPolicy: redirect-to-https
