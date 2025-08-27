@@ -45,6 +45,7 @@ Conditions:
   HasHostedZone: !Not [!Equals [!Ref HostedZoneId, ""]]
   UseCustomDomain: !And [!Condition HasCustomDomain, !Condition HasHostedZone]
 
+
 Resources:
 
   CognitoUserPool:
@@ -78,8 +79,6 @@ Resources:
         - ALLOW_CUSTOM_AUTH
       SupportedIdentityProviders:
         - COGNITO
-
-Resources:
 
   Certificate:
     Type: AWS::CertificateManager::Certificate
