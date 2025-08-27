@@ -72,11 +72,13 @@ jobs:
           sed -i.bak "s|##USERPOOLID##|$USER_POOL_ID|g" templates/ui-cf-stack.yaml
           sed -i.bak "s|##JWKS##|$JWKS_ESCAPED|g" templates/ui-cf-stack.yaml
 
-      - name: Build Lambda@Edge deployment package
+      - name: Build Lambda@Edge deployment package (flat root)
         run: |
           cd authorization-lambda-at-edge
           npm install --omit=dev
-          zip -r lambda.zip src node_modules package.json
+          cp src/index.js .
+          zip -r lambda.zip index.js node_modules package.json
+          rm index.js
           cd ..
 
       - name: Upload Lambda@Edge deployment package to S3
