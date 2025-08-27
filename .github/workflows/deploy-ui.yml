@@ -55,6 +55,7 @@ jobs:
           aws-region: us-east-1
 
       - name: Deploy CloudFormation stack
+        id: cfn_deploy
         run: |
           aws cloudformation deploy \
             --template-file templates/ui-cf-stack.yaml \
@@ -74,6 +75,17 @@ jobs:
               AppName="${{ vars.APP_NAME_UI }}" \
               Description="${{ vars.APP_DESCRIPTION }}" \
               Environment="${{ steps.env.outputs.ENV_PREFIX }}"
+
+      - name: Get Cognito Outputs
+        id: cognito_outputs
+        run: |
+          STACK_NAME=bf-${{ steps.env.outputs.ENV_PREFIX }}-${{ vars.APP_NAME_UI }}
+          USER_POOL_ID=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='CognitoUserPoolId'].OutputValue" --output text)
+          USER_POOL_CLIENT_ID=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='CognitoUserPoolClientId'].OutputValue" --output text)
+          echo "COGNITO_USER_POOL_ID=$USER_POOL_ID" >> $GITHUB_ENV
+          echo "COGNITO_USER_POOL_CLIENT_ID=$USER_POOL_CLIENT_ID" >> $GITHUB_ENV
+          echo "Cognito User Pool ID: $USER_POOL_ID"
+          echo "Cognito User Pool Client ID: $USER_POOL_CLIENT_ID"
 
       - name: Copy UI contents to S3 bucket
         run: |
