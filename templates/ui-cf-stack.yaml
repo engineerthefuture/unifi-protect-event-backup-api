@@ -263,28 +263,7 @@ Resources:
         Comment: !Sub "bf-${EnvPrefix} - ${AppName}"
         Aliases: !If [UseCustomDomain, [!Ref DomainName], []]
         DefaultRootObject: index.html
-        # Add a behavior for private/* that uses Lambda@Edge for authorization
-        CacheBehaviors:
-          - PathPattern: private/*
-            TargetOriginId: !Ref WebsiteBucket
-            ViewerProtocolPolicy: redirect-to-https
-            AllowedMethods:
-              - GET
-              - HEAD
-              - OPTIONS
-            CachedMethods:
-              - GET
-              - HEAD
-            Compress: false
-            ForwardedValues:
-              QueryString: true
-              Cookies:
-                Forward: none
-              Headers:
-                - Authorization
-            LambdaFunctionAssociations:
-              - EventType: viewer-request
-                LambdaFunctionARN: !Ref AuthorizationLambdaEdgeVersion
+  # Protect the entire distribution with Lambda@Edge authorization
         DefaultCacheBehavior:
           TargetOriginId: !Ref WebsiteBucket
           ViewerProtocolPolicy: redirect-to-https
@@ -309,6 +288,9 @@ Resources:
               - Access-Control-Request-Headers
               - Access-Control-Request-Method
               - Origin
+          LambdaFunctionAssociations:
+            - EventType: viewer-request
+              LambdaFunctionARN: !Ref AuthorizationLambdaEdgeVersion
         PriceClass: PriceClass_100
         Restrictions:
           GeoRestriction:
