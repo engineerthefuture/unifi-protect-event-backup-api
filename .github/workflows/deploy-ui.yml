@@ -54,8 +54,26 @@ jobs:
           role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.OIDC_ROLE_NAME }}
           aws-region: us-east-1
 
-      - name: Deploy CloudFormation stack
+      - name: Patch Lambda@Edge code in CloudFormation template
+        run: |
+          set -e
+          STACK_NAME=bf-${{ steps.env.outputs.ENV_PREFIX }}-${{ vars.APP_NAME_UI }}
+          USER_POOL_ID=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='CognitoUserPoolId'].OutputValue" --output text)
+          if [ -z "$USER_POOL_ID" ] || [ "$USER_POOL_ID" = "None" ]; then
+            echo "Cognito User Pool ID not found. Running initial deploy to create Cognito resources."
+            USER_POOL_ID="${{ env.COGNITO_USER_POOL_ID }}"
+          fi
+          JWKS=$(curl -s "https://cognito-idp.us-east-1.amazonaws.com/$USER_POOL_ID/.well-known/jwks.json")
+          JWKS_ESCAPED=$(echo "$JWKS" | sed 's/\"/\\\"/g' | tr -d '\n')
+          # Replace USERPOOLID
+          sed -i.bak "s|##USERPOOLID##|$USER_POOL_ID|g" templates/ui-cf-stack.yaml
+          # Replace JWKS
+          sed -i.bak "s|##JWKS##|$JWKS_ESCAPED|g" templates/ui-cf-stack.yaml
+
+      - name: Deploy CloudFormation stack (us-east-1 for Lambda@Edge)
         id: cfn_deploy
+        env:
+          AWS_DEFAULT_REGION: us-east-1
         run: |
           aws cloudformation deploy \
             --template-file templates/ui-cf-stack.yaml \

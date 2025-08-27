@@ -1,3 +1,77 @@
+  # Lambda@Edge function for JWT authorization using Cognito
+  AuthorizationLambdaEdge:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "bf-${EnvPrefix}-${AppName}-auth-lambda-edge"
+      Handler: index.handler
+      Role: !GetAtt AuthorizationLambdaEdgeRole.Arn
+      Runtime: nodejs18.x
+      Description: Lambda@Edge function to authorize CloudFront requests using Cognito JWT
+      MemorySize: 128
+      Timeout: 5
+      Code:
+        ZipFile: |
+          'use strict';
+          var jwt = require("jsonwebtoken");
+          var jwkToPem = require("jwk-to-pem");
+          var USERPOOLID = "##USERPOOLID##";
+          var JWKS = '##JWKS##';
+          var region = 'us-east-1';
+          var iss = 'https://cognito-idp.' + region + '.amazonaws.com/' + USERPOOLID;
+          var pems = {};
+          var keys = JSON.parse(JWKS).keys;
+          for(var i = 0; i < keys.length; i++) {
+              var key_id = keys[i].kid;
+              var modulus = keys[i].n;
+              var exponent = keys[i].e;
+              var key_type = keys[i].kty;
+              var jwk = { kty: key_type, n: modulus, e: exponent};
+              var pem = jwkToPem(jwk);
+              pems[key_id] = pem;
+          }
+          const response401 = { status: '401', statusDescription: 'Unauthorized' };
+          exports.handler = (event, context, callback) => {
+              const cfrequest = event.Records[0].cf.request;
+              const headers = cfrequest.headers;
+              if(!headers.authorization) { callback(null, response401); return false; }
+              var jwtToken = headers.authorization[0].value.slice(7);
+              var decodedJwt = jwt.decode(jwtToken, {complete: true});
+              if (!decodedJwt) { callback(null, response401); return false; }
+              if (decodedJwt.payload.iss != iss) { callback(null, response401); return false; }
+              if (decodedJwt.payload.token_use != 'access') { callback(null, response401); return false; }
+              var kid = decodedJwt.header.kid;
+              var pem = pems[kid];
+              if (!pem) { callback(null, response401); return false; }
+              jwt.verify(jwtToken, pem, { issuer: iss }, function(err, payload) {
+                if(err) { callback(null, response401); return false; }
+                else { delete cfrequest.headers.authorization; callback(null, cfrequest); return true; }
+              });
+          };
+
+  # Lambda@Edge execution role
+  AuthorizationLambdaEdgeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+                - edgelambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: LambdaEdgeBasic
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
 
 
 # CloudFormation template for static website hosting with S3, CloudFront, Route53, ACM, and Cognito for the Unifi Protect Event Backup API UI.
@@ -177,6 +251,28 @@ Resources:
         Comment: !Sub "bf-${EnvPrefix} - ${AppName}"
         Aliases: !If [UseCustomDomain, [!Ref DomainName], []]
         DefaultRootObject: index.html
+        # Add a behavior for private/* that uses Lambda@Edge for authorization
+        CacheBehaviors:
+          - PathPattern: private/*
+            TargetOriginId: !Ref WebsiteBucket
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods:
+              - GET
+              - HEAD
+              - OPTIONS
+            CachedMethods:
+              - GET
+              - HEAD
+            Compress: false
+            ForwardedValues:
+              QueryString: true
+              Cookies:
+                Forward: none
+              Headers:
+                - Authorization
+            LambdaFunctionAssociations:
+              - EventType: viewer-request
+                LambdaFunctionARN: !GetAtt AuthorizationLambdaEdge.Arn
         DefaultCacheBehavior:
           TargetOriginId: !Ref WebsiteBucket
           ViewerProtocolPolicy: redirect-to-https
