@@ -130,6 +130,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 var now = DateTime.UtcNow;
                 var bucket = AppConfiguration.AlarmBucketName!;
                 var cameras = new Dictionary<string, CameraSummaryMulti>();
+                var missingEvents = new List<CameraEventSummary>();
                 int totalCount = 0;
                 int objectsCount = 0;
                 int activityCount = 0;
@@ -151,13 +152,10 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                                 continue;
                             var trigger = alarm.triggers[0];
                             // Count trigger keys for all triggers in the event
-                            foreach (var t in alarm.triggers)
+                            foreach (var key in alarm.triggers.Select(t => t.key).Where(k => !string.IsNullOrEmpty(k)))
                             {
-                                if (!string.IsNullOrEmpty(t.key))
-                                {
-                                    if (!triggerKeyCounts.TryAdd(t.key, 1))
-                                        triggerKeyCounts[t.key]++;
-                                }
+                                if (!triggerKeyCounts.TryAdd(key!, 1))
+                                    triggerKeyCounts[key!]++;
                             }
                             var cameraId = trigger.device;
                             var cameraName = trigger.deviceName ?? cameraId;
@@ -166,28 +164,50 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                             if (string.IsNullOrEmpty(cameraId) || string.IsNullOrEmpty(videoKey))
                                 continue;
 
-                            var url = await GetPresignedUrlAsync(bucket, videoKey, now);
-                            // Remove sources and conditions from alarm before returning
+                            // Check if video exists in S3
+                            bool videoExists = false;
+                            try
+                            {
+                                var headRequest = new GetObjectMetadataRequest
+                                {
+                                    BucketName = bucket,
+                                    Key = videoKey
+                                };
+                                await _s3Client.GetObjectMetadataAsync(headRequest);
+                                videoExists = true;
+                            }
+                            catch (AmazonS3Exception e) when (e.ErrorCode == "NoSuchKey")
+                            {
+                                videoExists = false;
+                            }
+
                             var sanitizedAlarm = CloneAlarmWithoutSourcesAndConditions(alarm);
                             var eventObj = new CameraEventSummary {
                                 eventData = sanitizedAlarm,
-                                videoUrl = url,
+                                videoUrl = videoExists ? await GetPresignedUrlAsync(bucket, videoKey, now) : null,
                                 originalFileName = originalFileName
                             };
 
-                            if (!cameras.TryGetValue(cameraId, out var cam))
+                            if (videoExists)
                             {
-                                cam = new CameraSummaryMulti {
-                                    cameraId = cameraId,
-                                    cameraName = cameraName,
-                                    events = new List<CameraEventSummary>(),
-                                    count24h = 0
-                                };
-                                cameras[cameraId] = cam;
+                                if (!cameras.TryGetValue(cameraId, out var cam))
+                                {
+                                    cam = new CameraSummaryMulti {
+                                        cameraId = cameraId,
+                                        cameraName = cameraName,
+                                        events = new List<CameraEventSummary>(),
+                                        count24h = 0
+                                    };
+                                    cameras[cameraId] = cam;
+                                }
+                                cam.events.Add(eventObj);
+                                cam.count24h++;
+                                totalCount++;
                             }
-                            cam.events.Add(eventObj);
-                            cam.count24h++;
-                            totalCount++;
+                            else
+                            {
+                                missingEvents.Add(eventObj);
+                            }
 
                             // Count event types
                             if (alarm.name == "Backup Alarm Event: Objects")
@@ -215,6 +235,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 var summaryMessage = $"In the past 24 hours, there were {totalCount} total events across all cameras: {objectsCount} 'Objects' events and {activityCount} 'Activity' events. Per camera: {perCameraCounts}. Trigger keys: {triggerKeySummary}.";
                 var response = new {
                     cameras = cameras.Values,
+                    missing = missingEvents,
                     totalCount,
                     objectsCount,
                     activityCount,
@@ -271,7 +292,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         private sealed class CameraEventSummary
         {
             public Alarm? eventData { get; set; }
-            public string videoUrl { get; set; } = string.Empty;
+            public string? videoUrl { get; set; } = string.Empty;
             public string originalFileName { get; set; } = string.Empty;
         }
 
