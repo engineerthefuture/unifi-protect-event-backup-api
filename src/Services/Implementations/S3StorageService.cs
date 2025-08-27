@@ -784,10 +784,30 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 _logger.LogLine($"Video file confirmed in S3: {videoKey} ({metadata.ContentLength} bytes)");
                 return null;
             }
-            catch (AmazonS3Exception e) when (e.ErrorCode == "NoSuchKey")
+            catch (AmazonS3Exception e) when (e.ErrorCode == "NoSuchKey" || e.ErrorCode == "NotFound")
             {
                 _logger.LogLine($"Video file {videoKey} not found in S3");
-                return _responseHelper.CreateErrorResponse(HttpStatusCode.NotFound, $"Video file for event {eventId} not found");
+                // Try to get the event data (JSON) for this eventId
+                var eventKey = videoKey.Replace(".mp4", ".json");
+                object? eventData = null;
+                try
+                {
+                    eventData = await RetrieveEventDataAsync(eventKey);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogLine($"Could not retrieve event data for missing video: {eventKey}: {ex.Message}");
+                }
+                var response = new {
+                    eventId = eventId,
+                    eventData = eventData,
+                    message = $"Video file for event {eventId} not found. Event data is available, but no video exists."
+                };
+                return new APIGatewayProxyResponse {
+                    StatusCode = 404,
+                    Body = JsonConvert.SerializeObject(response, Formatting.Indented),
+                    Headers = _responseHelper.GetStandardHeaders()
+                };
             }
         }
 
