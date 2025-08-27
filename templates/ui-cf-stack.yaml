@@ -22,10 +22,6 @@ Metadata:
 ############################################################
 # Parameters: Customize stack for different environments   #
 ############################################################
-
-############################################################
-# Parameters: Customize stack for different environments   #
-############################################################
 Parameters:
   EnvPrefix:
     Type: String
@@ -56,8 +52,6 @@ Conditions:
   HasHostedZone: !Not [!Equals [!Ref HostedZoneId, ""]]
   UseCustomDomain: !And [!Condition HasCustomDomain, !Condition HasHostedZone]
 
-
-
 ############################################################
 # Resources: Main infrastructure components                #
 ############################################################
@@ -82,43 +76,19 @@ Resources:
       MemorySize: 128
       Timeout: 5
       Code:
-        ZipFile: |
-          'use strict';
-          var jwt = require("jsonwebtoken");
-          var jwkToPem = require("jwk-to-pem");
-          var USERPOOLID = "##USERPOOLID##";
-          var JWKS = '##JWKS##';
-          var region = 'us-east-1';
-          var iss = 'https://cognito-idp.' + region + '.amazonaws.com/' + USERPOOLID;
-          var pems = {};
-          var keys = JSON.parse(JWKS).keys;
-          for(var i = 0; i < keys.length; i++) {
-              var key_id = keys[i].kid;
-              var modulus = keys[i].n;
-              var exponent = keys[i].e;
-              var key_type = keys[i].kty;
-              var jwk = { kty: key_type, n: modulus, e: exponent};
-              var pem = jwkToPem(jwk);
-              pems[key_id] = pem;
-          }
-          const response401 = { status: '401', statusDescription: 'Unauthorized' };
-          exports.handler = (event, context, callback) => {
-              const cfrequest = event.Records[0].cf.request;
-              const headers = cfrequest.headers;
-              if(!headers.authorization) { callback(null, response401); return false; }
-              var jwtToken = headers.authorization[0].value.slice(7);
-              var decodedJwt = jwt.decode(jwtToken, {complete: true});
-              if (!decodedJwt) { callback(null, response401); return false; }
-              if (decodedJwt.payload.iss != iss) { callback(null, response401); return false; }
-              if (decodedJwt.payload.token_use != 'access') { callback(null, response401); return false; }
-              var kid = decodedJwt.header.kid;
-              var pem = pems[kid];
-              if (!pem) { callback(null, response401); return false; }
-              jwt.verify(jwtToken, pem, { issuer: iss }, function(err, payload) {
-                if(err) { callback(null, response401); return false; }
-                else { delete cfrequest.headers.authorization; callback(null, cfrequest); return true; }
-              });
-          };
+        S3Bucket: !Ref LambdaEdgeDeploymentBucket
+        S3Key: !Sub "${AuthorizationLambdaEdgeS3Key}"
+
+# Lambda@Edge deployment bucket parameter (dev/prod)
+Parameters:
+  LambdaEdgeDeploymentBucket:
+    Type: String
+    Description: S3 bucket for Lambda@Edge deployment package
+    Default: "bf-dev-s3-deployments"
+  AuthorizationLambdaEdgeS3Key:
+    Type: String
+    Description: S3 key for Lambda@Edge deployment package
+    Default: "bf-dev-ui-auth-lambda-edge/lambda.zip"
 
   # Lambda@Edge execution role
   AuthorizationLambdaEdgeRole:

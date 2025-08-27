@@ -72,6 +72,27 @@ jobs:
           sed -i.bak "s|##USERPOOLID##|$USER_POOL_ID|g" templates/ui-cf-stack.yaml
           sed -i.bak "s|##JWKS##|$JWKS_ESCAPED|g" templates/ui-cf-stack.yaml
 
+      - name: Build Lambda@Edge deployment package
+        run: |
+          cd authorization-lambda-at-edge
+          npm install --omit=dev
+          cd src
+          zip -r ../lambda.zip . ../node_modules
+          cd ..
+
+      - name: Upload Lambda@Edge deployment package to S3
+        run: |
+          if [[ "${{ steps.env.outputs.ENV_PREFIX }}" == "prod" ]]; then
+            DEPLOY_BUCKET=bf-prod-s3-deployments
+            S3_KEY=bf-prod-ui-auth-lambda-edge/lambda.zip
+          else
+            DEPLOY_BUCKET=bf-dev-s3-deployments
+            S3_KEY=bf-dev-ui-auth-lambda-edge/lambda.zip
+          fi
+          aws s3 cp lambda.zip s3://$DEPLOY_BUCKET/$S3_KEY
+          echo "LAMBDA_EDGE_DEPLOYMENT_BUCKET=$DEPLOY_BUCKET" >> $GITHUB_ENV
+          echo "AUTH_LAMBDA_EDGE_S3_KEY=$S3_KEY" >> $GITHUB_ENV
+
       - name: Deploy CloudFormation stack (us-east-1 for Lambda@Edge)
         id: cfn_deploy
         env:
@@ -90,6 +111,8 @@ jobs:
               DomainName="${{ steps.env.outputs.DOMAIN_NAME_UI }}" \
               HostedZoneId="${{ vars.HOSTED_ZONE_ID }}" \
               SupportEmail="${{ vars.SUPPORT_EMAIL }}" \
+              LambdaEdgeDeploymentBucket="$LAMBDA_EDGE_DEPLOYMENT_BUCKET" \
+              AuthorizationLambdaEdgeS3Key="$AUTH_LAMBDA_EDGE_S3_KEY" \
             --tags \
               Owner="${{ vars.OWNER_NAME }}" \
               AppName="${{ vars.APP_NAME_UI }}" \
