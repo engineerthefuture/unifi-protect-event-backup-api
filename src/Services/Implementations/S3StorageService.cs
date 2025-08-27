@@ -167,8 +167,10 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                                 continue;
 
                             var url = await GetPresignedUrlAsync(bucket, videoKey, now);
+                            // Remove sources and conditions from alarm before returning
+                            var sanitizedAlarm = CloneAlarmWithoutSourcesAndConditions(alarm);
                             var eventObj = new CameraEventSummary {
-                                eventData = alarm,
+                                eventData = sanitizedAlarm,
                                 videoUrl = url,
                                 originalFileName = originalFileName
                             };
@@ -587,7 +589,9 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 {
                     var eventData = JsonConvert.DeserializeObject<Alarm>(eventJsonData);
                     _logger.LogLine($"Successfully retrieved event data for {eventKey}");
-                    return eventData;
+                        if (eventData != null)
+                            return CloneAlarmWithoutSourcesAndConditions(eventData);
+                        return null;
                 }
                 else
                 {
@@ -636,6 +640,8 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             string presignedUrl = await _s3Client.GetPreSignedURLAsync(presignedRequest);
             _logger.LogLine($"Generated presigned URL for {videoKey}, expires in 1 hour");
 
+            // Remove sources and conditions from eventData if present
+            object? sanitizedEventData = eventData is Alarm alarmObj ? CloneAlarmWithoutSourcesAndConditions(alarmObj) : eventData;
             var responseData = new
             {
                 downloadUrl = presignedUrl,
@@ -645,7 +651,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 timestamp = timestamp,
                 eventDate = dt.ToString("yyyy-MM-dd HH:mm:ss"),
                 expiresAt = DateTime.UtcNow.AddHours(1).ToString("yyyy-MM-dd HH:mm:ss UTC"),
-                eventData = eventData,
+                eventData = sanitizedEventData,
                 message = "Use the downloadUrl to download the video file directly. URL expires in 1 hour."
             };
 
@@ -688,13 +694,10 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 {
                     return (result.EventKey, result.VideoKey, result.Timestamp, null);
                 }
-
                 searchDate = searchDate.AddDays(-1);
                 daysSearched++;
             }
-
-            _logger.LogLine($"Event with eventId {eventId} not found in S3 bucket");
-            return (null, null, 0, _responseHelper.CreateErrorResponse(HttpStatusCode.NotFound, $"Event with eventId {eventId} not found"));
+            return (null, null, 0, _responseHelper.CreateErrorResponse(HttpStatusCode.NotFound, $"Event with ID {eventId} not found in the last {maxDaysToSearch} days."));
         }
 
         private async Task<(string? EventKey, string? VideoKey, long Timestamp)> SearchEventInDateFolderAsync(string eventId, string dateFolder)
@@ -795,6 +798,8 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 string presignedUrl = await _s3Client.GetPreSignedURLAsync(presignedRequest);
                 _logger.LogLine($"Generated presigned URL for {videoKey}, expires in 1 hour");
 
+                // Remove sources and conditions from eventData if present
+                object? sanitizedEventData = eventData is Alarm alarmObj ? CloneAlarmWithoutSourcesAndConditions(alarmObj) : eventData;
                 var responseData = new
                 {
                     downloadUrl = presignedUrl,
@@ -805,10 +810,9 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                     timestamp = timestamp,
                     eventDate = dt.ToString("yyyy-MM-dd HH:mm:ss"),
                     expiresAt = DateTime.UtcNow.AddHours(1).ToString("yyyy-MM-dd HH:mm:ss UTC"),
-                    eventData = eventData,
+                    eventData = sanitizedEventData,
                     message = "Use the downloadUrl to download the video file directly. URL expires in 1 hour."
                 };
-
                 return _responseHelper.CreateSuccessResponse(responseData);
             }
             catch (Exception ex)
@@ -816,6 +820,24 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 _logger.LogLine($"Error building event video response: {ex.Message}");
                 return _responseHelper.CreateErrorResponse(HttpStatusCode.InternalServerError, $"Error building response: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Returns a copy of the Alarm object with sources and conditions set to null.
+        /// </summary>
+        private static Alarm CloneAlarmWithoutSourcesAndConditions(Alarm alarm)
+        {
+            if (alarm == null) return null!;
+            return new Alarm
+            {
+                name = alarm.name,
+                sources = null,
+                conditions = null,
+                triggers = alarm.triggers,
+                timestamp = alarm.timestamp,
+                eventPath = alarm.eventPath,
+                eventLocalLink = alarm.eventLocalLink
+            };
         }
 
         /// <summary>
