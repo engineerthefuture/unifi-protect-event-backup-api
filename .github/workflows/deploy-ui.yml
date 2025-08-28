@@ -56,6 +56,10 @@ jobs:
         run: |
           set -e
           STACK_NAME=bf-${{ steps.env.outputs.ENV_PREFIX }}-${{ vars.APP_NAME_UI }}
+          if ! aws cloudformation describe-stacks --stack-name $STACK_NAME > /dev/null 2>&1; then
+            echo "Stack does not exist yet. Skipping Lambda@Edge patch step."
+            exit 0
+          fi
           USER_POOL_ID=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='CognitoUserPoolId'].OutputValue" --output text)
           USER_POOL_CLIENT_ID=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='CognitoUserPoolClientId'].OutputValue" --output text)
           CLOUDFRONT_DOMAIN=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='CloudFrontDomain'].OutputValue" --output text)
