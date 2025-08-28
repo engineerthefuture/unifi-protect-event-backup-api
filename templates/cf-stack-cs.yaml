@@ -757,7 +757,7 @@ Outputs:
         StageName: !Ref ApiGatewayStage
   ApiGatewayApiKey:
     Description: API Gateway API Key for accessing the Unifi Protect Event Backup API
-    Value: !GetAtt ApiGatewayKey.Value
+    Value: !GetAtt ApiGatewayKey
   CustomDomainName:
     Condition: UseCustomDomain
     Description: Custom domain name for the API
