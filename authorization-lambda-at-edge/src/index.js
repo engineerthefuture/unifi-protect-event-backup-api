@@ -1,23 +1,5 @@
-/************************
- * Lambda@Edge Function 
- * index.js
- *
- * Lambda@Edge function for authorizing requests to CloudFront using Cognito JWTs.
- * Source: https://github.com/aws-samples/authorization-lambda-at-edge
- ***********************/
-
-pems = {};
-var keys = JSON.parse(JWKS).keys;
-for (var i = 0; i < keys.length; i++) {
-    //Convert each key to PEM
-    var key_id = keys[i].kid;
-    var modulus = keys[i].n;
-    var exponent = keys[i].e;
-    var key_type = keys[i].kty;
-    var jwk = { kty: key_type, n: modulus, e: exponent };
-    var pem = jwkToPem(jwk);
-    pems[key_id] = pem;
-}
+// Lambda@Edge Function for authorizing requests to CloudFront using Cognito JWTs.
+// Source: https://github.com/aws-samples/authorization-lambda-at-edge
 
 'use strict';
 
@@ -29,6 +11,15 @@ var jwkToPem = require('jwk-to-pem'); // For converting JWK to PEM format
 var USERPOOLID = '##USERPOOLID##'; // Cognito User Pool ID
 var JWKS = '##JWKS##'; // Cognito User Pool's JSON Web Key Set (public keys)
 
+// Validate JWKS
+if (!JWKS) throw new Error('JWKS is not set');
+let keys;
+try {
+    keys = JSON.parse(JWKS).keys;
+} catch (e) {
+    throw new Error('Invalid JWKS: ' + JWKS);
+}
+
 // AWS region where the Cognito User Pool resides
 var region = 'us-east-1';
 // Expected JWT issuer string for this User Pool
@@ -36,7 +27,6 @@ var iss = 'https://cognito-idp.' + region + '.amazonaws.com/' + USERPOOLID;
 
 // Convert JWKS to PEMs for signature verification
 var pems = {};
-var keys = JSON.parse(JWKS).keys;
 for (var i = 0; i < keys.length; i++) {
     // Convert each JWK to PEM and store by key ID
     var key_id = keys[i].kid;
@@ -60,15 +50,14 @@ const response401 = {
  * If valid, strips Authorization header and allows request to proceed to S3 origin.
  * If invalid or missing, returns 401 Unauthorized.
  */
-exports.handler = (event, context, callback) => {
+exports.handler = async(event, context) => {
     const cfrequest = event.Records[0].cf.request;
     const headers = cfrequest.headers;
 
     // 1. Require Authorization header
     if (!headers.authorization) {
         console.log("No Authorization header present");
-        callback(null, response401);
-        return false;
+        return response401;
     }
 
     // 2. Extract JWT from Authorization header (strip 'Bearer ')
@@ -79,22 +68,19 @@ exports.handler = (event, context, callback) => {
     var decodedJwt = jwt.decode(jwtToken, { complete: true });
     if (!decodedJwt) {
         console.log("Not a valid JWT token");
-        callback(null, response401);
-        return false;
+        return response401;
     }
 
     // 4. Check issuer matches expected Cognito User Pool
     if (decodedJwt.payload.iss != iss) {
         console.log("Invalid issuer");
-        callback(null, response401);
-        return false;
+        return response401;
     }
 
     // 5. Only allow 'access' tokens (not id or refresh tokens)
     if (decodedJwt.payload.token_use != 'access') {
         console.log("Not an access token");
-        callback(null, response401);
-        return false;
+        return response401;
     }
 
     // 6. Get PEM for key ID in JWT header
@@ -102,22 +88,23 @@ exports.handler = (event, context, callback) => {
     var pem = pems[kid];
     if (!pem) {
         console.log('Invalid access token: unknown key ID');
-        callback(null, response401);
-        return false;
+        return response401;
     }
 
-    // 7. Verify JWT signature and claims
-    jwt.verify(jwtToken, pem, { issuer: iss }, function(err, payload) {
-        if (err) {
-            console.log('Token failed verification:', err);
-            callback(null, response401);
-            return false;
-        } else {
-            // Valid token: remove Authorization header and allow request
-            console.log('Successful verification');
-            delete cfrequest.headers.authorization;
-            callback(null, cfrequest);
-            return true;
-        }
-    });
+    // 7. Verify JWT signature and claims (promisified)
+    try {
+        await new Promise((resolve, reject) => {
+            jwt.verify(jwtToken, pem, { issuer: iss }, function(err, payload) {
+                if (err) reject(err);
+                else resolve(payload);
+            });
+        });
+        // Valid token: remove Authorization header and allow request
+        console.log('Successful verification');
+        delete cfrequest.headers.authorization;
+        return cfrequest;
+    } catch (err) {
+        console.log('Token failed verification:', err);
+        return response401;
+    }
 };
