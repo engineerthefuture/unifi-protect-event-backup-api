@@ -45,6 +45,20 @@ const response401 = {
     statusDescription: 'Unauthorized'
 };
 
+// Cognito Hosted UI domain and client ID (replace with your values or set as env variables)
+const cognitoDomain = process.env.COGNITO_DOMAIN || 'https://<your-cognito-domain>.auth.us-east-1.amazoncognito.com';
+const clientId = process.env.COGNITO_CLIENT_ID || '<your-client-id>';
+const redirectUri = encodeURIComponent('https://' + (process.env.CLOUDFRONT_DOMAIN || '<your-cloudfront-domain>') + '/');
+const loginUrl = `${cognitoDomain}/login?client_id=${clientId}&response_type=token&scope=openid&redirect_uri=${redirectUri}`;
+
+const responseRedirect = {
+    status: '302',
+    statusDescription: 'Found',
+    headers: {
+        location: [{ key: 'Location', value: loginUrl }]
+    }
+};
+
 /**
  * Lambda@Edge handler for CloudFront ViewerRequest event.
  * Validates JWT in Authorization header using Cognito public keys.
@@ -57,8 +71,8 @@ exports.handler = async(event, context) => {
 
     // 1. Require Authorization header
     if (!headers.authorization) {
-        console.log("No Authorization header present");
-        return response401;
+        console.log("No Authorization header present, redirecting to Cognito login");
+        return responseRedirect;
     }
 
     // 2. Extract JWT from Authorization header (strip 'Bearer ')
