@@ -76,7 +76,7 @@ jobs:
             -e "s|var JWKS = '.*';|var JWKS = '$JWKS_ESCAPED';|g" \
             -e "s|const cognitoDomain = '.*';|const cognitoDomain = 'https://$COGNITO_DOMAIN';|g" \
             -e "s|const clientId = '.*';|const clientId = '$USER_POOL_CLIENT_ID';|g" \
-            -e "s|const redirectUri = encodeURIComponent('https://.*');|const redirectUri = encodeURIComponent('https://$CLOUDFRONT_DOMAIN/');|g" \
+              -e "s|const redirectUri = encodeURIComponent('https://.*');|const redirectUri = encodeURIComponent('https://$CLOUDFRONT_DOMAIN/auth-callback.html');|g" \
             -e "s|// Deployed version: .*|// Deployed version: $DEPLOY_HEX at $DEPLOY_TS|g" \
             -e "s|##LAMBDA_EDGE_HEX##|$DEPLOY_HEX|g" \
             -e "s|##LAMBDA_EDGE_DEPLOY_TS##|$DEPLOY_TS|g" \
