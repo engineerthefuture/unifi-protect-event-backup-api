@@ -1,3 +1,29 @@
+## Step 8: Add Users to Cognito for UI Login
+
+By default, only users created by an admin in the Cognito User Pool can log in to the UI. Self-sign-up is disabled for security.
+
+**To add a user (allow UI login):**
+
+### Option 1: AWS Console
+1. Go to the AWS Console → Cognito → User Pools.
+2. Select the User Pool created by your stack (name: `bf-<env>-<app>-cognito-userpool`).
+3. Go to the "Users" tab and click "Create user".
+4. Enter the user's email address and set a temporary password (or let AWS generate one).
+5. Ensure the email attribute is marked as verified (or the user will need to verify on first login).
+6. Click "Create user". Share the temporary password with the user.
+
+### Option 2: AWS CLI
+```sh
+aws cognito-idp admin-create-user \
+  --user-pool-id <POOL_ID> \
+  --username <EMAIL> \
+  --user-attributes Name=email,Value=<EMAIL>
+```
+- Replace `<POOL_ID>` with your Cognito User Pool ID (see CloudFormation outputs or AWS Console).
+- Replace `<EMAIL>` with the user's email address.
+- The user will receive a temporary password and must set a new password on first login.
+
+**Only users added this way can log in to the UI.**
 # Unifi Protect Event Backup API - Quickstart Guide
 
 A step-by-step guide to deploy and configure the Unifi Protect Event Backup API in your AWS account for automated alarm event processing and video backup.
