@@ -49,7 +49,7 @@ const response401 = {
 // Cognito Hosted UI domain and client ID (replace with your values or set as env variables)
 const cognitoDomain = '##COGNITO_DOMAIN##';
 const clientId = '##COGNITO_CLIENT_ID##';
-const redirectUri = encodeURIComponent('https://' + '##CLOUDFRONT_DOMAIN##' + '/');
+const redirectUri = encodeURIComponent('https://' + '##CLOUDFRONT_DOMAIN##' + '/auth-callback.html');
 const loginUrl = `${cognitoDomain}/login?client_id=${clientId}&response_type=token&scope=openid&redirect_uri=${redirectUri}`;
 
 const responseRedirect = {
