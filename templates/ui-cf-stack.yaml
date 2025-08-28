@@ -177,6 +177,14 @@ Resources:
         - ALLOW_CUSTOM_AUTH
       SupportedIdentityProviders:
         - COGNITO
+      AllowedOAuthFlows:
+        - code
+        - implicit
+      AllowedOAuthScopes:
+        - openid
+        - email
+        - profile
+      AllowedOAuthFlowsUserPoolClient: true
       CallbackURLs:
         - !Sub "https://${WebsiteCloudFront.DomainName}/"
       LogoutURLs:
