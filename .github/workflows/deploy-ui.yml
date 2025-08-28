@@ -76,7 +76,7 @@ jobs:
         run: |
           cd authorization-lambda-at-edge
           npm install --omit=dev
-          cp src/index.js .
+          cp src/index.js ./index.js
           zip -r lambda.zip index.js node_modules package.json
           rm index.js
           cd ..
