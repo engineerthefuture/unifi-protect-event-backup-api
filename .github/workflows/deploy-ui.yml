@@ -26,7 +26,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Print referenced environment variables
+      - name: Print out referenced environment variables
         run: |
           echo "OIDC_ROLE_NAME: ${{ vars.OIDC_ROLE_NAME }}"
           echo "OwnerName: ${{ vars.OWNER_NAME }}"
