@@ -183,11 +183,11 @@ jobs:
         id: api_outputs
         run: |
           API_STACK_NAME=bf-${{ steps.env.outputs.ENV_PREFIX }}-unifi-protect-event-backup-api
-          API_URL=$(aws cloudformation describe-stacks --stack-name $API_STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='POSTUnfiWebhookAlarmEventEndpoint'].OutputValue" --output text)
+          API_URL=$(aws cloudformation describe-stacks --stack-name $API_STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='GETSummaryEndpoint'].OutputValue" --output text)
           API_KEY=$(aws cloudformation describe-stacks --stack-name $API_STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='ApiGatewayApiKey'].OutputValue" --output text)
           echo "API_URL=$API_URL" >> $GITHUB_ENV
           echo "API_KEY=$API_KEY" >> $GITHUB_ENV
-          echo "API endpoint: $API_URL"
+          echo "API endpoint for UI: $API_URL"
           echo "API key: $API_KEY"
 
       - name: Patch UI index.html with API connection details

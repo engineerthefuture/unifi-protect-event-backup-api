@@ -719,9 +719,15 @@ Outputs:
       - https://${ApiId}.execute-api.${AWS::Region}.amazonaws.com/${EnvPrefix}/metadata
       - ApiId: !Ref ApiGateway
         StageName: !Ref ApiGatewayStage
+  GETSummaryEndpoint:
+    Description: GET endpoint for retrieving the summary data for the UI
+    Value: !Sub
+      - https://${ApiId}.execute-api.${AWS::Region}.amazonaws.com/${EnvPrefix}/summary
+      - ApiId: !Ref ApiGateway
+        StageName: !Ref ApiGatewayStage
   ApiGatewayApiKey:
     Description: API Gateway API Key for accessing the Unifi Protect Event Backup API
-    Value: !Ref ApiGatewayKey
+    Value: !GetAtt ApiGatewayKey.Value
   CustomDomainName:
     Condition: UseCustomDomain
     Description: Custom domain name for the API
