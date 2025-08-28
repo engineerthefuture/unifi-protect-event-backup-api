@@ -83,10 +83,16 @@ exports.handler = async(event, context) => {
     // 1. Try to get Cognito access token from cookie (CloudFront forwards all cookies)
     let jwtToken = null;
     if (headers.cookie) {
-        // Cognito Hosted UI returns id_token, access_token, refresh_token in fragment, which must be set as cookies by client JS
-        // We expect access_token to be set as a cookie: 'CognitoAccessToken=<token>'
-        const cookies = headers.cookie.map(c => c.value).join(';');
-        const match = cookies.match(/CognitoAccessToken=([^;]+)/);
+        // Log the full Cookie header for debugging
+        const cookieHeader = headers.cookie.map(c => c.value).join(';');
+        console.log('Full Cookie header:', cookieHeader);
+        // For debugging: match for a cookie named 'Cookie' (should not exist, but for user request)
+        const cookieMatch = cookieHeader.match(/Cookie=([^;]+)/);
+        if (cookieMatch) {
+            console.log('Found a Cookie= entry:', cookieMatch[1]);
+        }
+        // Extract CognitoAccessToken from the cookie string
+        const match = cookieHeader.match(/CognitoAccessToken=([^;]+)/);
         if (match) {
             jwtToken = decodeURIComponent(match[1]);
             console.log('Cognito access token found in cookie.');
