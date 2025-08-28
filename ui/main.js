@@ -58,7 +58,7 @@ function renderDashboard(data) {
                 <p class="event-title">${event.eventData?.name || ''}</p>
                 <p class="event-meta">
                     ${triggerBadge(trigger.key)} 
-                    Device: ${trigger.deviceName || 'N/A'} • 
+                    Device: ${trigger.deviceName || 'N/A'}  
                     Date: ${trigger.date ? new Date(trigger.date).toLocaleString() : ''}
                 </p>
                 <div class="thumbnail">

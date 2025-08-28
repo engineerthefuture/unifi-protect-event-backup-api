@@ -459,7 +459,7 @@ Resources:
       HttpMethod: OPTIONS
       ResourceId: !Ref ApiGatewayResource
       RestApiId: !Ref ApiGateway
-      ApiKeyRequired: true
+      ApiKeyRequired: false
       AuthorizationType: NONE
       RequestParameters:
         method.request.path.proxy: true
