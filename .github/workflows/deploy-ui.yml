@@ -59,7 +59,8 @@ jobs:
           USER_POOL_ID=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='CognitoUserPoolId'].OutputValue" --output text)
           USER_POOL_CLIENT_ID=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='CognitoUserPoolClientId'].OutputValue" --output text)
           CLOUDFRONT_DOMAIN=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='CloudFrontDomain'].OutputValue" --output text)
-          COGNITO_DOMAIN="${USER_POOL_ID}.auth.us-east-1.amazoncognito.com"
+          COGNITO_DOMAIN_PREFIX="${{ vars.COGNITO_DOMAIN_PREFIX }}"
+          COGNITO_DOMAIN="${COGNITO_DOMAIN_PREFIX}.auth.us-east-1.amazoncognito.com"
           JWKS=$(curl -s "https://cognito-idp.us-east-1.amazonaws.com/$USER_POOL_ID/.well-known/jwks.json")
           JWKS_ESCAPED=$(echo "$JWKS" | sed 's/"/\\"/g' | tr -d '\n')
           # Patch index.js for Lambda@Edge
@@ -146,6 +147,7 @@ jobs:
               AuthorizationLambdaEdgeS3Key="$AUTH_LAMBDA_EDGE_S3_KEY" \
               LambdaEdgeCodeSha="$LAMBDA_EDGE_CODE_SHA" \
               LambdaEdgeHex="$LAMBDA_EDGE_HEX" \
+              CognitoDomainPrefix="${{ vars.COGNITO_DOMAIN_PREFIX }}" \
             --tags \
               Owner="${{ vars.OWNER_NAME }}" \
               AppName="${{ vars.APP_NAME_UI }}" \

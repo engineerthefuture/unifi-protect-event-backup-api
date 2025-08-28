@@ -23,6 +23,10 @@ Metadata:
 # Parameters: Customize stack for different environments   #
 ############################################################
 Parameters:
+  CognitoDomainPrefix:
+    Type: String
+    Description: Cognito Hosted UI domain prefix (e.g., myapp)
+    Default: ""
   EnvPrefix:
     Type: String
     Description: Prefix for the environment (dev, prod, staging)
