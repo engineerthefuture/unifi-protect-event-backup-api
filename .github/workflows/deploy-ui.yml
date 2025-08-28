@@ -77,6 +77,8 @@ jobs:
             -e "s|const clientId = '.*';|const clientId = '$USER_POOL_CLIENT_ID';|g" \
             -e "s|const redirectUri = encodeURIComponent('https://.*');|const redirectUri = encodeURIComponent('https://$CLOUDFRONT_DOMAIN/');|g" \
             -e "s|// Deployed version: .*|// Deployed version: $DEPLOY_HEX at $DEPLOY_TS|g" \
+            -e "s|##LAMBDA_EDGE_HEX##|$DEPLOY_HEX|g" \
+            -e "s|##LAMBDA_EDGE_DEPLOY_TS##|$DEPLOY_TS|g" \
             authorization-lambda-at-edge/src/index.js
           # Patch CloudFormation template inline Lambda code
           sed -i.bak "s|##USERPOOLID##|$USER_POOL_ID|g" templates/ui-cf-stack.yaml

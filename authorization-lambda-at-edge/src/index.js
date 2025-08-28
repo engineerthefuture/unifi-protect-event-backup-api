@@ -79,28 +79,27 @@ exports.handler = async(event, context) => {
     const headers = cfrequest.headers;
     console.log('Request headers:', JSON.stringify(headers));
 
-    // 1. Try to get Authorization from header or cookie
-    let authHeader = headers.authorization && headers.authorization[0] && headers.authorization[0].value;
-    if (!authHeader && headers.cookie) {
-        // Parse cookies for Authorization
+
+    // 1. Try to get Cognito access token from cookie (CloudFront forwards all cookies)
+    let jwtToken = null;
+    if (headers.cookie) {
+        // Cognito Hosted UI returns id_token, access_token, refresh_token in fragment, which must be set as cookies by client JS
+        // We expect access_token to be set as a cookie: 'CognitoAccessToken=<token>'
         const cookies = headers.cookie.map(c => c.value).join(';');
-        const match = cookies.match(/Authorization=([^;]+)/);
+        const match = cookies.match(/CognitoAccessToken=([^;]+)/);
         if (match) {
-            authHeader = decodeURIComponent(match[1]);
-            // Inject into headers for downstream logic
-            headers.authorization = [{ key: 'Authorization', value: authHeader }];
-            console.log('Authorization token found in cookie.');
+            jwtToken = decodeURIComponent(match[1]);
+            console.log('Cognito access token found in cookie.');
         }
     }
 
-    // 2. Require Authorization header
-    if (!headers.authorization) {
-        console.log("No Authorization header present, redirecting to Cognito login");
+    // 2. Require Cognito access token cookie
+    if (!jwtToken) {
+        console.log("No Cognito access token cookie present, redirecting to Cognito login");
         return responseRedirect;
     }
 
-    // 3. Extract JWT from Authorization header (strip 'Bearer ')
-    var jwtToken = headers.authorization[0].value.slice(7);
+    // 3. Decode JWT (without verifying signature yet)
     console.log('Extracted JWT token');
 
     // 4. Decode JWT (without verifying signature yet)
@@ -138,9 +137,8 @@ exports.handler = async(event, context) => {
                 else resolve(payload);
             });
         });
-        // Valid token: remove Authorization header and allow request
+        // Valid token: allow request
         console.log('Successful verification');
-        delete cfrequest.headers.authorization;
         return cfrequest;
     } catch (err) {
         console.log('Token failed verification:', err);
