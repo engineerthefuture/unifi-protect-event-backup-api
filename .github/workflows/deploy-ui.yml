@@ -26,14 +26,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Print referenced environment variables
+      - name: Print out referenced environment variables
         run: |
-          echo "AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}"
           echo "OIDC_ROLE_NAME: ${{ vars.OIDC_ROLE_NAME }}"
           echo "OwnerName: ${{ vars.OWNER_NAME }}"
           echo "AppName: ${{ vars.APP_NAME_UI }}"
           echo "AppDescription: ${{ vars.APP_DESCRIPTION }}"
-          echo "HostedZoneId: ${{ vars.HOSTED_ZONE_ID }}"
           echo "SupportEmail: ${{ vars.SUPPORT_EMAIL }}"
 
       - name: Determine environment and set UI domain
@@ -54,7 +52,96 @@ jobs:
           role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.OIDC_ROLE_NAME }}
           aws-region: us-east-1
 
-      - name: Deploy CloudFormation stack
+      - name: Patch Lambda@Edge code in index.js and CloudFormation template
+        run: |
+          set -e
+          STACK_NAME=bf-${{ steps.env.outputs.ENV_PREFIX }}-${{ vars.APP_NAME_UI }}
+          if ! aws cloudformation describe-stacks --stack-name $STACK_NAME > /dev/null 2>&1; then
+            echo "Stack does not exist yet. Skipping Lambda@Edge patch step."
+            exit 0
+          fi
+          USER_POOL_ID=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='CognitoUserPoolId'].OutputValue" --output text)
+          USER_POOL_CLIENT_ID=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='CognitoUserPoolClientId'].OutputValue" --output text)
+          CLOUDFRONT_DOMAIN=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='CloudFrontDomain'].OutputValue" --output text)
+          COGNITO_DOMAIN_PREFIX="${{ vars.COGNITO_DOMAIN_PREFIX }}"
+          COGNITO_DOMAIN="${COGNITO_DOMAIN_PREFIX}.auth.us-east-1.amazoncognito.com"
+          JWKS=$(curl -s "https://cognito-idp.us-east-1.amazonaws.com/$USER_POOL_ID/.well-known/jwks.json")
+          JWKS_ESCAPED=$(echo "$JWKS" | sed 's/"/\\"/g' | tr -d '\n')
+          DEPLOY_HEX="$LAMBDA_EDGE_HEX"
+          DEPLOY_TS=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+          # Patch index.js for Lambda@Edge
+          sed -i.bak \
+            -e "s|var USERPOOLID = '.*';|var USERPOOLID = '$USER_POOL_ID';|g" \
+            -e "s|var JWKS = '.*';|var JWKS = '$JWKS_ESCAPED';|g" \
+            -e "s|const cognitoDomain = '.*';|const cognitoDomain = 'https://$COGNITO_DOMAIN';|g" \
+            -e "s|const clientId = '.*';|const clientId = '$USER_POOL_CLIENT_ID';|g" \
+            -e "s|const redirectUri = encodeURIComponent('https://.*');|const redirectUri = encodeURIComponent('https://$CLOUDFRONT_DOMAIN/');|g" \
+            -e "s|// Deployed version: .*|// Deployed version: $DEPLOY_HEX at $DEPLOY_TS|g" \
+            -e "s|##LAMBDA_EDGE_HEX##|$DEPLOY_HEX|g" \
+            -e "s|##LAMBDA_EDGE_DEPLOY_TS##|$DEPLOY_TS|g" \
+            authorization-lambda-at-edge/src/index.js
+          # Patch CloudFormation template inline Lambda code
+          sed -i.bak "s|##USERPOOLID##|$USER_POOL_ID|g" templates/ui-cf-stack.yaml
+          sed -i.bak "s|##JWKS##|$JWKS_ESCAPED|g" templates/ui-cf-stack.yaml
+
+      - name: Build Lambda@Edge deployment package (flat root)
+        run: |
+          cd authorization-lambda-at-edge
+          npm install --omit=dev
+          cp src/index.js ./index.js
+          zip -r lambda.zip index.js node_modules package.json
+          rm index.js
+          cd ..
+
+      - name: Calculate Lambda@Edge deployment package SHA256 (with random hex, timestamp, and S3 key)
+        id: lambda_sha
+        run: |
+          RAND_HEX=$(openssl rand -hex 2)
+          LAMBDA_SHA=$(sha256sum authorization-lambda-at-edge/lambda.zip | awk '{print $1}')
+          NOW_TS=$(date +%s)
+          LAMBDA_SHA_RANDOM="${LAMBDA_SHA}-${RAND_HEX}-${NOW_TS}"
+          S3_KEY=bf-${{ steps.env.outputs.ENV_PREFIX }}-ui-auth-lambda-edge/lambda-${LAMBDA_SHA_RANDOM}.zip
+          echo "LAMBDA_EDGE_CODE_SHA=$LAMBDA_SHA_RANDOM" >> $GITHUB_ENV
+          echo "AUTH_LAMBDA_EDGE_S3_KEY=$S3_KEY" >> $GITHUB_ENV
+          echo "Lambda@Edge code SHA (randomized): $LAMBDA_SHA_RANDOM"
+          echo "Lambda@Edge S3 key: $S3_KEY"
+
+      - name: Upload Lambda@Edge deployment package to S3
+        run: |
+          if [[ "${{ steps.env.outputs.ENV_PREFIX }}" == "prod" ]]; then
+            DEPLOY_BUCKET=bf-prod-s3-deployments
+          else
+            DEPLOY_BUCKET=bf-dev-s3-deployments
+          fi
+          aws s3 cp authorization-lambda-at-edge/lambda.zip s3://$DEPLOY_BUCKET/$AUTH_LAMBDA_EDGE_S3_KEY
+          echo "LAMBDA_EDGE_DEPLOYMENT_BUCKET=$DEPLOY_BUCKET" >> $GITHUB_ENV
+
+      - name: Print Lambda@Edge S3 key and code SHA
+        run: |
+          echo "Lambda@Edge S3 key: $AUTH_LAMBDA_EDGE_S3_KEY"
+          echo "Lambda@Edge code SHA: $LAMBDA_EDGE_CODE_SHA"
+          aws s3 ls s3://$LAMBDA_EDGE_DEPLOYMENT_BUCKET/$(dirname $AUTH_LAMBDA_EDGE_S3_KEY)/
+
+      - name: Print CloudFormation Lambda version and function
+        run: |
+          STACK_NAME=bf-${{ steps.env.outputs.ENV_PREFIX }}-${{ vars.APP_NAME_UI }}
+          if ! aws cloudformation describe-stacks --stack-name $STACK_NAME > /dev/null 2>&1; then
+            echo "Stack does not exist yet. Skipping debug step."
+            exit 0
+          fi
+          aws cloudformation describe-stack-resources --stack-name $STACK_NAME | grep Lambda
+
+      - name: Generate unique 4-digit hex for Lambda@Edge function
+        id: lambda_hex
+        run: |
+          HEX=$(openssl rand -hex 2)
+          echo "LAMBDA_EDGE_HEX=$HEX" >> $GITHUB_ENV
+          echo "Lambda@Edge hex: $HEX"
+
+      - name: Deploy CloudFormation stack (us-east-1 for Lambda@Edge)
+        id: cfn_deploy
+        env:
+          AWS_DEFAULT_REGION: us-east-1
         run: |
           aws cloudformation deploy \
             --template-file templates/ui-cf-stack.yaml \
@@ -69,11 +156,27 @@ jobs:
               DomainName="${{ steps.env.outputs.DOMAIN_NAME_UI }}" \
               HostedZoneId="${{ vars.HOSTED_ZONE_ID }}" \
               SupportEmail="${{ vars.SUPPORT_EMAIL }}" \
+              LambdaEdgeDeploymentBucket="$LAMBDA_EDGE_DEPLOYMENT_BUCKET" \
+              AuthorizationLambdaEdgeS3Key="$AUTH_LAMBDA_EDGE_S3_KEY" \
+              LambdaEdgeCodeSha="$LAMBDA_EDGE_CODE_SHA" \
+              LambdaEdgeHex="$LAMBDA_EDGE_HEX" \
+              CognitoDomainPrefix="${{ vars.COGNITO_DOMAIN_PREFIX }}" \
             --tags \
               Owner="${{ vars.OWNER_NAME }}" \
               AppName="${{ vars.APP_NAME_UI }}" \
               Description="${{ vars.APP_DESCRIPTION }}" \
               Environment="${{ steps.env.outputs.ENV_PREFIX }}"
+
+      - name: Get Cognito Outputs
+        id: cognito_outputs
+        run: |
+          STACK_NAME=bf-${{ steps.env.outputs.ENV_PREFIX }}-${{ vars.APP_NAME_UI }}
+          USER_POOL_ID=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='CognitoUserPoolId'].OutputValue" --output text)
+          USER_POOL_CLIENT_ID=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='CognitoUserPoolClientId'].OutputValue" --output text)
+          echo "COGNITO_USER_POOL_ID=$USER_POOL_ID" >> $GITHUB_ENV
+          echo "COGNITO_USER_POOL_CLIENT_ID=$USER_POOL_CLIENT_ID" >> $GITHUB_ENV
+          echo "Cognito User Pool ID: $USER_POOL_ID"
+          echo "Cognito User Pool Client ID: $USER_POOL_CLIENT_ID"
 
       - name: Copy UI contents to S3 bucket
         run: |

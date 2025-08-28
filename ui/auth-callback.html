@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Authenticating...</title>
+</head>
+
+<body>
+    <h1>Authenticating...</h1>
+    <script>
+        (function() {
+            if (window.location.hash) {
+                const params = new URLSearchParams(window.location.hash.substring(1));
+                const accessToken = params.get('access_token');
+                if (accessToken) {
+                    document.cookie = 'CognitoAccessToken=' + encodeURIComponent(accessToken) + '; path=/; secure; SameSite=Lax';
+                    console.log('CognitoAccessToken set:', accessToken);
+                }
+            }
+            // Redirect to main app after setting cookie
+            window.location.replace('/');
+        })();
+    </script>
+</body>
+
+</html>

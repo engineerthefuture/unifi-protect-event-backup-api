@@ -1,0 +1,10 @@
+{
+    "name": "authorization-lambda-at-edge",
+    "version": "1.0.0",
+    "description": "Lambda@Edge function for Cognito JWT authorization",
+    "main": "index.js",
+    "dependencies": {
+        "jsonwebtoken": "^9.0.2",
+        "jwk-to-pem": "^2.0.6"
+    }
+}

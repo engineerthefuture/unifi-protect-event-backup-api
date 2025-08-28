@@ -1,6 +1,8 @@
 
+
+# CloudFormation template for static website hosting with S3, CloudFront, Route53, ACM, and Cognito for the Unifi Protect Event Backup API UI.
 AWSTemplateFormatVersion: "2010-09-09"
-Description: CloudFormation stack for static website hosting with S3 and CloudFront for the Unifi Protect Event Backup API UI.
+Description: CloudFormation stack for the Unifi Protect Event Backup API UI.
 
 # Stack-level tags
 Metadata:
@@ -17,7 +19,18 @@ Metadata:
       - Key: SupportEmail
         Value: !Ref SupportEmail
 
+############################################################
+# Parameters: Customize stack for different environments   #
+############################################################
 Parameters:
+  CognitoDomainPrefix:
+    Type: String
+    Description: Cognito Hosted UI domain prefix (e.g., myapp)
+    Default: ""
+  CognitoDomainPrefix:
+    Type: String
+    Description: Cognito Hosted UI domain prefix (e.g., myapp)
+    Default: ""
   EnvPrefix:
     Type: String
     Description: Prefix for the environment (dev, prod, staging)
@@ -39,13 +52,149 @@ Parameters:
     Description: Route53 Hosted Zone ID for the domain
     Default: ""
 
+  LambdaEdgeDeploymentBucket:
+    Type: String
+    Description: S3 bucket for Lambda@Edge deployment package
+    Default: "bf-dev-s3-deployments"
+
+  AuthorizationLambdaEdgeS3Key:
+    Type: String
+    Description: S3 key for Lambda@Edge deployment package
+    Default: "bf-dev-ui-auth-lambda-edge/lambda.zip"
+
+  LambdaEdgeCodeSha:
+    Type: String
+    Description: SHA256 hash of Lambda@Edge deployment package (forces version update)
+    Default: "manual-default"
+
+  LambdaEdgeHex:
+    Type: String
+    Description: Unique 4-digit hex string for Lambda@Edge function name
+    Default: "0000"
+
+############################################################
+# Conditions: Used for optional resources (e.g. custom domain)
+############################################################
 Conditions:
   HasCustomDomain: !Not [!Equals [!Ref DomainName, ""]]
   HasHostedZone: !Not [!Equals [!Ref HostedZoneId, ""]]
   UseCustomDomain: !And [!Condition HasCustomDomain, !Condition HasHostedZone]
 
+############################################################
+# Resources: Main infrastructure components                #
+############################################################
 Resources:
+  CognitoUserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Ref CognitoDomainPrefix
+      UserPoolId: !Ref CognitoUserPool
 
+  # Lambda@Edge function version for CloudFront association
+  AuthorizationLambdaEdgeVersion:
+    Type: AWS::Lambda::Version
+    Properties:
+      FunctionName: !Ref AuthorizationLambdaEdge
+      Description: !Sub "Lambda@Edge version for code SHA: ${LambdaEdgeCodeSha}, version hex: ${LambdaEdgeHex}"
+    DeletionPolicy: Retain
+
+  # Lambda@Edge function for JWT authorization using Cognito
+  AuthorizationLambdaEdge:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "bf-${EnvPrefix}-${AppName}-auth-lambda-edge-${LambdaEdgeHex}"
+      Handler: index.handler
+      Role: !GetAtt AuthorizationLambdaEdgeRole.Arn
+      Runtime: nodejs18.x
+      Description: !Sub "Lambda@Edge function to authorize CloudFront requests using Cognito User Pool (version: ${LambdaEdgeHex})"
+      MemorySize: 128
+      Timeout: 5
+      Code:
+        S3Bucket: !Ref LambdaEdgeDeploymentBucket
+        S3Key: !Ref AuthorizationLambdaEdgeS3Key
+
+  # Lambda@Edge execution role
+  AuthorizationLambdaEdgeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+                - edgelambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: LambdaEdgeBasic
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - lambda:GetFunction
+                  - lambda:GetFunctionConfiguration
+                  - lambda:InvokeFunction
+                Resource: "*"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaRole
+
+  # Cognito User Pool for authentication (email sign-up/sign-in)
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub "bf-${EnvPrefix}-${AppName}-cognito-userpool"
+      AutoVerifiedAttributes:
+        - email
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireUppercase: true
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+      Schema:
+        - Name: email
+          Required: true
+          Mutable: true
+
+  # Cognito User Pool Client for web app authentication
+  CognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub "bf-${EnvPrefix}-${AppName}-client"
+      UserPoolId: !Ref CognitoUserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_CUSTOM_AUTH
+      SupportedIdentityProviders:
+        - COGNITO
+      AllowedOAuthFlows:
+        - code
+        - implicit
+      AllowedOAuthScopes:
+        - openid
+        - email
+        - profile
+      AllowedOAuthFlowsUserPoolClient: true
+      CallbackURLs:
+        - !Sub "https://${WebsiteCloudFront.DomainName}/auth-callback.html"
+        - !If [HasCustomDomain, !Sub "https://${DomainName}/auth-callback.html", !Ref "AWS::NoValue"]
+      LogoutURLs:
+        - !Sub "https://${WebsiteCloudFront.DomainName}/auth-callback.html"
+        - !If [HasCustomDomain, !Sub "https://${DomainName}/auth-callback.html", !Ref "AWS::NoValue"]
+
+  # ACM Certificate for custom domain (DNS validated)
   Certificate:
     Type: AWS::CertificateManager::Certificate
     Condition: UseCustomDomain
@@ -59,6 +208,7 @@ Resources:
         - Key: "Name"
           Value: !Sub "bf-${EnvPrefix}-${AppName}-cert"
 
+  # S3 bucket for static website hosting (private, accessed via CloudFront)
   WebsiteBucket:
     Type: AWS::S3::Bucket
     Properties:
@@ -88,12 +238,14 @@ Resources:
         - Key: "Name"
           Value: !Sub "bf-${EnvPrefix}-${AppName}-ui"
 
+  # CloudFront Origin Access Identity to restrict S3 access to CloudFront only
   CloudFrontOriginIdentity:
     Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
     Properties:
       CloudFrontOriginAccessIdentityConfig:
         Comment: !Sub "bf-${EnvPrefix}-origin-identity"
 
+  # S3 Bucket Policy to allow CloudFront OAI to read from the website bucket
   WebUIPolicy:
     Type: AWS::S3::BucketPolicy
     Properties:
@@ -107,6 +259,7 @@ Resources:
             Action: "s3:GetObject"
             Resource: !Sub "${WebsiteBucket.Arn}/*"
 
+  # CloudFront Distribution for the static website (with custom error responses for SPA routing)
   WebsiteCloudFront:
     Type: AWS::CloudFront::Distribution
     DependsOn:
@@ -125,6 +278,7 @@ Resources:
         Comment: !Sub "bf-${EnvPrefix} - ${AppName}"
         Aliases: !If [UseCustomDomain, [!Ref DomainName], []]
         DefaultRootObject: index.html
+  # Protect the entire distribution with Lambda@Edge authorization
         DefaultCacheBehavior:
           TargetOriginId: !Ref WebsiteBucket
           ViewerProtocolPolicy: redirect-to-https
@@ -149,6 +303,9 @@ Resources:
               - Access-Control-Request-Headers
               - Access-Control-Request-Method
               - Origin
+          LambdaFunctionAssociations:
+            - EventType: viewer-request
+              LambdaFunctionARN: !Ref AuthorizationLambdaEdgeVersion
         PriceClass: PriceClass_100
         Restrictions:
           GeoRestriction:
@@ -175,6 +332,7 @@ Resources:
         - Key: "Name"
           Value: !Sub "bf-${EnvPrefix}-ui-cdn"
 
+  # Route53 A record for custom domain pointing to CloudFront
   CloudFrontAliasRecordA:
     Type: AWS::Route53::RecordSet
     Condition: UseCustomDomain
@@ -186,6 +344,7 @@ Resources:
         DNSName: !GetAtt WebsiteCloudFront.DomainName
         HostedZoneId: Z2FDTNDATAQYW2
 
+  # Route53 AAAA record for custom domain pointing to CloudFront (IPv6)
   CloudFrontAliasRecordAAAA:
     Type: AWS::Route53::RecordSet
     Condition: UseCustomDomain
@@ -197,11 +356,28 @@ Resources:
         DNSName: !GetAtt WebsiteCloudFront.DomainName
         HostedZoneId: Z2FDTNDATAQYW2
 
+
+############################################################
+# Outputs: Useful values after stack creation               #
+############################################################
 Outputs:
+  # S3 static website endpoint (not used directly, for reference)
   S3WebsiteURL:
     Value: !GetAtt WebsiteBucket.WebsiteURL
+  # CloudFront distribution domain name
   CloudFrontDomain:
     Value: !GetAtt WebsiteCloudFront.DomainName
+  # CloudFront distribution ID
   CloudFrontDistributionId:
     Description: "CloudFront Distribution ID"
     Value: !Ref WebsiteCloudFront
+
+  # Cognito User Pool ID for use in UI app config
+  CognitoUserPoolId:
+    Description: "Cognito User Pool ID"
+    Value: !Ref CognitoUserPool
+
+  # Cognito User Pool Client ID for use in UI app config
+  CognitoUserPoolClientId:
+    Description: "Cognito User Pool Client ID"
+    Value: !Ref CognitoUserPoolClient
