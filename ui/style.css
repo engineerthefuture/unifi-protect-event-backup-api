@@ -1,0 +1,154 @@
+    /* Base body and typography */
+    
+    body {
+        font-family: Arial, sans-serif;
+        background: #1e1f23;
+        margin: 0;
+        color: #f0f0f0;
+    }
+    /* Header bar */
+    
+    header {
+        background: #2a2b31;
+        padding: 15px 30px;
+        font-size: 1.4em;
+        font-weight: bold;
+        border-bottom: 1px solid #444;
+    }
+    /* Summary tile at the top */
+    
+    .summary {
+        display: flex;
+        justify-content: center;
+        padding: 20px;
+    }
+    
+    .summary-tile {
+        background: #2a2b31;
+        border-radius: 12px;
+        padding: 20px 40px;
+        font-size: 1.2em;
+        font-weight: bold;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+    }
+    /* Main dashboard grid */
+    
+    .container {
+        padding: 20px;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+        gap: 20px;
+    }
+    /* Camera card styling */
+    
+    .camera-card {
+        background: #2a2b31;
+        border-radius: 10px;
+        padding: 15px;
+        box-shadow: 0 3px 8px rgba(0, 0, 0, 0.5);
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .camera-header {
+        font-size: 1.2em;
+        margin-bottom: 10px;
+        display: flex;
+        justify-content: space-between;
+    }
+    /* Event card styling */
+    
+    .event-card {
+        background: #33343a;
+        border-radius: 8px;
+        padding: 10px;
+        margin-top: 10px;
+        transition: transform 0.2s ease;
+    }
+    
+    .event-card:hover {
+        transform: scale(1.02);
+    }
+    
+    .event-title {
+        font-size: 1em;
+        font-weight: bold;
+        margin: 0 0 5px 0;
+    }
+    
+    .event-meta {
+        font-size: 0.85em;
+        color: #bbb;
+        margin-bottom: 8px;
+    }
+    /* Badge styles for event types */
+    
+    .badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 6px;
+        font-size: 0.8em;
+        font-weight: bold;
+        margin-right: 6px;
+    }
+    
+    .person {
+        background: #b33a3a;
+    }
+    
+    .vehicle {
+        background: #c7a233;
+    }
+    
+    .line_crossed {
+        background: #2a6fbf;
+    }
+    
+    .other {
+        background: #666;
+    }
+    
+    .thumbnail {
+        position: relative;
+        cursor: pointer;
+        border-radius: 6px;
+        overflow: hidden;
+        background: #000;
+    }
+    
+    .thumbnail img {
+        width: 100%;
+        display: block;
+    }
+    
+    .play-overlay {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 2.5em;
+        color: white;
+        opacity: 0.8;
+        pointer-events: none;
+    }
+    
+    video {
+        width: 100%;
+        border-radius: 6px;
+        display: none;
+        opacity: 0;
+        transition: opacity 0.5s ease;
+    }
+    
+    video.show {
+        display: block;
+        opacity: 1;
+    }
+    /* File name styling */
+    
+    .file-name {
+        font-size: 0.8em;
+        color: #888;
+        margin-top: 4px;
+        word-break: break-all;
+    }

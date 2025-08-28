@@ -17,6 +17,12 @@ on:
       - 'test/**'
       - 'templates/cf-stack-cs.yaml'
       - '.github/workflows/deploy.yml'
+      - 'UnifiWebhookEventReceiver.csproj'
+      - 'UnifiWebhookEventReceiver.sln'
+      - 'aws-lambda-tools-defaults.json'
+      - 'global.json'
+      - 'readme.md'
+      - 'LICENSE'
 
 jobs:
   # Build job: Compiles code, runs tests, and prepares deployment artifacts
@@ -555,6 +561,7 @@ jobs:
               BuildSha="${{ github.sha }}" \
               BuildTimestamp="${{ steps.timestamp.outputs.BUILD_TIMESTAMP }}" \
               RetentionDays=${{ vars.MAX_RETENTION_DAYS }} \
+              UiApiKey="${{ secrets.UI_API_KEY }}" \
             --tags \
               Owner="${{ vars.OWNER_NAME }}" \
               AppName="${{ vars.APP_NAME }}" \
@@ -567,3 +574,31 @@ jobs:
             --function-name ${{ steps.env.outputs.LAMBDA_NAME }} \
             --s3-bucket ${{ steps.env.outputs.BUCKET_DEPLOYMENT }} \
             --s3-key ${{ steps.env.outputs.S3_KEY_PREFIX }}/publish.zip
+
+      # Create UI API Gateway API key and attach to usage plan (post-stack)
+      - name: Create UI API Gateway API Key and attach to Usage Plan
+        env:
+          UI_API_KEY: ${{ secrets.UI_API_KEY }}
+        run: |
+          set -e
+          set -x
+          echo "Creating UI API Gateway API Key with user-supplied value..."
+          # Get the RestApiId and StageName from stack outputs
+          REST_API_ID=$(aws cloudformation describe-stacks --stack-name ${{ steps.env.outputs.STACK_NAME }} --query "Stacks[0].Outputs[?OutputKey=='ApiGateway'].OutputValue" --output text)
+          USAGE_PLAN_ID=$(aws cloudformation describe-stacks --stack-name ${{ steps.env.outputs.STACK_NAME }} --query "Stacks[0].Outputs[?OutputKey=='UsagePlan'].OutputValue" --output text)
+          if [ -z "$USAGE_PLAN_ID" ]; then
+            # Fallback: get UsagePlanId by name
+            USAGE_PLAN_ID=$(aws apigateway get-usage-plans --query "items[?usagePlanName=='${{ steps.env.outputs.LAMBDA_NAME }}-plan'].id" --output text)
+          fi
+          if [ -z "$USAGE_PLAN_ID" ]; then
+            echo "::error::Could not determine UsagePlanId."
+            exit 1
+          fi
+          # Create or update the API key with the user-supplied value
+          API_KEY_ID=$(aws apigateway get-api-keys --name-query "${{ steps.env.outputs.LAMBDA_NAME }}-UiApiKey" --include-values --query "items[?name=='${{ steps.env.outputs.LAMBDA_NAME }}-UiApiKey'].id" --output text)
+          if [ -n "$API_KEY_ID" ]; then
+            echo "API key already exists: $API_KEY_ID. Deleting to update value."
+            aws apigateway delete-api-key --api-key "$API_KEY_ID"
+          fi
+          API_KEY_ID=$(aws apigateway create-api-key --name "${{ steps.env.outputs.LAMBDA_NAME }}-UiApiKey" --description "API Key for UI access (user-supplied)" --enabled --value "$UI_API_KEY" --query 'id' --output text)
+          echo "Created new API key: $API_KEY_ID"

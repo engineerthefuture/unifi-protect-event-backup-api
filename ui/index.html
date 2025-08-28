@@ -1,15 +1,42 @@
+<!--
+  Unifi Protect Event Backup UI
+  index.html
+
+  Main HTML entry point for the Unifi Protect event dashboard UI.
+  - Loads modular CSS and JS
+  - Provides containers for summary and dashboard
+  - JS dynamically fetches and renders event data
+  - API endpoint and key are injected at deploy time
+  Author: Brent Foster
+  Created: 08-18-2025
+-->
+
 <!DOCTYPE html>
 <html lang="en">
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hello World</title>
+    <title>Unifi Protect Event Backup UI</title>
+    <!-- Main stylesheet for dashboard UI -->
+    <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
-    <h1>Hello World</h1>
-</body>
 
+    <!-- App header -->
+    <header>📹 Camera Event Console</header>
+
+    <!-- Summary tile (populated by JS) -->
+    <div class="summary">
+        <div class="summary-tile" id="summaryTile">Total Events (24h): 0</div>
+    </div>
+
+    <!-- Dashboard container (populated by JS) -->
+    <div class="container" id="dashboard"></div>
+
+    <!-- Main dashboard logic -->
+    <script src="main.js"></script>
+
+</body>
 
 </html>

@@ -1,3 +1,10 @@
+# Add ApiGateway output for REST API ID
+Outputs:
+  ApiGateway:
+    Description: "API Gateway RestApiId"
+    Value: !Ref ApiGateway
+    Export:
+      Name: !Sub "${AWS::StackName}-ApiGateway"
 AWSTemplateFormatVersion: "2010-09-09"
 Description: Creates a Cloudformation stack for the Unfi Protect Event Backup API.
 
@@ -19,6 +26,10 @@ Metadata:
     
 # Parameters
 Parameters:
+  UiApiKey:
+    Type: String
+    Description: API key for UI access (should be passed in from a secure source, e.g., GitHub secret)
+    NoEcho: true
   RetentionDays:
     Type: Number
     Description: Number of days to retain event data in S3 and for API search.
@@ -132,6 +143,9 @@ Conditions:
 
 # Resources
 Resources: 
+  # API key for UI (user-supplied)
+
+  # Usage plan key association for UI key
 
   # SSL Certificate for Custom Domain
   Certificate:
@@ -204,9 +218,7 @@ Resources:
   ApiGatewayAccountConfig:
     Type: 'AWS::ApiGateway::Account'
     Properties:
-      CloudWatchRoleArn: !GetAtt 
-        - CloudWatchRole
-        - Arn
+      CloudWatchRoleArn: !GetAtt CloudWatchRole.Arn
 
   # Role for proxy lambda function
   LambdaRole:
@@ -454,7 +466,7 @@ Resources:
       HttpMethod: OPTIONS
       ResourceId: !Ref ApiGatewayResource
       RestApiId: !Ref ApiGateway
-      ApiKeyRequired: true
+      ApiKeyRequired: false
       AuthorizationType: NONE
       RequestParameters:
         method.request.path.proxy: true
@@ -692,6 +704,9 @@ Resources:
 
 # Output useful details
 Outputs:
+  UsagePlan:
+    Description: API Gateway Usage Plan ID
+    Value: !Ref UsagePlan
   Repository:
     Description: Source code repository
     Value: https://github.com/engineerthefuture/unifi-protect-event-backup-api
@@ -717,6 +732,12 @@ Outputs:
     Description: GET endpoint for fetching and storing camera metadata from Unifi Protect
     Value: !Sub
       - https://${ApiId}.execute-api.${AWS::Region}.amazonaws.com/${EnvPrefix}/metadata
+      - ApiId: !Ref ApiGateway
+        StageName: !Ref ApiGatewayStage
+  GETSummaryEndpoint:
+    Description: GET endpoint for retrieving the summary data for the UI
+    Value: !Sub
+      - https://${ApiId}.execute-api.${AWS::Region}.amazonaws.com/${EnvPrefix}/summary
       - ApiId: !Ref ApiGateway
         StageName: !Ref ApiGatewayStage
   CustomDomainName:
