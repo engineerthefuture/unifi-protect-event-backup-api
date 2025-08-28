@@ -18,7 +18,7 @@ window.__CONFIG__ = {
 // Fetch summary data from the API
 async function fetchSummary() {
     const { API_URL, API_KEY } = window.__CONFIG__;
-    const res = await fetch(`${API_URL}/summary`, {
+    const res = await fetch(`${API_URL}`, {
         headers: {
             'X-API-Key': API_KEY
         }
