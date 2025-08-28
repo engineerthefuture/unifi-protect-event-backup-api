@@ -55,9 +55,15 @@ const responseRedirect = {
     status: '302',
     statusDescription: 'Found',
     headers: {
-        location: [{ key: 'Location', value: loginUrl }]
-    }
+        location: [{ key: 'Location', value: loginUrl }],
+        'cache-control': [{ key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' }],
+        'content-type': [{ key: 'Content-Type', value: 'text/html; charset=utf-8' }]
+    },
+    body: ''
 };
+
+console.log('Lambda@Edge Auth Function starting');
+console.log('Cognito login URL:', loginUrl);
 
 /**
  * Lambda@Edge handler for CloudFront ViewerRequest event.
@@ -66,8 +72,10 @@ const responseRedirect = {
  * If invalid or missing, returns 401 Unauthorized.
  */
 exports.handler = async(event, context) => {
+    console.log('Received event:', JSON.stringify(event));
     const cfrequest = event.Records[0].cf.request;
     const headers = cfrequest.headers;
+    console.log('Request headers:', JSON.stringify(headers));
 
     // 1. Require Authorization header
     if (!headers.authorization) {
