@@ -600,11 +600,23 @@ jobs:
           else
             echo "API key already exists: $API_KEY_ID"
           fi
-          # Attach the API key to the usage plan (idempotent)
-          USAGE_PLAN_KEY_ID=$(aws apigateway get-usage-plan-keys --usage-plan-id "$USAGE_PLAN_ID" --query "items[?keyId=='$API_KEY_ID'].id" --output text)
-          if [ -z "$USAGE_PLAN_KEY_ID" ]; then
-            aws apigateway create-usage-plan-key --usage-plan-id "$USAGE_PLAN_ID" --key-type "API_KEY" --key-id "$API_KEY_ID"
-            echo "Attached API key to usage plan."
+          # Attach the API key to the usage plan (idempotent, avoid ConflictException)
+          # Check if the API key is already attached to ANY usage plan for the same API/stage
+          ATTACHED_PLANS=$(aws apigateway get-api-key --api-key "$API_KEY_ID" --include-value false --query "usagePlanIds" --output text)
+          if [[ "$ATTACHED_PLANS" == *"$USAGE_PLAN_ID"* ]]; then
+            echo "API key already attached to this usage plan."
           else
-            echo "API key already attached to usage plan."
+            # Try to attach, but handle ConflictException gracefully
+            set +e
+            ATTACH_OUTPUT=$(aws apigateway create-usage-plan-key --usage-plan-id "$USAGE_PLAN_ID" --key-type "API_KEY" --key-id "$API_KEY_ID" 2>&1)
+            STATUS=$?
+            set -e
+            if [ $STATUS -eq 0 ]; then
+              echo "Attached API key to usage plan."
+            elif echo "$ATTACH_OUTPUT" | grep -q 'ConflictException'; then
+              echo "API key is already attached to a usage plan for this API/stage. Skipping attach."
+            else
+              echo "$ATTACH_OUTPUT"
+              exit $STATUS
+            fi
           fi
