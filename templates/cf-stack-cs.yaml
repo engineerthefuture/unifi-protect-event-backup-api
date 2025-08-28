@@ -697,8 +697,6 @@ Resources:
 
 # Output useful details
 Outputs:
-  UiApiGatewayApiKey:
-    Description: User-supplied API Gateway API Key for UI access
   Repository:
     Description: Source code repository
     Value: https://github.com/engineerthefuture/unifi-protect-event-backup-api
