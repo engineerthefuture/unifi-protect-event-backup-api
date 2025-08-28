@@ -697,6 +697,9 @@ Resources:
 
 # Output useful details
 Outputs:
+  UsagePlan:
+    Description: API Gateway Usage Plan ID
+    Value: !Ref UsagePlan
   Repository:
     Description: Source code repository
     Value: https://github.com/engineerthefuture/unifi-protect-event-backup-api
