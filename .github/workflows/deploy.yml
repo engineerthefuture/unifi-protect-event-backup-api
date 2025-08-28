@@ -602,7 +602,7 @@ jobs:
             echo "API key already exists: $API_KEY_ID"
           fi
           # Attach the API key to the usage plan ONLY if not already attached (no error if already attached)
-          ATTACHED_PLANS=$(aws apigateway get-api-key --api-key "$API_KEY_ID" --include-value false --query "usagePlanIds" --output text)
+          ATTACHED_PLANS=$(aws apigateway get-api-key --api-key "$API_KEY_ID" --query "usagePlanIds" --output text)
           if [[ "$ATTACHED_PLANS" == *"$USAGE_PLAN_ID"* ]]; then
             echo "API key already attached to this usage plan."
           else
