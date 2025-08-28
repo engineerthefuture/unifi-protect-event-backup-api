@@ -601,10 +601,27 @@ jobs:
           else
             echo "API key already exists: $API_KEY_ID"
           fi
-          # Attach the API key to the usage plan ONLY if not already attached (no error if already attached)
-          ATTACHED_PLANS=$(aws apigateway get-api-key --api-key "$API_KEY_ID" --query "usagePlanIds" --output text)
-          if [[ "$ATTACHED_PLANS" == *"$USAGE_PLAN_ID"* ]]; then
-            echo "API key already attached to this usage plan."
+          # Attach the API key to the usage plan ONLY if not already attached to ANY usage plan for this API/stage
+          # Get all usage plan IDs attached to this API key
+          ATTACHED_PLAN_IDS=$(aws apigateway get-api-key --api-key "$API_KEY_ID" --query "usagePlanIds" --output text)
+
+          # Determine the stage name (dev/prod) from the stack name or env
+          STAGE_NAME="${{ steps.env.outputs.ENV_PREFIX }}"
+
+          ALREADY_ATTACHED_FOR_STAGE=false
+          for PLAN_ID in $ATTACHED_PLAN_IDS; do
+            # Get the API stages for this usage plan
+            API_STAGES=$(aws apigateway get-usage-plan --usage-plan-id "$PLAN_ID" --query "apiStages" --output json)
+            if echo "$API_STAGES" | grep -q "\"apiId\": \"$REST_API_ID\""; then
+              if echo "$API_STAGES" | grep -q "\"stage\": \"$STAGE_NAME\""; then
+                ALREADY_ATTACHED_FOR_STAGE=true
+                break
+              fi
+            fi
+          done
+
+          if [ "$ALREADY_ATTACHED_FOR_STAGE" = true ]; then
+            echo "API key already attached to a usage plan for this API/stage. Skipping attach."
           else
             aws apigateway create-usage-plan-key --usage-plan-id "$USAGE_PLAN_ID" --key-type "API_KEY" --key-id "$API_KEY_ID"
             echo "Attached API key to usage plan."
