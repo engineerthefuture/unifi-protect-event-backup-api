@@ -1,4 +1,11 @@
-'// Source: https://github.com/aws-samples/authorization-lambda-at-edge'
+/************************
+ * Lambda@Edge Function 
+ * index.js
+ *
+ * Lambda@Edge function for authorizing requests to CloudFront using Cognito JWTs.
+ * Source: https://github.com/aws-samples/authorization-lambda-at-edge
+ ***********************/
+
 pems = {};
 var keys = JSON.parse(JWKS).keys;
 for (var i = 0; i < keys.length; i++) {
