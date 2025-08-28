@@ -594,16 +594,11 @@ jobs:
             echo "::error::Could not determine UsagePlanId."
             exit 1
           fi
-          # Create the API key with the user-supplied value (idempotent)
+          # Create or update the API key with the user-supplied value
           API_KEY_ID=$(aws apigateway get-api-keys --name-query "${{ steps.env.outputs.LAMBDA_NAME }}-UiApiKey" --include-values --query "items[?name=='${{ steps.env.outputs.LAMBDA_NAME }}-UiApiKey'].id" --output text)
-          if [ -z "$API_KEY_ID" ]; then
-            API_KEY_ID=$(aws apigateway create-api-key --name "${{ steps.env.outputs.LAMBDA_NAME }}-UiApiKey" --description "API Key for UI access (user-supplied)" --enabled --value "$UI_API_KEY" --query 'id' --output text)
-            echo "Created new API key: $API_KEY_ID"
-          else
-            echo "API key already exists: $API_KEY_ID"
+          if [ -n "$API_KEY_ID" ]; then
+            echo "API key already exists: $API_KEY_ID. Deleting to update value."
+            aws apigateway delete-api-key --api-key "$API_KEY_ID"
           fi
-
-
-          # Update the API key value to match the user-supplied value (ensures it is always current)
-          aws apigateway update-api-key --api-key "$API_KEY_ID" --patch-operations op=replace,path=/value,value="$UI_API_KEY" || true
-          echo "API key value updated."
+          API_KEY_ID=$(aws apigateway create-api-key --name "${{ steps.env.outputs.LAMBDA_NAME }}-UiApiKey" --description "API Key for UI access (user-supplied)" --enabled --value "$UI_API_KEY" --query 'id' --output text)
+          echo "Created new API key: $API_KEY_ID"
