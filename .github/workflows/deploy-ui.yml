@@ -129,7 +129,7 @@ jobs:
             echo "Stack does not exist yet. Skipping debug step."
             exit 0
           fi
-          aws cloudformation describe-stack-resources --stack-name $STACK_NAME | grep Lambda
+          aws cloudformation describe-stack-resources --stack-name $STACK_NAME | grep Lambda || true
 
       - name: Generate unique 4-digit hex for Lambda@Edge function
         id: lambda_hex
