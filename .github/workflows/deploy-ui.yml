@@ -67,6 +67,8 @@ jobs:
           COGNITO_DOMAIN="${COGNITO_DOMAIN_PREFIX}.auth.us-east-1.amazoncognito.com"
           JWKS=$(curl -s "https://cognito-idp.us-east-1.amazonaws.com/$USER_POOL_ID/.well-known/jwks.json")
           JWKS_ESCAPED=$(echo "$JWKS" | sed 's/"/\\"/g' | tr -d '\n')
+          DEPLOY_HEX="$LAMBDA_EDGE_HEX"
+          DEPLOY_TS=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
           # Patch index.js for Lambda@Edge
           sed -i.bak \
             -e "s|var USERPOOLID = '.*';|var USERPOOLID = '$USER_POOL_ID';|g" \
@@ -74,6 +76,7 @@ jobs:
             -e "s|const cognitoDomain = '.*';|const cognitoDomain = 'https://$COGNITO_DOMAIN';|g" \
             -e "s|const clientId = '.*';|const clientId = '$USER_POOL_CLIENT_ID';|g" \
             -e "s|const redirectUri = encodeURIComponent('https://.*');|const redirectUri = encodeURIComponent('https://$CLOUDFRONT_DOMAIN/');|g" \
+            -e "s|// Deployed version: .*|// Deployed version: $DEPLOY_HEX at $DEPLOY_TS|g" \
             authorization-lambda-at-edge/src/index.js
           # Patch CloudFormation template inline Lambda code
           sed -i.bak "s|##USERPOOLID##|$USER_POOL_ID|g" templates/ui-cf-stack.yaml

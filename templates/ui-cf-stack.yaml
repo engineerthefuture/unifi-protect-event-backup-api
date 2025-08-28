@@ -95,7 +95,7 @@ Resources:
     Type: AWS::Lambda::Version
     Properties:
       FunctionName: !Ref AuthorizationLambdaEdge
-      Description: !Sub "Lambda@Edge version for code SHA: ${LambdaEdgeCodeSha}"
+      Description: !Sub "Lambda@Edge version for code SHA: ${LambdaEdgeCodeSha}, version hex: ${LambdaEdgeHex}"
     DeletionPolicy: Retain
 
   # Lambda@Edge function for JWT authorization using Cognito
@@ -106,7 +106,7 @@ Resources:
       Handler: index.handler
       Role: !GetAtt AuthorizationLambdaEdgeRole.Arn
       Runtime: nodejs18.x
-      Description: Lambda@Edge function to authorize CloudFront requests using Cognito
+      Description: !Sub "Lambda@Edge function to authorize CloudFront requests using Cognito (version: ${LambdaEdgeHex})"
       MemorySize: 128
       Timeout: 5
       Code:

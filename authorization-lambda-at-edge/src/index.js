@@ -1,6 +1,7 @@
 // Lambda@Edge Function for authorizing requests to CloudFront using Cognito JWTs.
 // Source: https://github.com/aws-samples/authorization-lambda-at-edge
 // Updated: 8-27-2025
+// Deployed version: ##LAMBDA_EDGE_HEX## at ##LAMBDA_EDGE_DEPLOY_TS##
 
 'use strict';
 
@@ -63,6 +64,7 @@ const responseRedirect = {
 };
 
 console.log('Lambda@Edge Auth Function starting');
+console.log('Deployed version: ##LAMBDA_EDGE_HEX## at ##LAMBDA_EDGE_DEPLOY_TS##');
 console.log('Cognito login URL:', loginUrl);
 
 /**
