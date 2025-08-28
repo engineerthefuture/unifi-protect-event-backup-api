@@ -162,6 +162,7 @@ jobs:
               LambdaEdgeCodeSha="$LAMBDA_EDGE_CODE_SHA" \
               LambdaEdgeHex="$LAMBDA_EDGE_HEX" \
               CognitoDomainPrefix="bf-${{ steps.env.outputs.ENV_PREFIX }}-${{ vars.APP_NAME_UI }}" \
+              UiApiKey="${{ secrets.UI_API_KEY }}" \
             --tags \
               Owner="${{ vars.OWNER_NAME }}" \
               AppName="${{ vars.APP_NAME_UI }}" \
@@ -184,11 +185,11 @@ jobs:
         run: |
           API_STACK_NAME=bf-${{ steps.env.outputs.ENV_PREFIX }}-unifi-protect-event-backup-api
           API_URL=$(aws cloudformation describe-stacks --stack-name $API_STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='GETSummaryEndpoint'].OutputValue" --output text)
-          API_KEY=$(aws cloudformation describe-stacks --stack-name $API_STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='ApiGatewayApiKey'].OutputValue" --output text)
+          API_KEY=$(aws cloudformation describe-stacks --stack-name $API_STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='UiApiGatewayApiKey'].OutputValue" --output text)
           echo "API_URL=$API_URL" >> $GITHUB_ENV
           echo "API_KEY=$API_KEY" >> $GITHUB_ENV
           echo "API endpoint for UI: $API_URL"
-          echo "API key: $API_KEY"
+          echo "API key for UI: $API_KEY"
 
       - name: Patch UI index.html with API connection details
         run: |

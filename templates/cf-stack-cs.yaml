@@ -19,6 +19,10 @@ Metadata:
     
 # Parameters
 Parameters:
+  UiApiKey:
+    Type: String
+    Description: API key for UI access (should be passed in from a secure source, e.g., GitHub secret)
+    NoEcho: true
   RetentionDays:
     Type: Number
     Description: Number of days to retain event data in S3 and for API search.
@@ -132,6 +136,29 @@ Conditions:
 
 # Resources
 Resources: 
+  # API key for UI (user-supplied)
+  UiApiGatewayKey:
+    Type: 'AWS::ApiGateway::ApiKey'
+    DependsOn:
+      - ApiGateway
+    Properties:
+      Name: !Sub "${FunctionName}-UiApiKey"
+      Description: "API Key for UI access (user-supplied)"
+      Enabled: 'true'
+      Value: !Ref UiApiKey
+      StageKeys:
+        - RestApiId: !Ref ApiGateway
+          StageName: !Ref ApiGatewayStage
+
+  # Usage plan key association for UI key
+  UiUsagePlanKey:
+    Type: 'AWS::ApiGateway::UsagePlanKey'
+    DependsOn:
+      - ApiGateway
+    Properties:
+      KeyId: !Ref UiApiGatewayKey
+      KeyType: API_KEY
+      UsagePlanId: !Ref UsagePlan
 
   # SSL Certificate for Custom Domain
   Certificate:
@@ -692,6 +719,9 @@ Resources:
 
 # Output useful details
 Outputs:
+  UiApiGatewayApiKey:
+    Description: User-supplied API Gateway API Key for UI access
+    Value: !Ref UiApiGatewayKey
   Repository:
     Description: Source code repository
     Value: https://github.com/engineerthefuture/unifi-protect-event-backup-api
