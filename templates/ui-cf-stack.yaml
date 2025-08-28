@@ -2,7 +2,7 @@
 
 # CloudFormation template for static website hosting with S3, CloudFront, Route53, ACM, and Cognito for the Unifi Protect Event Backup API UI.
 AWSTemplateFormatVersion: "2010-09-09"
-Description: CloudFormation stack for static website hosting with S3 and CloudFront for the Unifi Protect Event Backup API UI.
+Description: CloudFormation stack for the Unifi Protect Event Backup API UI.
 
 # Stack-level tags
 Metadata:
