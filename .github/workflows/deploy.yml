@@ -16,30 +16,17 @@ on:
       - 'test/**'
       - 'templates/cf-stack-cs.yaml'
       - '.github/workflows/deploy.yml'
+      - 'UnifiWebhookEventReceiver.csproj'
+      - 'UnifiWebhookEventReceiver.sln'
+      - 'aws-lambda-tools-defaults.json'
+      - 'global.json'
+      - 'readme.md'
+      - 'LICENSE'
 
 jobs:
   # Build job: Compiles code, runs tests, and prepares deployment artifacts
   # This job must complete successfully for deployment to proceed
   build:
-    if: >-
-      ${{ github.event_name != 'push' ||
-          contains(join(github.event.commits.*.added, ','), 'src/') ||
-          contains(join(github.event.commits.*.modified, ','), 'src/') ||
-          contains(join(github.event.commits.*.added, ','), 'test/') ||
-          contains(join(github.event.commits.*.modified, ','), 'test/') ||
-          contains(join(github.event.commits.*.added, ','), 'UnifiWebhookEventReceiver.csproj') ||
-          contains(join(github.event.commits.*.modified, ','), 'UnifiWebhookEventReceiver.csproj') ||
-          contains(join(github.event.commits.*.added, ','), 'UnifiWebhookEventReceiver.sln') ||
-          contains(join(github.event.commits.*.modified, ','), 'UnifiWebhookEventReceiver.sln') ||
-          contains(join(github.event.commits.*.added, ','), 'aws-lambda-tools-defaults.json') ||
-          contains(join(github.event.commits.*.modified, ','), 'aws-lambda-tools-defaults.json') ||
-          contains(join(github.event.commits.*.added, ','), 'global.json') ||
-          contains(join(github.event.commits.*.modified, ','), 'global.json') ||
-          contains(join(github.event.commits.*.added, ','), 'readme.md') ||
-          contains(join(github.event.commits.*.modified, ','), 'readme.md') ||
-          contains(join(github.event.commits.*.added, ','), 'LICENSE') ||
-          contains(join(github.event.commits.*.modified, ','), 'LICENSE')
-      }}
     runs-on: ubuntu-latest
     permissions:
       id-token: write
