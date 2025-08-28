@@ -1,6 +1,4 @@
-          # Update the API key value to match the user-supplied value (ensures it is always current)
-          aws apigateway update-api-key --api-key "$API_KEY_ID" --patch-operations op=replace,path=/value,value="$UI_API_KEY"
-          echo "API key value updated."
+
 name: Build, Test, and Deploy to AWS (API)
 
 # This workflow builds the application, runs unit tests, and deploys to AWS
