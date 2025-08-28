@@ -231,9 +231,7 @@ Resources:
   ApiGatewayAccountConfig:
     Type: 'AWS::ApiGateway::Account'
     Properties:
-      CloudWatchRoleArn: !GetAtt 
-        - CloudWatchRole
-        - Arn
+  CloudWatchRoleArn: !GetAtt CloudWatchRole.Arn
 
   # Role for proxy lambda function
   LambdaRole:

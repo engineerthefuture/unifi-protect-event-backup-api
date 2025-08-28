@@ -1,253 +1,41 @@
+<!--
+  Unifi Protect Event Backup UI
+  index.html
+
+  Main HTML entry point for the Unifi Protect event dashboard UI.
+  - Loads modular CSS and JS
+  - Provides containers for summary and dashboard
+  - JS dynamically fetches and renders event data
+  - API endpoint and key are injected at deploy time
+  Author: Brent Foster
+  Created: 08-18-2025
+-->
+
 <!DOCTYPE html>
 <html lang="en">
 
 <head>
     <meta charset="UTF-8">
     <title>Unifi Protect Event Backup UI</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background: #1e1f23;
-            margin: 0;
-            color: #f0f0f0;
-        }
-        
-        header {
-            background: #2a2b31;
-            padding: 15px 30px;
-            font-size: 1.4em;
-            font-weight: bold;
-            border-bottom: 1px solid #444;
-        }
-        
-        .summary {
-            display: flex;
-            justify-content: center;
-            padding: 20px;
-        }
-        
-        .summary-tile {
-            background: #2a2b31;
-            border-radius: 12px;
-            padding: 20px 40px;
-            font-size: 1.2em;
-            font-weight: bold;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
-        }
-        
-        .container {
-            padding: 20px;
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-            gap: 20px;
-        }
-        
-        .camera-card {
-            background: #2a2b31;
-            border-radius: 10px;
-            padding: 15px;
-            box-shadow: 0 3px 8px rgba(0, 0, 0, 0.5);
-            display: flex;
-            flex-direction: column;
-        }
-        
-        .camera-header {
-            font-size: 1.2em;
-            margin-bottom: 10px;
-            display: flex;
-            justify-content: space-between;
-        }
-        
-        .event-card {
-            background: #33343a;
-            border-radius: 8px;
-            padding: 10px;
-            margin-top: 10px;
-            transition: transform 0.2s ease;
-        }
-        
-        .event-card:hover {
-            transform: scale(1.02);
-        }
-        
-        .event-title {
-            font-size: 1em;
-            font-weight: bold;
-            margin: 0 0 5px 0;
-        }
-        
-        .event-meta {
-            font-size: 0.85em;
-            color: #bbb;
-            margin-bottom: 8px;
-        }
-        
-        .badge {
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 6px;
-            font-size: 0.8em;
-            font-weight: bold;
-            margin-right: 6px;
-        }
-        
-        .person {
-            background: #b33a3a;
-        }
-        
-        .vehicle {
-            background: #c7a233;
-        }
-        
-        .line_crossed {
-            background: #2a6fbf;
-        }
-        
-        .other {
-            background: #666;
-        }
-        
-        .thumbnail {
-            position: relative;
-            cursor: pointer;
-            border-radius: 6px;
-            overflow: hidden;
-            background: #000;
-        }
-        
-        .thumbnail img {
-            width: 100%;
-            display: block;
-        }
-        
-        .play-overlay {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            font-size: 2.5em;
-            color: white;
-            opacity: 0.8;
-            pointer-events: none;
-        }
-        
-        video {
-            width: 100%;
-            border-radius: 6px;
-            display: none;
-            opacity: 0;
-            transition: opacity 0.5s ease;
-        }
-        
-        video.show {
-            display: block;
-            opacity: 1;
-        }
-        
-        .file-name {
-            font-size: 0.8em;
-            color: #888;
-            margin-top: 4px;
-            word-break: break-all;
-        }
-    </style>
+    <!-- Main stylesheet for dashboard UI -->
+    <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
 
+    <!-- App header -->
     <header>📹 Camera Event Console</header>
 
+    <!-- Summary tile (populated by JS) -->
     <div class="summary">
         <div class="summary-tile" id="summaryTile">Total Events (24h): 0</div>
     </div>
 
+    <!-- Dashboard container (populated by JS) -->
     <div class="container" id="dashboard"></div>
 
-
-    <script>
-        // Injected at deploy time by workflow:
-        window.__CONFIG__ = {
-            API_URL: '%%API_URL%%', // PATCHED BY WORKFLOW
-            API_KEY: '%%API_KEY%%' // PATCHED BY WORKFLOW
-        };
-    </script>
-
-    <script>
-        async function fetchSummary() {
-            const {
-                API_URL,
-                API_KEY
-            } = window.__CONFIG__;
-            const res = await fetch(`${API_URL}/summary`, {
-                headers: {
-                    'X-API-Key': API_KEY
-                }
-            });
-            if (!res.ok) throw new Error('Failed to fetch summary');
-            return res.json();
-        }
-
-        function triggerBadge(key) {
-            if (key === "person") return `<span class="badge person">Person</span>`;
-            if (key === "vehicle") return `<span class="badge vehicle">Vehicle</span>`;
-            if (key === "line_crossed") return `<span class="badge line_crossed">Line Crossed</span>`;
-            return `<span class="badge other">${key || "Other"}</span>`;
-        }
-
-        function renderDashboard(data) {
-            document.getElementById("summaryTile").innerText = `Total Events (24h): ${data.totalCount}`;
-            const container = document.getElementById('dashboard');
-            container.innerHTML = '';
-            (data.cameras || []).forEach(camera => {
-                const camDiv = document.createElement('div');
-                camDiv.className = 'camera-card';
-                const header = document.createElement('div');
-                header.className = 'camera-header';
-                header.innerHTML = `
-                    <span>${camera.cameraName}</span>
-                    <span>${camera.count24h || 0} events</span>
-                `;
-                camDiv.appendChild(header);
-                (camera.events || []).forEach(event => {
-                    const evDiv = document.createElement('div');
-                    evDiv.className = 'event-card';
-                    const trigger = (event.eventData && event.eventData.triggers && event.eventData.triggers[0]) || {};
-                    evDiv.innerHTML = `
-                        <p class="event-title">${event.eventData?.name || ''}</p>
-                        <p class="event-meta">
-                            ${triggerBadge(trigger.key)} 
-                            Device: ${trigger.deviceName || 'N/A'} • 
-                            Date: ${trigger.date ? new Date(trigger.date).toLocaleString() : ''}
-                        </p>
-                        <div class="thumbnail">
-                            <img src="https://via.placeholder.com/640x360?text=Thumbnail" alt="thumbnail">
-                            <div class="play-overlay">▶</div>
-                            <video src="${event.videoUrl}" controls></video>
-                        </div>
-                        <p class="file-name">${event.originalFileName || ''}</p>
-                    `;
-                    // click handler for thumbnail -> video swap
-                    const thumbDiv = evDiv.querySelector('.thumbnail');
-                    const videoEl = evDiv.querySelector('video');
-                    thumbDiv.addEventListener('click', () => {
-                        thumbDiv.querySelector('img').style.display = 'none';
-                        thumbDiv.querySelector('.play-overlay').style.display = 'none';
-                        videoEl.classList.add('show');
-                        videoEl.play();
-                    });
-                    camDiv.appendChild(evDiv);
-                });
-                container.appendChild(camDiv);
-            });
-        }
-
-        fetchSummary()
-            .then(renderDashboard)
-            .catch(err => {
-                document.getElementById("summaryTile").innerText = 'Failed to load summary';
-                document.getElementById('dashboard').innerHTML = `<div style="color:#f55">${err.message}</div>`;
-            });
-    </script>
+    <!-- Main dashboard logic -->
+    <script src="main.js"></script>
 
 </body>
 
