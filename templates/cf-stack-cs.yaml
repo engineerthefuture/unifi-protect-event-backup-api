@@ -719,6 +719,9 @@ Outputs:
       - https://${ApiId}.execute-api.${AWS::Region}.amazonaws.com/${EnvPrefix}/metadata
       - ApiId: !Ref ApiGateway
         StageName: !Ref ApiGatewayStage
+  ApiGatewayApiKey:
+    Description: API Gateway API Key for accessing the Unifi Protect Event Backup API
+    Value: !Ref ApiGatewayKey
   CustomDomainName:
     Condition: UseCustomDomain
     Description: Custom domain name for the API
