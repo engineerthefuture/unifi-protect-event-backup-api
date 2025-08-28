@@ -581,6 +581,7 @@ jobs:
           UI_API_KEY: ${{ secrets.UI_API_KEY }}
         run: |
           set -e
+          set -x
           echo "Creating UI API Gateway API Key with user-supplied value..."
           # Get the RestApiId and StageName from stack outputs
           REST_API_ID=$(aws cloudformation describe-stacks --stack-name ${{ steps.env.outputs.STACK_NAME }} --query "Stacks[0].Outputs[?OutputKey=='ApiGateway'].OutputValue" --output text)
@@ -632,5 +633,5 @@ jobs:
           fi
 
           # Update the API key value to match the user-supplied value (ensures it is always current)
-          aws apigateway update-api-key --api-key "$API_KEY_ID" --patch-operations op=replace,path=/value,value="$UI_API_KEY"
+          aws apigateway update-api-key --api-key "$API_KEY_ID" --patch-operations op=replace,path=/value,value="$UI_API_KEY" || true
           echo "API key value updated."
