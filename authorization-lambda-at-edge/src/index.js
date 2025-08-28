@@ -77,36 +77,50 @@ exports.handler = async(event, context) => {
     const headers = cfrequest.headers;
     console.log('Request headers:', JSON.stringify(headers));
 
-    // 1. Require Authorization header
+    // 1. Try to get Authorization from header or cookie
+    let authHeader = headers.authorization && headers.authorization[0] && headers.authorization[0].value;
+    if (!authHeader && headers.cookie) {
+        // Parse cookies for Authorization
+        const cookies = headers.cookie.map(c => c.value).join(';');
+        const match = cookies.match(/Authorization=([^;]+)/);
+        if (match) {
+            authHeader = decodeURIComponent(match[1]);
+            // Inject into headers for downstream logic
+            headers.authorization = [{ key: 'Authorization', value: authHeader }];
+            console.log('Authorization token found in cookie.');
+        }
+    }
+
+    // 2. Require Authorization header
     if (!headers.authorization) {
         console.log("No Authorization header present, redirecting to Cognito login");
         return responseRedirect;
     }
 
-    // 2. Extract JWT from Authorization header (strip 'Bearer ')
+    // 3. Extract JWT from Authorization header (strip 'Bearer ')
     var jwtToken = headers.authorization[0].value.slice(7);
     console.log('Extracted JWT token');
 
-    // 3. Decode JWT (without verifying signature yet)
+    // 4. Decode JWT (without verifying signature yet)
     var decodedJwt = jwt.decode(jwtToken, { complete: true });
     if (!decodedJwt) {
         console.log("Not a valid JWT token");
         return response401;
     }
 
-    // 4. Check issuer matches expected Cognito User Pool
+    // 5. Check issuer matches expected Cognito User Pool
     if (decodedJwt.payload.iss != iss) {
         console.log("Invalid issuer");
         return response401;
     }
 
-    // 5. Only allow 'access' tokens (not id or refresh tokens)
+    // 6. Only allow 'access' tokens (not id or refresh tokens)
     if (decodedJwt.payload.token_use != 'access') {
         console.log("Not an access token");
         return response401;
     }
 
-    // 6. Get PEM for key ID in JWT header
+    // 7. Get PEM for key ID in JWT header
     var kid = decodedJwt.header.kid;
     var pem = pems[kid];
     if (!pem) {
@@ -114,7 +128,7 @@ exports.handler = async(event, context) => {
         return response401;
     }
 
-    // 7. Verify JWT signature and claims (promisified)
+    // 8. Verify JWT signature and claims (promisified)
     try {
         await new Promise((resolve, reject) => {
             jwt.verify(jwtToken, pem, { issuer: iss }, function(err, payload) {
