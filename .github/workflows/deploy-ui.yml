@@ -216,18 +216,19 @@ jobs:
         run: |
           API_STACK_NAME=bf-${{ steps.env.outputs.ENV_PREFIX }}-unifi-protect-event-backup-api
           API_URL=$(aws cloudformation describe-stacks --stack-name $API_STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='GETSummaryEndpoint'].OutputValue" --output text)
-          API_KEY=$(aws cloudformation describe-stacks --stack-name $API_STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='UiApiGatewayApiKey'].OutputValue" --output text)
+          # Get UI API key from repository secrets instead of CloudFormation outputs
+          API_KEY="${{ secrets.UI_API_KEY }}"
           echo "API_URL=$API_URL" >> $GITHUB_ENV
           echo "API_KEY=$API_KEY" >> $GITHUB_ENV
           echo "API endpoint for UI: $API_URL"
           echo "API key for UI: $API_KEY"
 
-      - name: Patch UI index.html with API connection details
+      - name: Patch UI main.js with API connection details
         run: |
           sed -i.bak \
             -e "s|%%API_URL%%|$API_URL|g" \
             -e "s|%%API_KEY%%|$API_KEY|g" \
-            ui/index.html
+            ui/main.js
 
       - name: Copy UI contents to S3 bucket
         run: |
