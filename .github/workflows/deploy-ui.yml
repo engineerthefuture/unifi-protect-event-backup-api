@@ -117,9 +117,13 @@ jobs:
           echo "Lambda@Edge code SHA: $LAMBDA_EDGE_CODE_SHA"
           aws s3 ls s3://$LAMBDA_EDGE_DEPLOYMENT_BUCKET/$(dirname $AUTH_LAMBDA_EDGE_S3_KEY)/
 
-      - name: Print CloudFormation Lambda version and function
+      - name: Debug: Print CloudFormation Lambda version and function
         run: |
           STACK_NAME=bf-${{ steps.env.outputs.ENV_PREFIX }}-${{ vars.APP_NAME_UI }}
+          if ! aws cloudformation describe-stacks --stack-name $STACK_NAME > /dev/null 2>&1; then
+            echo "Stack does not exist yet. Skipping debug step."
+            exit 0
+          fi
           aws cloudformation describe-stack-resources --stack-name $STACK_NAME | grep Lambda
 
       - name: Generate unique 4-digit hex for Lambda@Edge function
