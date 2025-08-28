@@ -94,6 +94,10 @@ Resources:
       Code:
         S3Bucket: !Ref LambdaEdgeDeploymentBucket
         S3Key: !Ref AuthorizationLambdaEdgeS3Key
+      Environment:
+        Variables:
+          FUNCTION_NAME: !Ref AuthorizationLambdaEdge
+          CODE_SHA: !Ref LambdaEdgeCodeSha
 
   # Lambda@Edge execution role
   AuthorizationLambdaEdgeRole:
