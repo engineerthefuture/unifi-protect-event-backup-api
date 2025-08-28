@@ -1,4 +1,3 @@
-
 name: Build, Test, and Deploy to AWS (API)
 
 # This workflow builds the application, runs unit tests, and deploys to AWS
@@ -555,6 +554,7 @@ jobs:
               BuildSha="${{ github.sha }}" \
               BuildTimestamp="${{ steps.timestamp.outputs.BUILD_TIMESTAMP }}" \
               RetentionDays=${{ vars.MAX_RETENTION_DAYS }} \
+              UiApiKey="${{ secrets.UI_API_KEY }}" \
             --tags \
               Owner="${{ vars.OWNER_NAME }}" \
               AppName="${{ vars.APP_NAME }}" \
