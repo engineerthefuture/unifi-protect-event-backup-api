@@ -610,8 +610,12 @@ jobs:
 
           ALREADY_ATTACHED_FOR_STAGE=false
           for PLAN_ID in $ATTACHED_PLAN_IDS; do
-            # Get the API stages for this usage plan
-            API_STAGES=$(aws apigateway get-usage-plan --usage-plan-id "$PLAN_ID" --query "apiStages" --output json)
+            # Get the API stages for this usage plan, skip if not found
+            API_STAGES=$(aws apigateway get-usage-plan --usage-plan-id "$PLAN_ID" --query "apiStages" --output json 2>/dev/null)
+            if [ $? -ne 0 ]; then
+              echo "Warning: Usage plan $PLAN_ID not found, skipping."
+              continue
+            fi
             if echo "$API_STAGES" | grep -q "\"apiId\": \"$REST_API_ID\""; then
               if echo "$API_STAGES" | grep -q "\"stage\": \"$STAGE_NAME\""; then
                 ALREADY_ATTACHED_FOR_STAGE=true
