@@ -148,7 +148,7 @@ Resources:
   CognitoUserPool:
     Type: AWS::Cognito::UserPool
     Properties:
-      UserPoolName: !Sub "bf-${EnvPrefix}-${AppName}-userpool"
+      UserPoolName: !Sub "bf-${EnvPrefix}-${AppName}-cognito-userpool"
       AutoVerifiedAttributes:
         - email
       Policies:
