@@ -81,13 +81,14 @@ jobs:
           rm index.js
           cd ..
 
-      - name: Calculate Lambda@Edge deployment package SHA256 (with random hex and S3 key)
+      - name: Calculate Lambda@Edge deployment package SHA256 (with random hex, timestamp, and S3 key)
         id: lambda_sha
         run: |
-          LAMBDA_SHA=$(sha256sum authorization-lambda-at-edge/lambda.zip | awk '{print $1}')
           RAND_HEX=$(openssl rand -hex 2)
-          LAMBDA_SHA_RANDOM="$LAMBDA_SHA-$RAND_HEX"
-          S3_KEY=bf-${{ steps.env.outputs.ENV_PREFIX }}-ui-auth-lambda-edge/lambda-$LAMBDA_SHA_RANDOM.zip
+          LAMBDA_SHA=$(sha256sum authorization-lambda-at-edge/lambda.zip | awk '{print $1}')
+          NOW_TS=$(date +%s)
+          LAMBDA_SHA_RANDOM="${LAMBDA_SHA}-${RAND_HEX}-${NOW_TS}"
+          S3_KEY=bf-${{ steps.env.outputs.ENV_PREFIX }}-ui-auth-lambda-edge/lambda-${LAMBDA_SHA_RANDOM}.zip
           echo "LAMBDA_EDGE_CODE_SHA=$LAMBDA_SHA_RANDOM" >> $GITHUB_ENV
           echo "AUTH_LAMBDA_EDGE_S3_KEY=$S3_KEY" >> $GITHUB_ENV
           echo "Lambda@Edge code SHA (randomized): $LAMBDA_SHA_RANDOM"
