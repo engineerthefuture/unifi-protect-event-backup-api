@@ -578,8 +578,15 @@ jobs:
       # Create UI API Gateway API key and attach to usage plan (post-stack)
       - name: Create UI API Gateway API Key and attach to Usage Plan
         env:
-          UI_API_KEY: ${{ secrets.UI_API_KEY }}
+          DEV_UI_API_KEY: ${{ secrets.DEV_UI_API_KEY }}
+          PROD_UI_API_KEY: ${{ secrets.PROD_UI_API_KEY }}
         run: |
+          # Select the correct UI API key based on environment
+          if [ "${{ steps.env.outputs.ENV_PREFIX }}" = "prod" ]; then
+            UI_API_KEY="$PROD_UI_API_KEY"
+          else
+            UI_API_KEY="$DEV_UI_API_KEY"
+          fi
           set -e
           set -x
           echo "Creating UI API Gateway API Key with user-supplied value..."
