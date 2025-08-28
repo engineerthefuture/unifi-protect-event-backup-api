@@ -177,6 +177,10 @@ Resources:
         - ALLOW_CUSTOM_AUTH
       SupportedIdentityProviders:
         - COGNITO
+      CallbackURLs:
+        - !Sub "https://${WebsiteCloudFront.DomainName}/"
+      LogoutURLs:
+        - !Sub "https://${WebsiteCloudFront.DomainName}/"
 
   # ACM Certificate for custom domain (DNS validated)
   Certificate:
