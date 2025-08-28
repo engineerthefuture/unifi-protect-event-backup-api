@@ -63,7 +63,8 @@ jobs:
           USER_POOL_ID=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='CognitoUserPoolId'].OutputValue" --output text)
           USER_POOL_CLIENT_ID=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='CognitoUserPoolClientId'].OutputValue" --output text)
           CLOUDFRONT_DOMAIN=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='CloudFrontDomain'].OutputValue" --output text)
-          COGNITO_DOMAIN_PREFIX="${{ vars.COGNITO_DOMAIN_PREFIX }}"
+          # Set COGNITO_DOMAIN_PREFIX to match CloudFormation parameter
+          COGNITO_DOMAIN_PREFIX="bf-${{ steps.env.outputs.ENV_PREFIX }}-${{ vars.APP_NAME_UI }}"
           COGNITO_DOMAIN="${COGNITO_DOMAIN_PREFIX}.auth.us-east-1.amazoncognito.com"
           JWKS=$(curl -s "https://cognito-idp.us-east-1.amazonaws.com/$USER_POOL_ID/.well-known/jwks.json")
           JWKS_ESCAPED=$(echo "$JWKS" | sed 's/"/\\"/g' | tr -d '\n')

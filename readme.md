@@ -735,12 +735,33 @@ Fetches current camera metadata from your Unifi Protect system and stores it in 
 4. After login, Cognito redirects to `/auth-callback.html`, which sets the cookie and redirects to the UI
 5. Authenticated users can view and manage event backup data
 
+
 #### Admin User Management
-- Only users created by an admin in the Cognito User Pool can log in.
-- To add a user, use the AWS Console or AWS CLI after stack deployment:
+
+**Only users created by an admin in the Cognito User Pool can log in to the UI. Self-sign-up is disabled for security.**
+
+**How to Add a User to Cognito (Allow UI Login):**
+
+1. **Via AWS Console:**
+  - Go to the Cognito service in the AWS Console.
+  - Select the User Pool created by your stack (name will be `bf-<env>-<app>-cognito-userpool`).
+  - Go to the "Users" tab and click "Create user".
+  - Enter the user's email address and set a temporary password (or let AWS generate one).
+  - Ensure the email attribute is marked as verified (or the user will need to verify on first login).
+  - Click "Create user". Share the temporary password with the user.
+
+2. **Via AWS CLI:**
   ```sh
-  aws cognito-idp admin-create-user --user-pool-id <POOL_ID> --username <EMAIL> --user-attributes Name=email,Value=<EMAIL>
+  aws cognito-idp admin-create-user \
+    --user-pool-id <POOL_ID> \
+    --username <EMAIL> \
+    --user-attributes Name=email,Value=<EMAIL>
   ```
+  - Replace `<POOL_ID>` with your Cognito User Pool ID (see CloudFormation outputs or AWS Console).
+  - Replace `<EMAIL>` with the user's email address.
+  - The user will receive a temporary password and must set a new password on first login.
+
+**Note:** Only users added this way will be able to log in to the UI.
 
 ---
 
