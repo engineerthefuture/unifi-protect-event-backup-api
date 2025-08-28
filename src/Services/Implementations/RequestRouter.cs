@@ -79,9 +79,12 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         public APIGatewayProxyResponse HandleOptionsRequest()
         {
             var headers = _responseHelper.GetStandardHeaders();
+            headers["Access-Control-Allow-Origin"] = "*"; // Explicit for CloudFront
             headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS";
-            headers["Access-Control-Allow-Headers"] = "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token";
-            
+            headers["Access-Control-Allow-Headers"] = "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,Origin,Access-Control-Allow-Origin,Access-Control-Allow-Methods";
+            headers["Access-Control-Allow-Credentials"] = "false"; // Set to true if you need credentials
+            headers["Access-Control-Max-Age"] = "86400"; // Cache preflight for 1 day
+
             return new APIGatewayProxyResponse
             {
                 StatusCode = (int)HttpStatusCode.OK,

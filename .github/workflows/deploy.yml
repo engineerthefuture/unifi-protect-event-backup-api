@@ -610,20 +610,22 @@ jobs:
           STAGE_NAME="${{ steps.env.outputs.ENV_PREFIX }}"
 
           ALREADY_ATTACHED_FOR_STAGE=false
-          for PLAN_ID in $ATTACHED_PLAN_IDS; do
-            # Get the API stages for this usage plan, skip if not found
-            API_STAGES=$(aws apigateway get-usage-plan --usage-plan-id "$PLAN_ID" --query "apiStages" --output json 2>/dev/null)
-            if [ $? -ne 0 ]; then
-              echo "Warning: Usage plan $PLAN_ID not found, skipping."
-              continue
-            fi
-            if echo "$API_STAGES" | grep -q "\"apiId\": \"$REST_API_ID\""; then
-              if echo "$API_STAGES" | grep -q "\"stage\": \"$STAGE_NAME\""; then
-                ALREADY_ATTACHED_FOR_STAGE=true
-                break
+          if [ -n "$ATTACHED_PLAN_IDS" ] && [ "$ATTACHED_PLAN_IDS" != "None" ]; then
+            for PLAN_ID in $ATTACHED_PLAN_IDS; do
+              # Get the API stages for this usage plan, skip if not found
+              API_STAGES=$(aws apigateway get-usage-plan --usage-plan-id "$PLAN_ID" --query "apiStages" --output json 2>/dev/null)
+              if [ $? -ne 0 ]; then
+                echo "Warning: Usage plan $PLAN_ID not found, skipping."
+                continue
               fi
-            fi
-          done
+              if echo "$API_STAGES" | grep -q "\"apiId\": \"$REST_API_ID\""; then
+                if echo "$API_STAGES" | grep -q "\"stage\": \"$STAGE_NAME\""; then
+                  ALREADY_ATTACHED_FOR_STAGE=true
+                  break
+                fi
+              fi
+            done
+          fi
 
           if [ "$ALREADY_ATTACHED_FOR_STAGE" = true ]; then
             echo "API key already attached to a usage plan for this API/stage. Skipping attach."
