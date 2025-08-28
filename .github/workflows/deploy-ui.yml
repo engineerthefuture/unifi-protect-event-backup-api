@@ -51,7 +51,6 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Print out referenced environment variables
-        if: steps.only_ui_changed.outputs.only_ui != 'true'
         run: |
           echo "OIDC_ROLE_NAME: ${{ vars.OIDC_ROLE_NAME }}"
           echo "OwnerName: ${{ vars.OWNER_NAME }}"
@@ -60,7 +59,6 @@ jobs:
           echo "SupportEmail: ${{ vars.SUPPORT_EMAIL }}"
 
       - name: Determine environment and set UI domain
-        if: steps.only_ui_changed.outputs.only_ui != 'true'
         id: env
         run: |
           if [[ "${{ github.ref_name }}" == "main" ]]; then
@@ -73,14 +71,12 @@ jobs:
           echo "Deploying UI to environment: $ENV_PREFIX"
 
       - name: Configure AWS credentials (OIDC)
-        if: steps.only_ui_changed.outputs.only_ui != 'true'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.OIDC_ROLE_NAME }}
           aws-region: us-east-1
 
       - name: Patch Lambda@Edge code in index.js and CloudFormation template
-        if: steps.only_ui_changed.outputs.only_ui != 'true'
         run: |
           set -e
           STACK_NAME=bf-${{ steps.env.outputs.ENV_PREFIX }}-${{ vars.APP_NAME_UI }}
@@ -114,7 +110,6 @@ jobs:
           sed -i.bak "s|##JWKS##|$JWKS_ESCAPED|g" templates/ui-cf-stack.yaml
 
       - name: Build Lambda@Edge deployment package (flat root)
-        if: steps.only_ui_changed.outputs.only_ui != 'true'
         run: |
           cd authorization-lambda-at-edge
           npm install --omit=dev
@@ -124,7 +119,6 @@ jobs:
           cd ..
 
       - name: Calculate Lambda@Edge deployment package SHA256 (with random hex, timestamp, and S3 key)
-        if: steps.only_ui_changed.outputs.only_ui != 'true'
         id: lambda_sha
         run: |
           RAND_HEX=$(openssl rand -hex 2)
@@ -138,7 +132,6 @@ jobs:
           echo "Lambda@Edge S3 key: $S3_KEY"
 
       - name: Upload Lambda@Edge deployment package to S3
-        if: steps.only_ui_changed.outputs.only_ui != 'true'
         run: |
           if [[ "${{ steps.env.outputs.ENV_PREFIX }}" == "prod" ]]; then
             DEPLOY_BUCKET=bf-prod-s3-deployments
@@ -149,14 +142,12 @@ jobs:
           echo "LAMBDA_EDGE_DEPLOYMENT_BUCKET=$DEPLOY_BUCKET" >> $GITHUB_ENV
 
       - name: Print Lambda@Edge S3 key and code SHA
-        if: steps.only_ui_changed.outputs.only_ui != 'true'
         run: |
           echo "Lambda@Edge S3 key: $AUTH_LAMBDA_EDGE_S3_KEY"
           echo "Lambda@Edge code SHA: $LAMBDA_EDGE_CODE_SHA"
           aws s3 ls s3://$LAMBDA_EDGE_DEPLOYMENT_BUCKET/$(dirname $AUTH_LAMBDA_EDGE_S3_KEY)/
 
       - name: Print CloudFormation Lambda version and function
-        if: steps.only_ui_changed.outputs.only_ui != 'true'
         run: |
           STACK_NAME=bf-${{ steps.env.outputs.ENV_PREFIX }}-${{ vars.APP_NAME_UI }}
           if ! aws cloudformation describe-stacks --stack-name $STACK_NAME > /dev/null 2>&1; then
@@ -166,7 +157,6 @@ jobs:
           aws cloudformation describe-stack-resources --stack-name $STACK_NAME | grep Lambda || true
 
       - name: Generate unique 4-digit hex for Lambda@Edge function
-        if: steps.only_ui_changed.outputs.only_ui != 'true'
         id: lambda_hex
         run: |
           HEX=$(openssl rand -hex 2)
@@ -174,7 +164,6 @@ jobs:
           echo "Lambda@Edge hex: $HEX"
 
       - name: Deploy CloudFormation stack (us-east-1 for Lambda@Edge)
-        if: steps.only_ui_changed.outputs.only_ui != 'true'
         id: cfn_deploy
         env:
           AWS_DEFAULT_REGION: us-east-1
