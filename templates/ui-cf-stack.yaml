@@ -187,8 +187,10 @@ Resources:
       AllowedOAuthFlowsUserPoolClient: true
       CallbackURLs:
         - !Sub "https://${WebsiteCloudFront.DomainName}/"
+        - !If [HasCustomDomain, !Sub "https://${DomainName}/", !Ref "AWS::NoValue"]
       LogoutURLs:
         - !Sub "https://${WebsiteCloudFront.DomainName}/"
+        - !If [HasCustomDomain, !Sub "https://${DomainName}/", !Ref "AWS::NoValue"]
 
   # ACM Certificate for custom domain (DNS validated)
   Certificate:

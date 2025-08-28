@@ -11,4 +11,21 @@
     <h1>Hello World</h1>
 </body>
 
+<script>
+    (function() {
+        if (window.location.hash) {
+            const params = new URLSearchParams(window.location.hash.substring(1));
+            const accessToken = params.get('access_token');
+            if (accessToken) {
+                document.cookie = 'CognitoAccessToken=' + encodeURIComponent(accessToken) + '; path=/; secure; SameSite=Lax';
+                console.log('CognitoAccessToken set:', accessToken);
+                // Optionally, remove the fragment from the URL
+                window.location.hash = '';
+                // Optionally, reload to trigger Lambda@Edge with the cookie
+                window.location.reload();
+            }
+        }
+    })();
+</script>
+
 </html>
