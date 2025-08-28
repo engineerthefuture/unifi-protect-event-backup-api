@@ -57,16 +57,18 @@ jobs:
           set -e
           STACK_NAME=bf-${{ steps.env.outputs.ENV_PREFIX }}-${{ vars.APP_NAME_UI }}
           USER_POOL_ID=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='CognitoUserPoolId'].OutputValue" --output text)
-          if [ -z "$USER_POOL_ID" ] || [ "$USER_POOL_ID" = "None" ]; then
-            echo "Cognito User Pool ID not found. Running initial deploy to create Cognito resources."
-            USER_POOL_ID="${{ env.COGNITO_USER_POOL_ID }}"
-          fi
+          USER_POOL_CLIENT_ID=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='CognitoUserPoolClientId'].OutputValue" --output text)
+          CLOUDFRONT_DOMAIN=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='CloudFrontDomain'].OutputValue" --output text)
+          COGNITO_DOMAIN="${USER_POOL_ID}.auth.us-east-1.amazoncognito.com"
           JWKS=$(curl -s "https://cognito-idp.us-east-1.amazonaws.com/$USER_POOL_ID/.well-known/jwks.json")
-          JWKS_ESCAPED=$(echo "$JWKS" | sed 's/\"/\\\"/g' | tr -d '\n')
-          # Patch index.js for local dev/test
+          JWKS_ESCAPED=$(echo "$JWKS" | sed 's/"/\\"/g' | tr -d '\n')
+          # Patch index.js for Lambda@Edge
           sed -i.bak \
             -e "s|var USERPOOLID = '.*';|var USERPOOLID = '$USER_POOL_ID';|g" \
             -e "s|var JWKS = '.*';|var JWKS = '$JWKS_ESCAPED';|g" \
+            -e "s|const cognitoDomain = '.*';|const cognitoDomain = 'https://$COGNITO_DOMAIN';|g" \
+            -e "s|const clientId = '.*';|const clientId = '$USER_POOL_CLIENT_ID';|g" \
+            -e "s|const redirectUri = encodeURIComponent('https://.*');|const redirectUri = encodeURIComponent('https://$CLOUDFRONT_DOMAIN/');|g" \
             authorization-lambda-at-edge/src/index.js
           # Patch CloudFormation template inline Lambda code
           sed -i.bak "s|##USERPOOLID##|$USER_POOL_ID|g" templates/ui-cf-stack.yaml
