@@ -59,6 +59,11 @@ Parameters:
     Description: SHA256 hash of Lambda@Edge deployment package (forces version update)
     Default: "manual-default"
 
+  LambdaEdgeHex:
+    Type: String
+    Description: Unique 4-digit hex string for Lambda@Edge function name
+    Default: "0000"
+
 ############################################################
 # Conditions: Used for optional resources (e.g. custom domain)
 ############################################################
@@ -84,11 +89,11 @@ Resources:
   AuthorizationLambdaEdge:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: !Sub "bf-${EnvPrefix}-${AppName}-auth-lambda-edge"
+      FunctionName: !Sub "bf-${EnvPrefix}-${AppName}-auth-lambda-edge-${LambdaEdgeHex}"
       Handler: index.handler
       Role: !GetAtt AuthorizationLambdaEdgeRole.Arn
       Runtime: nodejs18.x
-      Description: Lambda@Edge function to authorize CloudFront requests using Cognito JWT
+      Description: Lambda@Edge function to authorize CloudFront requests using Cognito
       MemorySize: 128
       Timeout: 5
       Code:
