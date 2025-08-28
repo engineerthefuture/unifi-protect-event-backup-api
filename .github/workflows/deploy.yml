@@ -567,3 +567,38 @@ jobs:
             --function-name ${{ steps.env.outputs.LAMBDA_NAME }} \
             --s3-bucket ${{ steps.env.outputs.BUCKET_DEPLOYMENT }} \
             --s3-key ${{ steps.env.outputs.S3_KEY_PREFIX }}/publish.zip
+
+      # Create UI API Gateway API key and attach to usage plan (post-stack)
+      - name: Create UI API Gateway API Key and attach to Usage Plan
+        env:
+          UI_API_KEY: ${{ secrets.UI_API_KEY }}
+        run: |
+          set -e
+          echo "Creating UI API Gateway API Key with user-supplied value..."
+          # Get the RestApiId and StageName from stack outputs
+          REST_API_ID=$(aws cloudformation describe-stacks --stack-name ${{ steps.env.outputs.STACK_NAME }} --query "Stacks[0].Outputs[?OutputKey=='ApiGateway'].OutputValue" --output text)
+          USAGE_PLAN_ID=$(aws cloudformation describe-stacks --stack-name ${{ steps.env.outputs.STACK_NAME }} --query "Stacks[0].Outputs[?OutputKey=='UsagePlan'].OutputValue" --output text)
+          if [ -z "$USAGE_PLAN_ID" ]; then
+            # Fallback: get UsagePlanId by name
+            USAGE_PLAN_ID=$(aws apigateway get-usage-plans --query "items[?usagePlanName=='${{ steps.env.outputs.LAMBDA_NAME }}-plan'].id" --output text)
+          fi
+          if [ -z "$USAGE_PLAN_ID" ]; then
+            echo "::error::Could not determine UsagePlanId."
+            exit 1
+          fi
+          # Create the API key with the user-supplied value (idempotent)
+          API_KEY_ID=$(aws apigateway get-api-keys --name-query "${{ steps.env.outputs.LAMBDA_NAME }}-UiApiKey" --include-values --query "items[?name=='${{ steps.env.outputs.LAMBDA_NAME }}-UiApiKey'].id" --output text)
+          if [ -z "$API_KEY_ID" ]; then
+            API_KEY_ID=$(aws apigateway create-api-key --name "${{ steps.env.outputs.LAMBDA_NAME }}-UiApiKey" --description "API Key for UI access (user-supplied)" --enabled --value "$UI_API_KEY" --query 'id' --output text)
+            echo "Created new API key: $API_KEY_ID"
+          else
+            echo "API key already exists: $API_KEY_ID"
+          fi
+          # Attach the API key to the usage plan (idempotent)
+          USAGE_PLAN_KEY_ID=$(aws apigateway get-usage-plan-keys --usage-plan-id "$USAGE_PLAN_ID" --query "items[?keyId=='$API_KEY_ID'].id" --output text)
+          if [ -z "$USAGE_PLAN_KEY_ID" ]; then
+            aws apigateway create-usage-plan-key --usage-plan-id "$USAGE_PLAN_ID" --key-type "API_KEY" --key-id "$API_KEY_ID"
+            echo "Attached API key to usage plan."
+          else
+            echo "API key already attached to usage plan."
+          fi
