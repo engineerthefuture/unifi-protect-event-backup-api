@@ -94,12 +94,14 @@ jobs:
           echo "LAMBDA_EDGE_DEPLOYMENT_BUCKET=$DEPLOY_BUCKET" >> $GITHUB_ENV
           echo "AUTH_LAMBDA_EDGE_S3_KEY=$S3_KEY" >> $GITHUB_ENV
 
-      - name: Calculate Lambda@Edge deployment package SHA256
+      - name: Calculate Lambda@Edge deployment package SHA256 (with random hex)
         id: lambda_sha
         run: |
           LAMBDA_SHA=$(sha256sum authorization-lambda-at-edge/lambda.zip | awk '{print $1}')
-          echo "LAMBDA_EDGE_CODE_SHA=$LAMBDA_SHA" >> $GITHUB_ENV
-          echo "Lambda@Edge code SHA: $LAMBDA_SHA"
+          RAND_HEX=$(openssl rand -hex 2)
+          LAMBDA_SHA_RANDOM="$LAMBDA_SHA-$RAND_HEX"
+          echo "LAMBDA_EDGE_CODE_SHA=$LAMBDA_SHA_RANDOM" >> $GITHUB_ENV
+          echo "Lambda@Edge code SHA (randomized): $LAMBDA_SHA_RANDOM"
 
       - name: Deploy CloudFormation stack (us-east-1 for Lambda@Edge)
         id: cfn_deploy
