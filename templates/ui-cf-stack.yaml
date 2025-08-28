@@ -158,6 +158,8 @@ Resources:
           RequireLowercase: true
           RequireNumbers: true
           RequireSymbols: false
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
       Schema:
         - Name: email
           Required: true
