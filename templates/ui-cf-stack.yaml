@@ -186,9 +186,13 @@ Resources:
         - profile
       AllowedOAuthFlowsUserPoolClient: true
       CallbackURLs:
+        - !Sub "https://${WebsiteCloudFront.DomainName}/auth-callback.html"
+        - !If [HasCustomDomain, !Sub "https://${DomainName}/auth-callback.html", !Ref "AWS::NoValue"]
         - !Sub "https://${WebsiteCloudFront.DomainName}/"
         - !If [HasCustomDomain, !Sub "https://${DomainName}/", !Ref "AWS::NoValue"]
       LogoutURLs:
+        - !Sub "https://${WebsiteCloudFront.DomainName}/auth-callback.html"
+        - !If [HasCustomDomain, !Sub "https://${DomainName}/auth-callback.html", !Ref "AWS::NoValue"]
         - !Sub "https://${WebsiteCloudFront.DomainName}/"
         - !If [HasCustomDomain, !Sub "https://${DomainName}/", !Ref "AWS::NoValue"]
 

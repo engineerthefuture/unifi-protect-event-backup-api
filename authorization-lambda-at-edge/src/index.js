@@ -80,6 +80,13 @@ exports.handler = async(event, context) => {
     console.log('Request headers:', JSON.stringify(headers));
 
 
+
+    // Allow unauthenticated access to /auth-callback.html so JS can set the cookie
+    if (cfrequest.uri === '/auth-callback.html') {
+        console.log('Allowing unauthenticated access to /auth-callback.html');
+        return cfrequest;
+    }
+
     // 1. Try to get Cognito access token from cookie (CloudFront forwards all cookies)
     let jwtToken = null;
     if (headers.cookie) {
