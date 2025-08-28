@@ -1,5 +1,6 @@
 // Lambda@Edge Function for authorizing requests to CloudFront using Cognito JWTs.
 // Source: https://github.com/aws-samples/authorization-lambda-at-edge
+// Updated: 8-27-2025
 
 'use strict';
 

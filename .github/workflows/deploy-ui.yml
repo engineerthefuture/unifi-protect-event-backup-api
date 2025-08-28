@@ -81,7 +81,7 @@ jobs:
           rm index.js
           cd ..
 
-      - name: Calculate Lambda@Edge deployment package SHA256 (with random hex)
+      - name: Calculate Lambda@Edge deployment package SHA256 (with random hex and S3 key)
         id: lambda_sha
         run: |
           LAMBDA_SHA=$(sha256sum authorization-lambda-at-edge/lambda.zip | awk '{print $1}')
