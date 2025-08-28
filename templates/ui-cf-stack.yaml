@@ -27,6 +27,10 @@ Parameters:
     Type: String
     Description: Cognito Hosted UI domain prefix (e.g., myapp)
     Default: ""
+  CognitoDomainPrefix:
+    Type: String
+    Description: Cognito Hosted UI domain prefix (e.g., myapp)
+    Default: ""
   EnvPrefix:
     Type: String
     Description: Prefix for the environment (dev, prod, staging)
@@ -80,6 +84,11 @@ Conditions:
 # Resources: Main infrastructure components                #
 ############################################################
 Resources:
+  CognitoUserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Ref CognitoDomainPrefix
+      UserPoolId: !Ref CognitoUserPool
 
   # Lambda@Edge function version for CloudFront association
   AuthorizationLambdaEdgeVersion:
