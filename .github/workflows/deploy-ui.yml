@@ -23,6 +23,8 @@ jobs:
       AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
       OIDC_ROLE_NAME: ${{ vars.OIDC_ROLE_NAME }}
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
       - name: Fetch full git history for diff
         run: git fetch --prune --unshallow || git fetch --prune --depth=1000
       - name: Detect if only ui/ changed
