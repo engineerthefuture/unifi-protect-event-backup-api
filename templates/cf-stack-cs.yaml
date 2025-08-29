@@ -499,7 +499,6 @@ Resources:
       - ApiGatewayRootMethod
       - ApiGatewayProxyMethodGet
       - ApiGatewayProxyMethodPost
-      - ApiGatewayProxyMethodOptions
     Type: 'AWS::ApiGateway::Deployment'
     Properties:
       RestApiId: !Ref ApiGateway
