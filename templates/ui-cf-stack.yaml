@@ -292,12 +292,8 @@ Resources:
           ViewerProtocolPolicy: redirect-to-https
           AllowedMethods:
             - HEAD
-            - DELETE
-            - POST
             - GET
             - OPTIONS
-            - PUT
-            - PATCH
           LambdaFunctionAssociations:
             - EventType: viewer-request
               LambdaFunctionARN: !Ref AuthorizationLambdaEdgeVersion
