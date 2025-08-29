@@ -302,7 +302,7 @@ Resources:
             - EventType: viewer-request
               LambdaFunctionARN: !Ref AuthorizationLambdaEdgeVersion
           ResponseHeadersPolicyId: 5cc3b908-e619-4b99-88e5-2cf7f45965bd  # AWS Managed-CORS-With-Preflight
-          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad  # Managed-CachingOptimized
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6  # Managed-CachingOptimized
           OriginRequestPolicyId: 88a5eaf4-2fd4-4709-b370-b4c650ea3fcf  # Managed-CORS-S3Origin
         PriceClass: PriceClass_100
         Restrictions:
