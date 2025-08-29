@@ -246,7 +246,7 @@ Resources:
       OriginAccessControlConfig:
         Name: !Sub "bf-${EnvPrefix}-ui-oac"
         Description: !Sub "OAC for bf-${EnvPrefix}-ui"
-  OriginAccessControlOriginType: s3
+        OriginAccessControlOriginType: s3
         SigningBehavior: always
         SigningProtocol: sigv4
 
