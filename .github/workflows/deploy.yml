@@ -607,5 +607,21 @@ jobs:
             echo "API key already exists: $API_KEY_ID. Deleting to update value."
             aws apigateway delete-api-key --api-key "$API_KEY_ID"
           fi
+          # Create and associate the API key with the usage plan
+          echo "Creating UI API key and associating with usage plan..."
           API_KEY_ID=$(aws apigateway create-api-key --name "${{ steps.env.outputs.LAMBDA_NAME }}-UiApiKey" --description "API Key for UI access (user-supplied)" --enabled --value "$UI_API_KEY" --query 'id' --output text)
           echo "Created new API key: $API_KEY_ID"
+          # Associate the API key with the usage plan, handle if already associated
+          set +e
+          aws apigateway create-usage-plan-key --usage-plan-id "$USAGE_PLAN_ID" --key-type API_KEY --key-id "$API_KEY_ID"
+          if [ $? -ne 0 ]; then
+            echo "Usage plan key may already exist, checking..."
+            EXISTING=$(aws apigateway get-usage-plan-keys --usage-plan-id "$USAGE_PLAN_ID" --query "items[?keyId=='$API_KEY_ID'] | [0]" --output json)
+            if [ "$EXISTING" != "null" ]; then
+              echo "API key is already associated with the usage plan."
+            else
+              echo "::error::Failed to associate API key with usage plan."
+              exit 1
+            fi
+          fi
+          set -e
