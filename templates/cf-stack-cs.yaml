@@ -424,24 +424,6 @@ Resources:
       RestApiId: !Ref ApiGateway
       PathPart: '{proxy+}'
   
-  # Root method
-  ApiGatewayRootMethod:
-    Type: 'AWS::ApiGateway::Method'
-    Properties:
-      HttpMethod: ANY
-      ResourceId: !GetAtt ApiGateway.RootResourceId
-      RestApiId: !Ref ApiGateway
-      AuthorizationType: NONE
-      ApiKeyRequired: true
-      Integration:
-        IntegrationHttpMethod: POST
-        Type: AWS_PROXY
-        Uri: !Join
-                  - ''
-                  - - !Sub arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:${AWS::AccountId}:function
-                    - !Sub :${FunctionName}/invocations
-        PassthroughBehavior: WHEN_NO_MATCH
-        ContentHandling: "CONVERT_TO_TEXT"
 
   # Proxy method for Post
   ApiGatewayProxyMethodPost:
