@@ -238,14 +238,19 @@ Resources:
         - Key: "Name"
           Value: !Sub "bf-${EnvPrefix}-${AppName}-ui"
 
-  # CloudFront Origin Access Identity to restrict S3 access to CloudFront only
-  CloudFrontOriginIdentity:
-    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
-    Properties:
-      CloudFrontOriginAccessIdentityConfig:
-        Comment: !Sub "bf-${EnvPrefix}-origin-identity"
 
-  # S3 Bucket Policy to allow CloudFront OAI to read from the website bucket
+  # CloudFront Origin Access Control (OAC) for S3
+  WebsiteOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "bf-${EnvPrefix}-ui-oac"
+        Description: !Sub "OAC for bf-${EnvPrefix}-ui"
+        OriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  # S3 Bucket Policy to allow CloudFront OAC to read from the website bucket
   WebUIPolicy:
     Type: AWS::S3::BucketPolicy
     Properties:
@@ -254,23 +259,26 @@ Resources:
         Version: "2012-10-17"
         Statement:
           - Effect: Allow
-            Principal:
-              CanonicalUser: !GetAtt CloudFrontOriginIdentity.S3CanonicalUserId
+            Principal: { Service: "cloudfront.amazonaws.com" }
             Action: "s3:GetObject"
             Resource: !Sub "${WebsiteBucket.Arn}/*"
+            Condition:
+              StringEquals:
+                "AWS:SourceArn": !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${WebsiteCloudFront}"
 
   # CloudFront Distribution for the static website (with custom error responses for SPA routing)
   WebsiteCloudFront:
     Type: AWS::CloudFront::Distribution
     DependsOn:
       - WebsiteBucket
+      - WebsiteOAC
     Properties:
       DistributionConfig:
         Origins:
           - DomainName: !GetAtt WebsiteBucket.RegionalDomainName
             Id: !Ref WebsiteBucket
-            S3OriginConfig:
-              OriginAccessIdentity: !Sub "origin-access-identity/cloudfront/${CloudFrontOriginIdentity}"
+            S3OriginConfig: {}
+            OriginAccessControlId: !Ref WebsiteOAC
             OriginCustomHeaders:
               - HeaderName: Access-Control-Allow-Origin
                 HeaderValue: '*'
@@ -293,7 +301,6 @@ Resources:
           CachedMethods:
             - GET
             - HEAD
-            - OPTIONS
           Compress: false
           ForwardedValues:
             QueryString: true
@@ -306,6 +313,7 @@ Resources:
           LambdaFunctionAssociations:
             - EventType: viewer-request
               LambdaFunctionARN: !Ref AuthorizationLambdaEdgeVersion
+          ResponseHeadersPolicyId: 67f7725c-6f97-4210-82d7-5512b31e9d03  # AWS Managed-CORS-With-Preflight
         PriceClass: PriceClass_100
         Restrictions:
           GeoRestriction:
