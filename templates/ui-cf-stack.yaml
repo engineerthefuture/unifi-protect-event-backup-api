@@ -299,7 +299,7 @@ Resources:
               LambdaFunctionARN: !Ref AuthorizationLambdaEdgeVersion
           ResponseHeadersPolicyId: 5cc3b908-e619-4b99-88e5-2cf7f45965bd  # AWS Managed-CORS-With-Preflight
           CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6  # Managed-CachingOptimized
-          OriginRequestPolicyId: 88a5eaf4-2fd4-4709-b370-b4c650ea3fcf  # Managed-CORS-S3Origin
+          OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac  # AllViewerExceptHostHeader
         PriceClass: PriceClass_100
         Restrictions:
           GeoRestriction:
