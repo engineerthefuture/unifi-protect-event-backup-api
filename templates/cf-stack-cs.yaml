@@ -169,17 +169,23 @@ Resources:
             method.response.header.Access-Control-Allow-Methods: true
             method.response.header.Access-Control-Allow-Origin: true
 
-  # OPTIONS method for {proxy+} resource with CORS headers
-  ApiGatewayProxyOptions:
+  # Resource for /summary
+  ApiGatewaySummaryResource:
+    Type: 'AWS::ApiGateway::Resource'
+    Properties:
+      ParentId: !GetAtt ApiGateway.RootResourceId
+      RestApiId: !Ref ApiGateway
+      PathPart: 'summary'
+
+  # OPTIONS method for /summary with CORS headers
+  ApiGatewaySummaryOptions:
     Type: 'AWS::ApiGateway::Method'
     Properties:
       HttpMethod: OPTIONS
-      ResourceId: !Ref ApiGatewayResource
+      ResourceId: !Ref ApiGatewaySummaryResource
       RestApiId: !Ref ApiGateway
       AuthorizationType: NONE
       ApiKeyRequired: false
-      RequestParameters:
-        method.request.path.proxy: true
       Integration:
         Type: MOCK
         IntegrationResponses:
@@ -490,8 +496,6 @@ Resources:
       - StatusCode: 200
         ResponseParameters:
           method.response.header.Access-Control-Allow-Origin: true
-
-
 
   # API gateway deployment
   ApiGatewayDeployment:
