@@ -143,20 +143,12 @@ Conditions:
 
 # Resources
 Resources: 
-  # Explicit /summary resource for CORS
-  ApiGatewaySummaryResource:
-    Type: AWS::ApiGateway::Resource
-    Properties:
-      ParentId: !GetAtt ApiGateway.RootResourceId
-      RestApiId: !Ref ApiGateway
-      PathPart: summary
-
-  # OPTIONS method for /summary with CORS headers
-  ApiGatewaySummaryOptions:
-    Type: AWS::ApiGateway::Method
+  # OPTIONS method for {proxy+} with CORS headers
+  ApiGatewayProxyOptions:
+    Type: 'AWS::ApiGateway::Method'
     Properties:
       HttpMethod: OPTIONS
-      ResourceId: !Ref ApiGatewaySummaryResource
+      ResourceId: !Ref ApiGatewayResource
       RestApiId: !Ref ApiGateway
       AuthorizationType: NONE
       ApiKeyRequired: false
@@ -165,7 +157,7 @@ Resources:
         IntegrationResponses:
           - StatusCode: 200
             ResponseParameters:
-              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,Origin,Access-Control-Allow-Origin,Access-Control-Allow-Methods'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,X-Amz-Security-Token,Authorization,X-Api-Key,X-Requested-With,Accept,Access-Control-Allow-Methods,Access-Control-Allow-Origin,Access-Control-Allow-Headers'"
               method.response.header.Access-Control-Allow-Methods: "'GET,POST,OPTIONS'"
               method.response.header.Access-Control-Allow-Origin: "'*'"
         RequestTemplates:
@@ -177,8 +169,6 @@ Resources:
             method.response.header.Access-Control-Allow-Methods: true
             method.response.header.Access-Control-Allow-Origin: true
   
-
-
   # SSL Certificate for Custom Domain
   Certificate:
     Type: AWS::CertificateManager::Certificate
@@ -406,24 +396,6 @@ Resources:
       RestApiId: !Ref ApiGateway
       PathPart: '{proxy+}'
   
-  # Root method
-  ApiGatewayRootMethod:
-    Type: 'AWS::ApiGateway::Method'
-    Properties:
-      HttpMethod: ANY
-      ResourceId: !GetAtt ApiGateway.RootResourceId
-      RestApiId: !Ref ApiGateway
-      AuthorizationType: NONE
-      ApiKeyRequired: true
-      Integration:
-        IntegrationHttpMethod: POST
-        Type: AWS_PROXY
-        Uri: !Join
-                  - ''
-                  - - !Sub arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:${AWS::AccountId}:function
-                    - !Sub :${FunctionName}/invocations
-        PassthroughBehavior: WHEN_NO_MATCH
-        ContentHandling: "CONVERT_TO_TEXT"
 
   # Proxy method for Post
   ApiGatewayProxyMethodPost:
@@ -491,14 +463,12 @@ Resources:
         ResponseParameters:
           method.response.header.Access-Control-Allow-Origin: true
 
-
-
   # API gateway deployment
   ApiGatewayDeployment:
     DependsOn:
-      - ApiGatewayRootMethod
       - ApiGatewayProxyMethodGet
       - ApiGatewayProxyMethodPost
+      - ApiGatewayProxyOptions
     Type: 'AWS::ApiGateway::Deployment'
     Properties:
       RestApiId: !Ref ApiGateway
