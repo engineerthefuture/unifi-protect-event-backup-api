@@ -438,7 +438,7 @@ Resources:
     Type: 'AWS::ApiGateway::Method'
     Properties:
       HttpMethod: POST
-        ResourceId: !Ref ApiGatewayResource
+      ResourceId: !Ref ApiGatewayResource
       RestApiId: !Ref ApiGateway
       ApiKeyRequired: true
       AuthorizationType: NONE
@@ -471,7 +471,7 @@ Resources:
     Type: 'AWS::ApiGateway::Method'
     Properties:
       HttpMethod: GET
-        ResourceId: !Ref ApiGatewayResource
+      ResourceId: !Ref ApiGatewayResource
       RestApiId: !Ref ApiGateway
       ApiKeyRequired: true
       AuthorizationType: NONE
