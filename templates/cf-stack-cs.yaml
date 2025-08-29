@@ -496,7 +496,6 @@ Resources:
   # API gateway deployment
   ApiGatewayDeployment:
     DependsOn:
-      - ApiGatewayRootMethod
       - ApiGatewayProxyMethodGet
       - ApiGatewayProxyMethodPost
     Type: 'AWS::ApiGateway::Deployment'
