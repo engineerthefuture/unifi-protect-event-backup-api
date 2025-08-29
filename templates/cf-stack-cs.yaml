@@ -175,7 +175,7 @@ Resources:
     Properties:
       ParentId: !GetAtt ApiGateway.RootResourceId
       RestApiId: !Ref ApiGateway
-      PathPart: 'summary'
+      PathPart: !Sub "${EnvPrefix}/summary"
 
   # OPTIONS method for /summary with CORS headers
   ApiGatewaySummaryOptions:
