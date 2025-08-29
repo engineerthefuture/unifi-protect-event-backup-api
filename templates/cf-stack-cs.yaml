@@ -143,12 +143,12 @@ Conditions:
 
 # Resources
 Resources: 
-  # OPTIONS method for root resource (/*) with CORS headers
-  ApiGatewayRootOptions:
+  # OPTIONS method for {proxy+} with CORS headers
+  ApiGatewayProxyOptions:
     Type: 'AWS::ApiGateway::Method'
     Properties:
       HttpMethod: OPTIONS
-      ResourceId: !GetAtt ApiGateway.RootResourceId
+      ResourceId: !Ref ApiGatewayResource
       RestApiId: !Ref ApiGateway
       AuthorizationType: NONE
       ApiKeyRequired: false
@@ -168,42 +168,6 @@ Resources:
             method.response.header.Access-Control-Allow-Headers: true
             method.response.header.Access-Control-Allow-Methods: true
             method.response.header.Access-Control-Allow-Origin: true
-
-  # Resource for /summary
-
-    # {proxy+} resource
-    ApiGatewayProxyResource:
-      Type: 'AWS::ApiGateway::Resource'
-      Properties:
-        ParentId: !GetAtt ApiGateway.RootResourceId
-        RestApiId: !Ref ApiGateway
-        PathPart: '{proxy+}'
-
-    # OPTIONS method for {proxy+} with CORS headers
-    ApiGatewayProxyOptions:
-      Type: 'AWS::ApiGateway::Method'
-      Properties:
-        HttpMethod: OPTIONS
-        ResourceId: !Ref ApiGatewayResource
-        RestApiId: !Ref ApiGateway
-        AuthorizationType: NONE
-        ApiKeyRequired: false
-        Integration:
-          Type: MOCK
-          IntegrationResponses:
-            - StatusCode: 200
-              ResponseParameters:
-                method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,X-Amz-Security-Token,Authorization,X-Api-Key,X-Requested-With,Accept,Access-Control-Allow-Methods,Access-Control-Allow-Origin,Access-Control-Allow-Headers'"
-                method.response.header.Access-Control-Allow-Methods: "'GET,POST,OPTIONS'"
-                method.response.header.Access-Control-Allow-Origin: "'*'"
-          RequestTemplates:
-            application/json: '{"statusCode": 200}'
-        MethodResponses:
-          - StatusCode: 200
-            ResponseParameters:
-              method.response.header.Access-Control-Allow-Headers: true
-              method.response.header.Access-Control-Allow-Methods: true
-              method.response.header.Access-Control-Allow-Origin: true
   
   # SSL Certificate for Custom Domain
   Certificate:
