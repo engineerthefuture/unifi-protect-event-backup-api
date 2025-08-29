@@ -502,6 +502,8 @@ Resources:
     DependsOn:
       - ApiGatewayProxyMethodGet
       - ApiGatewayProxyMethodPost
+      - ApiGatewaySummaryOptions
+      - ApiGatewayRootOptions
     Type: 'AWS::ApiGateway::Deployment'
     Properties:
       RestApiId: !Ref ApiGateway
