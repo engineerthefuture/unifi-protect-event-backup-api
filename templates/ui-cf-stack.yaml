@@ -298,22 +298,12 @@ Resources:
             - OPTIONS
             - PUT
             - PATCH
-          CachedMethods:
-            - GET
-            - HEAD
-          Compress: false
-          ForwardedValues:
-            QueryString: true
-            Cookies:
-              Forward: none
-            Headers:
-              - Access-Control-Request-Headers
-              - Access-Control-Request-Method
-              - Origin
           LambdaFunctionAssociations:
             - EventType: viewer-request
               LambdaFunctionARN: !Ref AuthorizationLambdaEdgeVersion
           ResponseHeadersPolicyId: 5cc3b908-e619-4b99-88e5-2cf7f45965bd  # AWS Managed-CORS-With-Preflight
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad  # Managed-CachingOptimized
+          OriginRequestPolicyId: 88a5eaf4-2fd4-4709-b370-b4c650ea3fcf  # Managed-CORS-S3Origin
         PriceClass: PriceClass_100
         Restrictions:
           GeoRestriction:
