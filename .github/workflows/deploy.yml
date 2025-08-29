@@ -64,9 +64,6 @@ jobs:
             echo "HOSTED_ZONE_ID=${{ vars.HOSTED_ZONE_ID }}" >> $GITHUB_OUTPUT
           fi
           echo "Deploying to environment: $ENV_PREFIX"
-          echo "Stack name: $STACK_NAME"
-          echo "Domain name: $DOMAIN_NAME"
-          echo "Unifi Host: $UNIFI_HOST"
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -519,9 +516,6 @@ jobs:
             echo "HOSTED_ZONE_ID=${{ vars.HOSTED_ZONE_ID }}" >> $GITHUB_OUTPUT
           fi
           echo "Deploying to environment: $ENV_PREFIX"
-          echo "Stack name: $STACK_NAME"
-          echo "Domain name: $DOMAIN_NAME"
-          echo "Unifi Host: $UNIFI_HOST"
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
@@ -588,7 +582,6 @@ jobs:
             UI_API_KEY="$DEV_UI_API_KEY"
           fi
           set -e
-          set -x
           echo "Creating UI API Gateway API Key with user-supplied value..."
           # Get the RestApiId and StageName from stack outputs
           REST_API_ID=$(aws cloudformation describe-stacks --stack-name ${{ steps.env.outputs.STACK_NAME }} --query "Stacks[0].Outputs[?OutputKey=='ApiGateway'].OutputValue" --output text)
