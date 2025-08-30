@@ -236,7 +236,7 @@ Resources:
             MaxAge: '3600'
       Tags:
         - Key: "Name"
-          Value: !Sub "bf-${EnvPrefix}-${AppName}-ui"
+          Value: !Sub "bf-${EnvPrefix}-s3-${AppName}-ui"
 
 
   # CloudFront Origin Access Control (OAC) for S3
