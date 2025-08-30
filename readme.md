@@ -128,109 +128,21 @@ The lifecycle rule applies to both JSON event files and MP4 video files, ensurin
 ## 🏛️ Architecture
 
 ```mermaid
-graph TB
-    subgraph "Unifi Protect System"
-        UDM[Unifi Dream Machine]
-        CAM1[Camera 1]
-        CAM2[Camera 2]
-        CAM3[Camera N...]
-        VIDEO[Video Storage]
-    end
-    
-    subgraph "AWS Cloud"
-        subgraph "API Gateway"
-            API[REST API Endpoint]
-            AUTH[API Key Auth]
-            CORS[CORS Support]
-        end
-        
-        subgraph "SQS Processing"
-            QUEUE[Alarm Processing Queue<br/>DelaySeconds via message<br/>2-minute default]
-            DLQ[Dead Letter Queue<br/>maxReceiveCount: 3<br/>14-day retention]
-            RETRY_DLQ[Alarm Processing DLQ<br/>Failed video downloads<br/>Original message + metadata]
-            ESM[Event Source Mapping<br/>BatchSize: 1<br/>Auto-scaling]
-        end
-        
-        subgraph "Lambda Function"
-            HANDLER[Dual Event Handler<br/>API Gateway + SQS Events]
-            WEBHOOK[Webhook Processor<br/>Immediate Queue & Response]
-            DELAYED[Delayed Processor<br/>Credential Retrieval & Video Download]
-            PARSER[JSON Parser]
-            MAPPER[Device Mapper]
-            VALIDATOR[Input Validator]
-            BROWSER[PuppeteerSharp Browser<br/>Headless Chrome]
-            DOWNLOADER[Video Downloader<br/>CDP Protocol]
-        end
-        
-        subgraph "Storage & Security"
-            S3[(S3 Bucket<br/>AES256 Encryption)]
-            EVENTS["Event JSON Files<br/>{eventId}_{deviceMac}_{timestamp}"]
-            VIDEOS["Video Files<br/>videos/{eventId}_{deviceMac}_{timestamp}"]
-            SECRETS[AWS Secrets Manager<br/>Unifi Credentials<br/>KMS Encrypted]
-        end
-        
-        subgraph "Monitoring & Logging"
-            CW[CloudWatch Logs<br/>Function Execution]
-            METRICS[CloudWatch Metrics<br/>Performance & Errors]
-            XRAY[X-Ray Tracing<br/>Optional]
-        end
-        
-        subgraph "Security & Access"
-            IAM[IAM Roles & Policies<br/>Least Privilege]
-            KMS[KMS Keys<br/>Secrets Encryption]
-            VPC[VPC Endpoints<br/>Optional Private Access]
-        end
-    end
-    
-    subgraph "Multi-Environment CI/CD"
-        GH[GitHub Actions]
-        TEST[Unit Tests]
-        BUILD[Build & Package]
-        DEV_DEPLOY[Dev Environment<br/>Feature Branches]
-        PROD_DEPLOY[Prod Environment<br/>Main Branch]
-    end
-    
-    %% Camera to UDM flow
-    CAM1 --> UDM
-    CAM2 --> UDM
-    CAM3 --> UDM
-    UDM --> VIDEO
-    
-    %% Webhook ingestion flow
-    UDM -->|Webhook POST<br/>Alarm Event| API
-    API --> AUTH
-    AUTH --> CORS
-    CORS --> HANDLER
-    
-    %% Immediate response flow
-    HANDLER --> WEBHOOK
-    WEBHOOK -->|Send to Queue<br/>DelaySeconds: 120| QUEUE
-    WEBHOOK -->|HTTP 200 OK<br/>Immediate Response| API
-    API -->|Success Response| UDM
-    
-    %% Delayed processing flow  
-    QUEUE -->|After Delay<br/>SQS Message| ESM
-    ESM -->|Trigger Lambda| DELAYED
-    DELAYED -->|Retrieve Credentials<br/>Cached After First Call| SECRETS
-    DELAYED --> PARSER
-    PARSER --> VALIDATOR
-    VALIDATOR --> MAPPER
-    
-    %% S3 storage flow
-    MAPPER -->|Store Event JSON| S3
-    S3 --> EVENTS
-    
-    %% Video download flow
-    DELAYED --> BROWSER
-    BROWSER -->|Navigate to<br/>credentials.hostname + eventPath| VIDEO
-    BROWSER -->|Login with<br/>credentials.username/password| VIDEO
-    VIDEO -->|Return Video Blob URL| BROWSER
-    BROWSER --> DOWNLOADER
-    DOWNLOADER -->|Upload MP4 to S3| S3
-    S3 --> VIDEOS
-    
-    %% Error handling
-    QUEUE -->|Failed Messages<br/>After 3 Retries| DLQ
+flowchart TD
+  subgraph User
+    BROWSER[User's Browser]
+  end
+
+  subgraph "UI Hosting & Authentication"
+    S3UI[S3 (UI Bucket)]
+    CF[CloudFront Distribution]
+    EDGE[Lambda@Edge Auth]
+    COGNITO[Cognito Hosted UI]
+  end
+
+  subgraph "API & Processing"
+    API[API Gateway]
+    LAMBDA[Lambda Function]
     DLQ -->|Manual Investigation<br/>14-day Retention| METRICS
     DELAYED -->|Video Download Failure<br/>No video files were downloaded| RETRY_DLQ
     RETRY_DLQ -->|Original Message + Metadata<br/>FailureReason, OriginalTimestamp| METRICS
