@@ -128,6 +128,7 @@ The lifecycle rule applies to both JSON event files and MP4 video files, ensurin
 ## 🏛️ Architecture
 
 ```mermaid
+
 flowchart TD
   subgraph User
     BROWSER[User's Browser]
