@@ -62,15 +62,42 @@ function renderDashboard(data) {
                     Date: ${trigger.date ? new Date(trigger.date).toLocaleString() : ''}
                 </p>
                 <div class="thumbnail">
-                    <img src="https://via.placeholder.com/640x360?text=Thumbnail" alt="thumbnail" loading="lazy">
+                    <img src="" alt="thumbnail" loading="lazy" style="background:#222;min-width:100px;min-height:56px;">
                     <div class="play-overlay">▶</div>
                 </div>
                 <p class="file-name">${event.originalFileName || ''}</p>
             `;
-            // Lazy load video only on click
+            // Generate thumbnail from first frame
             const thumbDiv = evDiv.querySelector('.thumbnail');
+            const imgEl = thumbDiv.querySelector('img');
+            (async() => {
+                try {
+                    const video = document.createElement('video');
+                    video.src = event.videoUrl;
+                    video.crossOrigin = 'anonymous';
+                    video.muted = true;
+                    video.playsInline = true;
+                    video.preload = 'auto';
+                    await new Promise((resolve, reject) => {
+                        video.addEventListener('loadeddata', resolve, { once: true });
+                        video.addEventListener('error', reject, { once: true });
+                    });
+                    video.currentTime = 0;
+                    await new Promise((resolve) => setTimeout(resolve, 100));
+                    const canvas = document.createElement('canvas');
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    imgEl.src = canvas.toDataURL('image/jpeg', 0.7);
+                } catch (e) {
+                    imgEl.src = 'data:image/svg+xml,%3Csvg width="640" height="360" xmlns="http://www.w3.org/2000/svg"%3E%3Crect width="100%25" height="100%25" fill="%23222"/%3E%3Ctext x="50%25" y="50%25" fill="%23fff" font-size="24" text-anchor="middle" alignment-baseline="middle" dy=".3em"%3ENo Thumbnail%3C/text%3E%3C/svg%3E';
+                }
+            })();
+
+            // Lazy load video only on click
             thumbDiv.addEventListener('click', () => {
-                thumbDiv.querySelector('img').style.display = 'none';
+                imgEl.style.display = 'none';
                 thumbDiv.querySelector('.play-overlay').style.display = 'none';
                 if (!thumbDiv.querySelector('video')) {
                     const videoEl = document.createElement('video');
