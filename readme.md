@@ -133,25 +133,32 @@ flowchart TD
     BROWSER[User's Browser]
   ```mermaid
   flowchart TD
-    subgraph User
-      BROWSER["User's Browser"]
-    end
+    %% User
+    BROWSER["User's Browser"]
 
-    subgraph "UI Hosting & Authentication"
-      S3UI["S3 UI Bucket"]
-      CF["CloudFront Distribution"]
-      EDGE["Lambda@Edge Auth"]
-      COGNITO["Cognito Hosted UI"]
-    end
+    %% UI Hosting & Authentication
+    S3UI["S3 UI Bucket"]
+    CF["CloudFront Distribution"]
+    EDGE["Lambda@Edge Auth"]
+    COGNITO["Cognito Hosted UI"]
 
-    subgraph "API & Processing"
-      API["API Gateway"]
-      LAMBDA["Lambda Function"]
-      SQS["SQS Queue"]
-      DLQ["DLQ"]
-      SECRETS["AWS Secrets Manager"]
-      S3DATA["S3 Event/Video Bucket"]
-    end
+    %% API & Processing
+    API["API Gateway"]
+    LAMBDA["Lambda Function"]
+    SQS["SQS Queue"]
+    DLQ["DLQ"]
+    SECRETS["AWS Secrets Manager"]
+    S3DATA["S3 Event/Video Bucket"]
+
+    %% Monitoring & Security
+    CW["CloudWatch Logs"]
+    METRICS["CloudWatch Metrics"]
+    XRAY["X-Ray"]
+    IAM["IAM"]
+    KMS["KMS"]
+
+    %% Admin
+    ADMIN["Admin"]
 
     %% UI Flow
     BROWSER -- UI Request --> CF
@@ -180,15 +187,15 @@ flowchart TD
     LAMBDA -. Store Screenshot .-> S3DATA
 
     %% Monitoring & Security
-    LAMBDA -. Logs .-> CW["CloudWatch Logs"]
-    LAMBDA -. Metrics .-> METRICS["CloudWatch Metrics"]
-    LAMBDA -. Tracing .-> XRAY["X-Ray"]
-    LAMBDA -. IAM Role .-> IAM["IAM"]
-    S3DATA -. Encryption .-> KMS["KMS"]
+    LAMBDA -. Logs .-> CW
+    LAMBDA -. Metrics .-> METRICS
+    LAMBDA -. Tracing .-> XRAY
+    LAMBDA -. IAM Role .-> IAM
+    S3DATA -. Encryption .-> KMS
     SECRETS -. Encryption .-> KMS
 
     %% Admin
-    ADMIN["Admin"] -. User Management .-> COGNITO
+    ADMIN -. User Management .-> COGNITO
   ```
     PROD_DEPLOY -.->|bf-prod-*| S3
     
