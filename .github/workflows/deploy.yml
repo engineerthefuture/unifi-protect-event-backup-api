@@ -21,8 +21,6 @@ on:
       - 'UnifiWebhookEventReceiver.sln'
       - 'aws-lambda-tools-defaults.json'
       - 'global.json'
-      - 'readme.md'
-      - 'LICENSE'
 
 jobs:
   # Build job: Compiles code, runs tests, and prepares deployment artifacts
