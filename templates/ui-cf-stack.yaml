@@ -232,7 +232,7 @@ Resources:
               - GET
             AllowedOrigins:
               - '*'
-            ExposeHeaders:
+            ExposedHeaders:
               - Content-Range
               - Accept-Ranges
               - Content-Encoding
