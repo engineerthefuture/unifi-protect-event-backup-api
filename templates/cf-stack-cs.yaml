@@ -741,6 +741,10 @@ Outputs:
     Condition: UseCustomDomain
     Description: GET endpoint for fetching and storing camera metadata from Unifi Protect (Custom Domain)
     Value: !Sub "${DomainName}/${EnvPrefix}/metadata"
+  CustomGETSummaryEndpoint:
+    Condition: UseCustomDomain
+    Description: GET endpoint for retrieving the summary data for the UI (Custom Domain)
+    Value: !Sub "${DomainName}/${EnvPrefix}/summary"
   DomainNameTarget:
     Condition: UseCustomDomain
     Description: Target domain name for DNS CNAME record
