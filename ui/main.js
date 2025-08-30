@@ -15,6 +15,33 @@ window.__CONFIG__ = {
     API_KEY: '%%API_KEY%%' // PATCHED BY WORKFLOW
 };
 
+/************************
+ * Cognito token check: redirect to login if missing or expired
+ */
+(function() {
+    function getCookie(name) {
+        const value = `; ${document.cookie}`;
+        const parts = value.split(`; ${name}=`);
+        if (parts.length === 2) return parts.pop().split(';').shift();
+    }
+
+    function isJwtExpired(token) {
+        try {
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            if (!payload.exp) return true;
+            // exp is in seconds since epoch
+            return (Date.now() / 1000) > payload.exp;
+        } catch (e) {
+            return true;
+        }
+    }
+    var token = getCookie('CognitoAccessToken');
+    var loginUrl = '%%COGNITO_LOGIN_URL%%';
+    if (!token || isJwtExpired(token)) {
+        window.location.replace(loginUrl);
+    }
+})();
+
 // Fetch summary data from the API
 async function fetchSummary() {
     const { API_URL, API_KEY } = window.__CONFIG__;
