@@ -299,41 +299,41 @@ Resources:
     Description: S3 bucket for alarm events.
     Type: AWS::S3::Bucket
     Properties:
-            BucketName: !Sub "${BucketName}"
-            BucketEncryption:
-              ServerSideEncryptionConfiguration:
-                - ServerSideEncryptionByDefault:
-                    SSEAlgorithm: AES256
-            PublicAccessBlockConfiguration:
-              BlockPublicAcls: true
-              BlockPublicPolicy: true
-              IgnorePublicAcls: true
-              RestrictPublicBuckets: true
-              CorsConfiguration:
-            CorsRules:
-              - AllowedHeaders:
-                  - '*'
-                AllowedMethods:
-                  - GET
-                AllowedOrigins:
-                  - '*'
-                ExposedHeaders:
-                  - Content-Range
-                  - Accept-Ranges
-                  - Content-Encoding
-                  - Content-Length
-                  - ETag
-                Id: OpenCors
-                MaxAge: '3600'
-            LifecycleConfiguration:
-              Rules:
-                - Id: DeleteAfter30Days
-                  Status: Enabled
-                  ExpirationInDays: !Ref RetentionDays
-                  NoncurrentVersionExpirationInDays: !Ref RetentionDays
-            Tags: 
-              - Key: "Name"
-                Value: !Sub "${BucketName}"
+      BucketName: !Sub "${BucketName}"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders:
+              - '*'
+            AllowedMethods:
+              - GET
+            AllowedOrigins:
+              - '*'
+            ExposedHeaders:
+              - Content-Range
+              - Accept-Ranges
+              - Content-Encoding
+              - Content-Length
+              - ETag
+            Id: OpenCors
+            MaxAge: '3600'
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteAfter30Days
+            Status: Enabled
+            ExpirationInDays: !Ref RetentionDays
+            NoncurrentVersionExpirationInDays: !Ref RetentionDays
+      Tags: 
+        - Key: "Name"
+          Value: !Sub "${BucketName}"
 
   # SQS Queue for delayed alarm processing
   AlarmProcessingQueue:
