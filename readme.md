@@ -126,7 +126,6 @@ The S3 storage bucket is configured with an automatic lifecycle policy that dele
 The lifecycle rule applies to both JSON event files and MP4 video files, ensuring the bucket remains within reasonable storage limits while preserving recent events for analysis and review.
 
 ## 🏛️ Architecture
-
 ```mermaid
 
 flowchart TD
