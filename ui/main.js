@@ -55,16 +55,18 @@ function renderDashboard(data) {
             evDiv.className = 'event-card';
             const trigger = (event.eventData && event.eventData.triggers && event.eventData.triggers[0]) || {};
             evDiv.innerHTML = `
-                <p class="event-title">${event.eventData?.name || ''}</p>
-                <p class="event-meta">
-                    ${triggerBadge(trigger.key)} 
-                    Device: ${trigger.deviceName || 'N/A'}  
-                    Date: ${trigger.date ? new Date(trigger.date).toLocaleString() : ''}
-                </p>
+                <div class="event-meta">
+                    <span class="event-trigger">${triggerBadge(trigger.key)}</span>
+                    <span class="event-device">Device: ${trigger.deviceName || 'N/A'}</span>
+                </div>
+                <div class="event-date">
+                    ${trigger.date ? new Date(trigger.date + (trigger.date.match(/Z|[+-]\d{2}:?\d{2}$/) ? '' : 'Z')).toLocaleString('en-US', { timeZone: 'America/New_York', timeZoneName: 'short' }) : ''}
+                </div>
                 <div class="thumbnail">
                     <img src="" alt="thumbnail" loading="lazy" style="background:#222;min-width:100px;min-height:56px;">
                     <div class="play-overlay">▶</div>
                 </div>
+                <p class="event-name">${event.eventData?.name || ''}</p>
                 <p class="file-name">${event.originalFileName || ''}</p>
             `;
             // Generate thumbnail from first frame
@@ -119,7 +121,6 @@ function renderDashboard(data) {
 }
 
 // Fetch summary data from the API
-
 document.getElementById("summaryTile").innerText = 'Loading summary...';
 document.getElementById('dashboard').innerHTML = `
     <div class="loading-indicator">
@@ -131,6 +132,7 @@ document.getElementById('dashboard').innerHTML = `
     </div>
 `;
 
+// Update progress bar
 let progress = 0;
 let progressInterval = setInterval(() => {
     if (progress < 90) {

@@ -8,7 +8,7 @@
   - JS dynamically fetches and renders event data
   - API endpoint and key are injected at deploy time
   Author: Brent Foster
-  Created: 08-18-2025
+  Created: 08-28-2025
 -->
 
 <!DOCTYPE html>
@@ -17,8 +17,8 @@
 <head>
     <meta charset="UTF-8">
     <title>Unifi Protect Event Backup Dashboard</title>
-    <!-- Favicon -->
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%234a90e2'/%3E%3Ctext x='50%25' y='54%25' text-anchor='middle' font-size='36' fill='white' font-family='Arial' dy='.3em'%3EU%3C/text%3E%3C/svg%3E">
+    <!-- Favicon: Television Emoji -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ctext x='50%25' y='58%25' text-anchor='middle' font-size='44' dominant-baseline='middle' alignment-baseline='middle'%3E%F0%9F%93%BA%3C/text%3E%3C/svg%3E">
     <!-- Main stylesheet for dashboard UI -->
     <link rel="stylesheet" href="style.css">
 </head>
@@ -26,11 +26,11 @@
 <body>
 
     <!-- App header -->
-    <header>Unifi Protect Event Backup Dashboard</header>
+    <header><span style="font-size:1.3em;vertical-align:middle;">📺</span> Unifi Protect Event Backup Dashboard</header>
 
     <!-- Summary tile (populated by JS) -->
     <div class="summary">
-        <div class="summary-tile" id="summaryTile">Total Events (24h): 0</div>
+        <div class="summary-tile" id="summaryTile">Total Events (last 24h): 0</div>
     </div>
 
     <!-- Dashboard container (populated by JS) -->
