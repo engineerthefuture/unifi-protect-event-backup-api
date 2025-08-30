@@ -232,6 +232,12 @@ Resources:
               - GET
             AllowedOrigins:
               - '*'
+            ExposedHeaders:
+              - Content-Range
+              - Accept-Ranges
+              - Content-Encoding
+              - Content-Length
+              - ETag
             Id: OpenCors
             MaxAge: '3600'
       Tags:
