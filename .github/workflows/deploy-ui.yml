@@ -177,7 +177,7 @@ jobs:
               AppName="${{ vars.APP_NAME_UI }}" \
               AppDescription="${{ vars.APP_DESCRIPTION }}" \
               EnvPrefix="${{ steps.env.outputs.ENV_PREFIX }}" \
-              BucketName="bf-${{ steps.env.outputs.ENV_PREFIX }}-${{ vars.APP_NAME_UI }}" \
+              BucketName="bf-${{ steps.env.outputs.ENV_PREFIX }}-s3-${{ vars.APP_NAME_UI }}" \
               DomainName="${{ steps.env.outputs.DOMAIN_NAME_UI }}" \
               HostedZoneId="${{ vars.HOSTED_ZONE_ID }}" \
               SupportEmail="${{ vars.SUPPORT_EMAIL }}" \

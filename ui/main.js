@@ -62,20 +62,28 @@ function renderDashboard(data) {
                     Date: ${trigger.date ? new Date(trigger.date).toLocaleString() : ''}
                 </p>
                 <div class="thumbnail">
-                    <img src="https://via.placeholder.com/640x360?text=Thumbnail" alt="thumbnail">
+                    <img src="https://via.placeholder.com/640x360?text=Thumbnail" alt="thumbnail" loading="lazy">
                     <div class="play-overlay">▶</div>
-                    <video src="${event.videoUrl}" controls></video>
                 </div>
                 <p class="file-name">${event.originalFileName || ''}</p>
             `;
-            // click handler for thumbnail -> video swap
+            // Lazy load video only on click
             const thumbDiv = evDiv.querySelector('.thumbnail');
-            const videoEl = evDiv.querySelector('video');
             thumbDiv.addEventListener('click', () => {
                 thumbDiv.querySelector('img').style.display = 'none';
                 thumbDiv.querySelector('.play-overlay').style.display = 'none';
-                videoEl.classList.add('show');
-                videoEl.play();
+                if (!thumbDiv.querySelector('video')) {
+                    const videoEl = document.createElement('video');
+                    videoEl.src = event.videoUrl;
+                    videoEl.controls = true;
+                    videoEl.classList.add('show');
+                    thumbDiv.appendChild(videoEl);
+                    videoEl.play();
+                } else {
+                    const videoEl = thumbDiv.querySelector('video');
+                    videoEl.classList.add('show');
+                    videoEl.play();
+                }
             });
             camDiv.appendChild(evDiv);
         });
@@ -84,9 +92,38 @@ function renderDashboard(data) {
 }
 
 // Fetch summary data from the API
+
+document.getElementById("summaryTile").innerText = 'Loading summary...';
+document.getElementById('dashboard').innerHTML = `
+    <div class="loading-indicator">
+        Loading events...
+        <div id="progressBarContainer" style="width:100%;background:#eee;border-radius:8px;margin-top:8px;">
+            <div id="progressBar" style="width:0%;height:16px;background:#4a90e2;border-radius:8px;transition:width 0.2s;"></div>
+        </div>
+        <div id="progressPercent" style="font-size:12px;margin-top:4px;">0%</div>
+    </div>
+`;
+
+let progress = 0;
+let progressInterval = setInterval(() => {
+    if (progress < 90) {
+        progress += Math.random() * 5 + 2; // Increment by 2-7%
+        if (progress > 90) progress = 90;
+        document.getElementById('progressBar').style.width = progress + '%';
+        document.getElementById('progressPercent').innerText = Math.floor(progress) + '%';
+    }
+}, 200);
 fetchSummary()
-    .then(renderDashboard)
+    .then(data => {
+        clearInterval(progressInterval);
+        document.getElementById('progressBar').style.width = '100%';
+        document.getElementById('progressPercent').innerText = '100%';
+        setTimeout(() => renderDashboard(data), 300);
+    })
     .catch(err => {
+        clearInterval(progressInterval);
         document.getElementById("summaryTile").innerText = 'Failed to load summary';
+        document.getElementById('progressBar').style.width = '100%';
+        document.getElementById('progressPercent').innerText = 'Error';
         document.getElementById('dashboard').innerHTML = `<div style="color:#f55">${err.message}</div>`;
     });
