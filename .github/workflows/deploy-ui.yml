@@ -229,7 +229,7 @@ jobs:
 
       - name: Copy UI contents to S3 bucket
         run: |
-          BUCKET_NAME=bf-${{ steps.env.outputs.ENV_PREFIX }}-${{ vars.APP_NAME_UI }}
+          BUCKET_NAME=bf-${{ steps.env.outputs.ENV_PREFIX }}-s3-${{ vars.APP_NAME_UI }}
           aws s3 sync ui/ s3://$BUCKET_NAME/ --delete
 
       - name: Invalidate CloudFront cache
