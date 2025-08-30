@@ -131,65 +131,65 @@ The lifecycle rule applies to both JSON event files and MP4 video files, ensurin
 flowchart TD
   subgraph User
     BROWSER[User's Browser]
-  end
+  ```mermaid
+  flowchart TD
+    subgraph User
+      BROWSER["User's Browser"]
+    end
 
-  subgraph "UI Hosting & Authentication"
-    S3UI[S3 (UI Bucket)]
-    CF[CloudFront Distribution]
-    EDGE[Lambda@Edge Auth]
-    COGNITO[Cognito Hosted UI]
-  end
+    subgraph "UI Hosting & Authentication"
+      S3UI["S3 UI Bucket"]
+      CF["CloudFront Distribution"]
+      EDGE["Lambda@Edge Auth"]
+      COGNITO["Cognito Hosted UI"]
+    end
 
-  subgraph "API & Processing"
-    API[API Gateway]
-    LAMBDA[Lambda Function]
-    DLQ -->|Manual Investigation<br/>14-day Retention| METRICS
-    DELAYED -->|Video Download Failure<br/>No video files were downloaded| RETRY_DLQ
-    RETRY_DLQ -->|Original Message + Metadata<br/>FailureReason, OriginalTimestamp| METRICS
-    RETRY_DLQ -.->|Manual Retry<br/>Re-queue to Main Queue| QUEUE
-    
-    %% Security flows
-    SECRETS --> KMS
-    S3 --> IAM
-    HANDLER --> IAM
-    DELAYED --> IAM
-    
-    %% Monitoring flows
-    HANDLER --> CW
-    DELAYED --> CW
-    WEBHOOK --> CW
-    API --> METRICS
-    QUEUE --> METRICS
-    DLQ --> METRICS
-    S3 --> METRICS
-    HANDLER --> METRICS
-    BROWSER --> CW
-    
-    %% Security flows
-    HANDLER -.-> IAM
-    S3 -.-> ENCRYPT
-    
-    %% CI/CD flows
-    GH --> TEST
-    TEST --> BUILD
-    BUILD --> DEV_DEPLOY
-    BUILD --> PROD_DEPLOY
-    DEV_DEPLOY -.-> API
-    PROD_DEPLOY -.-> API
-    
-    %% GET endpoints
-    API -->|GET /?eventKey=xxx| HANDLER
-    API -->|GET /latestvideo| HANDLER
-    API -->|GET /metadata| HANDLER
-    HANDLER -->|Retrieve Event| S3
-    HANDLER -->|Download Latest Video| S3
-    HANDLER -->|Fetch Camera Metadata| UDM
-    HANDLER -->|Store Metadata| S3
-    S3 -->|JSON/Video Response| API
-    UDM -->|Camera Metadata| HANDLER
-    
-    %% Environment separation
-    DEV_DEPLOY -.->|bf-dev-*| S3
+    subgraph "API & Processing"
+      API["API Gateway"]
+      LAMBDA["Lambda Function"]
+      SQS["SQS Queue"]
+      DLQ["DLQ"]
+      SECRETS["AWS Secrets Manager"]
+      S3DATA["S3 Event/Video Bucket"]
+    end
+
+    %% UI Flow
+    BROWSER -- UI Request --> CF
+    CF -- invokes --> EDGE
+    EDGE -- valid token? --> S3UI
+    EDGE -- not authenticated --> COGNITO
+    COGNITO -- login/callback --> EDGE
+    S3UI -- UI static files --> BROWSER
+
+    %% API Flow
+    BROWSER -- API Request --> API
+    API -- Lambda Proxy --> LAMBDA
+    LAMBDA -- S3 Event/Video --> S3DATA
+    LAMBDA -- SQS Message --> SQS
+    SQS -- Retry/Fail --> DLQ
+    LAMBDA -- Secrets --> SECRETS
+    LAMBDA -- Response --> API
+    API -- Data --> BROWSER
+
+    %% Webhook/Event Flow
+    UDM["Unifi Dream Machine"] -. Webhook .-> API
+    API -. Immediate Response .-> UDM
+    LAMBDA -. Device Mapping .-> S3DATA
+    LAMBDA -. Video Download .-> S3DATA
+    LAMBDA -. Store Event .-> S3DATA
+    LAMBDA -. Store Screenshot .-> S3DATA
+
+    %% Monitoring & Security
+    LAMBDA -. Logs .-> CW["CloudWatch Logs"]
+    LAMBDA -. Metrics .-> METRICS["CloudWatch Metrics"]
+    LAMBDA -. Tracing .-> XRAY["X-Ray"]
+    LAMBDA -. IAM Role .-> IAM["IAM"]
+    S3DATA -. Encryption .-> KMS["KMS"]
+    SECRETS -. Encryption .-> KMS
+
+    %% Admin
+    ADMIN["Admin"] -. User Management .-> COGNITO
+  ```
     PROD_DEPLOY -.->|bf-prod-*| S3
     
     %% Styling
