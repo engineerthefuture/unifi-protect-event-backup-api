@@ -78,10 +78,10 @@ jobs:
           dotnet build UnifiWebhookEventReceiver.csproj --configuration Release --no-restore
           dotnet build test/UnifiWebhookEventReceiverTests.csproj --configuration Release --no-restore
 
-      - name: Run regression tests with coverage
+      - name: Run APIregression tests with coverage
         id: test
         run: |
-          echo "Running regression tests with code coverage analysis..."
+          echo "Running API regression tests with code coverage analysis..."
           
           # Create directories for coverage results
           mkdir -p ./coverage-results
@@ -151,7 +151,7 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            let summary = '## 📊 Regression Test Results & Code Coverage\n\n';
+            let summary = '## 📊 API Regression Test Results & Code Coverage\n\n';
             
             try {
               // Parse coverage data
@@ -241,12 +241,12 @@ jobs:
             core.summary.addRaw(summary);
             await core.summary.write();
 
-      - name: Publish test results
+      - name: Publish API regression test results
         uses: dorny/test-reporter@v1
         if: always()
         continue-on-error: true
         with:
-          name: Regression Test Results
+          name: API Regression Test Results
           path: ./test-results/*.trx
           reporter: dotnet-trx
           fail-on-error: true
@@ -394,7 +394,7 @@ jobs:
             echo "✅ Complexity score ${complexity_score} is within acceptable limits"
           fi
 
-      - name: Regression Test Summary
+      - name: API Regression Test Summary
         if: always()
         run: |
           if [ "${{ steps.test.outcome }}" == "success" ]; then

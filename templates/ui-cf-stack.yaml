@@ -105,7 +105,7 @@ Resources:
       FunctionName: !Sub "bf-${EnvPrefix}-${AppName}-auth-lambda-edge-${LambdaEdgeHex}"
       Handler: index.handler
       Role: !GetAtt AuthorizationLambdaEdgeRole.Arn
-      Runtime: nodejs18.x
+      Runtime: nodejs22.x
       Description: !Sub "Lambda@Edge function to authorize CloudFront requests using Cognito User Pool (version: ${LambdaEdgeHex})"
       MemorySize: 128
       Timeout: 5

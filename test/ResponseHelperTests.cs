@@ -47,6 +47,54 @@ namespace UnifiWebhookEventReceiverTests
 
         #endregion
 
+        #region Additional Edge Case Tests
+
+        [Fact]
+        public void CreateSuccessResponse_WithAllNullTriggerAndZeroTimestamp_DoesNotThrow()
+        {
+            // Arrange
+            var trigger = new Trigger
+            {
+                key = string.Empty,
+                device = string.Empty,
+                eventId = string.Empty,
+                deviceName = null,
+                eventKey = null
+            };
+            long timestamp = 0;
+
+            // Act
+            var result = _responseHelper.CreateSuccessResponse(trigger, timestamp);
+
+            // Assert
+            Assert.Equal(200, result.StatusCode);
+            Assert.Contains("occurred at", result.Body);
+        }
+
+        [Fact]
+        public void CreateSuccessResponse_WithEmptyTriggerAndNegativeTimestamp_DoesNotThrow()
+        {
+            // Arrange
+            var trigger = new Trigger
+            {
+                key = string.Empty,
+                device = string.Empty,
+                eventId = string.Empty,
+                deviceName = string.Empty,
+                eventKey = string.Empty
+            };
+            long timestamp = -1;
+
+            // Act
+            var result = _responseHelper.CreateSuccessResponse(trigger, timestamp);
+
+            // Assert
+            Assert.Equal(200, result.StatusCode);
+            Assert.Contains("occurred at", result.Body);
+        }
+
+        #endregion
+
         #region CreateErrorResponse Tests
 
         [Fact]

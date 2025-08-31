@@ -6,5 +6,8 @@
     "dependencies": {
         "jsonwebtoken": "^9.0.2",
         "jwk-to-pem": "^2.0.6"
+    },
+    "engines": {
+        "node": ">=22.0.0 <23.0.0"
     }
 }
