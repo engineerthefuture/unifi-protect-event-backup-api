@@ -40,9 +40,6 @@ for (var i = 0; i < keys.length; i++) {
     pems[key_id] = pem;
 }
 
-// Standard 401 Unauthorized response for CloudFront
-// Standard 401 Unauthorized response for CloudFront (not used for UI, always redirect instead)
-const response401 = responseRedirect;
 
 // Cognito Hosted UI domain and client ID (replace with your values or set as env variables)
 const cognitoDomain = '##COGNITO_DOMAIN##';
@@ -60,6 +57,9 @@ const responseRedirect = {
     },
     body: ''
 };
+
+// Standard 401 Unauthorized response for CloudFront (not used for UI, always redirect instead)
+const response401 = responseRedirect;
 
 console.log('Lambda@Edge Auth Function starting');
 console.log('Deployed version: ##LAMBDA_EDGE_HEX## at ##LAMBDA_EDGE_DEPLOY_TS##');
