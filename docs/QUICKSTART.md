@@ -410,16 +410,17 @@ aws s3api get-bucket-policy \
 
 | Service | Usage | Cost |
 |---------|-------|------|
-| **Lambda** | 1,000 executions/month | $0.20 |
-| **API Gateway** | 1,000 requests/month | $3.50 |
-| **S3 Storage** | 10 GB storage | $0.25 |
-| **S3 Requests** | 1,000 PUT/GET requests | $0.01 |
-| **Secrets Manager** | 1 secret | $0.40 |
-| **CloudWatch Logs** | Basic logging | $0.50 |
-| **Data Transfer** | 1 GB outbound | $0.09 |
-| **Total** | | **~$4.95/month** |
+| **Lambda** | 1,000 executions/month | $0.00* |
+| **API Gateway** | 1,000 requests/month | $0.00* |
+| **S3 Storage** | 10 GB storage | $0.00* |
+| **S3 Requests** | 1,000 PUT/GET requests | $0.00* |
+| **Secrets Manager** | 1 secret | $0.00* |
+| **CloudWatch Logs** | Basic logging | $0.00* |
+| **Data Transfer** | 1 GB outbound | $0.00* |
+| **Total** | | **~$0.00/month** |
 
-> **Note**: Costs may vary based on region, usage patterns, and video file sizes. Enable AWS Cost Explorer for detailed monitoring.
+
+> **Note**: All of the above usage levels fall within the AWS Free Tier limits for the first 12 months for new accounts (and some services remain free beyond that). Actual costs may vary based on region, usage patterns, and video file sizes. Enable AWS Cost Explorer for detailed monitoring. See [AWS Free Tier](https://aws.amazon.com/free/) for details.
 
 
 **Congratulations!** 🎉 Your Unifi Protect Event Backup API is now deployed and configured. Your alarm events and videos will be automatically backed up to AWS S3 with secure, scalable, and reliable infrastructure.
