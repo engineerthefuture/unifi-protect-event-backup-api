@@ -78,10 +78,10 @@ jobs:
           dotnet build UnifiWebhookEventReceiver.csproj --configuration Release --no-restore
           dotnet build test/UnifiWebhookEventReceiverTests.csproj --configuration Release --no-restore
 
-      - name: Run unit tests with coverage
+      - name: Run regression tests with coverage
         id: test
         run: |
-          echo "Running unit tests with code coverage analysis..."
+          echo "Running regression tests with code coverage analysis..."
           
           # Create directories for coverage results
           mkdir -p ./coverage-results
@@ -99,7 +99,7 @@ jobs:
           
           TEST_EXIT_CODE=$?
           if [ $TEST_EXIT_CODE -ne 0 ]; then
-            echo "::error::Unit tests failed with exit code $TEST_EXIT_CODE"
+            echo "::error::Regression tests failed with exit code $TEST_EXIT_CODE"
             exit $TEST_EXIT_CODE
           fi
           
@@ -143,7 +143,7 @@ jobs:
             echo "EOF" >> $GITHUB_ENV
           fi
           
-          echo "All unit tests passed successfully!"
+          echo "All regression tests passed successfully!"
 
       - name: Create coverage summary
         if: always()
@@ -151,7 +151,7 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            let summary = '## 📊 Test Results & Code Coverage\n\n';
+            let summary = '## 📊 Regression Test Results & Code Coverage\n\n';
             
             try {
               // Parse coverage data
@@ -246,7 +246,7 @@ jobs:
         if: always()
         continue-on-error: true
         with:
-          name: Unit Test Results
+          name: Regression Test Results
           path: ./test-results/*.trx
           reporter: dotnet-trx
           fail-on-error: true
@@ -394,7 +394,7 @@ jobs:
             echo "✅ Complexity score ${complexity_score} is within acceptable limits"
           fi
 
-      - name: Test Summary
+      - name: Regression Test Summary
         if: always()
         run: |
           if [ "${{ steps.test.outcome }}" == "success" ]; then

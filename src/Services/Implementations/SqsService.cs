@@ -33,6 +33,34 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         private readonly ILambdaLogger _logger;
 
         /// <summary>
+        /// Gets the number of messages currently in the DLQ.
+        /// </summary>
+        /// <returns>Approximate number of messages in the DLQ</returns>
+        public async Task<int> GetDlqMessageCountAsync()
+        {
+            var dlqUrl = AppConfiguration.AlarmProcessingDlqUrl;
+            if (string.IsNullOrEmpty(dlqUrl))
+            {
+                _logger.LogLine("DLQ URL is not configured.");
+                return 0;
+            }
+            try
+            {
+                var attrs = await _sqsClient.GetQueueAttributesAsync(dlqUrl, new List<string> { "ApproximateNumberOfMessages" });
+                if (attrs.Attributes.TryGetValue("ApproximateNumberOfMessages", out var countStr) && int.TryParse(countStr, out var count))
+                {
+                    return count;
+                }
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogLine($"Error fetching DLQ message count: {ex.Message}");
+                return 0;
+            }
+        }
+
+        /// <summary>
         /// Initializes a new instance of the SqsService.
         /// </summary>
         /// <param name="sqsClient">AWS SQS client</param>
