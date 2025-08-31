@@ -26,6 +26,12 @@ namespace UnifiWebhookEventReceiver.Services
         /// <returns>API Gateway response indicating processing status</returns>
         Task<APIGatewayProxyResponse> ProcessSqsEventAsync(string requestBody);
 
+    /// <summary>
+    /// Gets the number of messages currently in the DLQ.
+    /// </summary>
+    /// <returns>Approximate number of messages in the DLQ</returns>
+    Task<int> GetDlqMessageCountAsync();
+
         /// <summary>
         /// Determines if the request body represents an SQS event.
         /// </summary>

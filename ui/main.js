@@ -64,7 +64,19 @@ function triggerBadge(key) {
 
 // Render the dashboard with the fetched data
 function renderDashboard(data) {
-    document.getElementById("summaryTile").innerText = `Total Events (24h): ${data.totalCount}`;
+    // Show the time the API request was performed
+    const now = new Date();
+    const timeStr = now.toLocaleString(undefined, { hour12: false });
+    document.getElementById("summaryTile").innerText = `Total Events (last 24h as of ${timeStr}): ${data.totalCount}`;
+    // Show summary message if present
+    const summaryMsgDiv = document.getElementById('summaryMessage');
+    if (data.summaryMessage) {
+        summaryMsgDiv.textContent = data.summaryMessage;
+        summaryMsgDiv.style.display = '';
+    } else {
+        summaryMsgDiv.textContent = '';
+        summaryMsgDiv.style.display = 'none';
+    }
     const container = document.getElementById('dashboard');
     container.innerHTML = '';
     (data.cameras || []).forEach(camera => {
@@ -113,8 +125,12 @@ function renderDashboard(data) {
                     video.load();
                     await new Promise((resolve, reject) => {
                         let resolved = false;
-                        const done = () => { if (!resolved) { resolved = true;
-                                resolve(); } };
+                        const done = () => {
+                            if (!resolved) {
+                                resolved = true;
+                                resolve();
+                            }
+                        };
                         video.addEventListener('loadeddata', done, { once: true });
                         video.addEventListener('canplay', done, { once: true });
                         video.addEventListener('error', reject, { once: true });

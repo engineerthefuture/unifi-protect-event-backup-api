@@ -63,9 +63,10 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
 
             return await BuildEventVideoResponse(eventKey!, videoKey!, eventId, timestamp, eventData);
         }
-        private readonly IAmazonS3 _s3Client;
-        private readonly IResponseHelper _responseHelper;
-        private readonly ILambdaLogger _logger;
+    private readonly IAmazonS3 _s3Client;
+    private readonly IResponseHelper _responseHelper;
+    private readonly ILambdaLogger _logger;
+    private readonly ISqsService? _sqsService;
 
         /// <summary>
         /// Initializes a new instance of the S3StorageService.
@@ -78,6 +79,15 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             _s3Client = s3Client ?? throw new ArgumentNullException(nameof(s3Client));
             _responseHelper = responseHelper ?? throw new ArgumentNullException(nameof(responseHelper));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _sqsService = null;
+        }
+
+        public S3StorageService(IAmazonS3 s3Client, IResponseHelper responseHelper, ILambdaLogger logger, ISqsService sqsService)
+        {
+            _s3Client = s3Client ?? throw new ArgumentNullException(nameof(s3Client));
+            _responseHelper = responseHelper ?? throw new ArgumentNullException(nameof(responseHelper));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _sqsService = sqsService ?? throw new ArgumentNullException(nameof(sqsService));
         }
 
         // --- Public interface methods ---
@@ -239,7 +249,22 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 }
                 var perCameraCounts = string.Join(", ", cameras.Values.Select(c => $"{c.cameraName} ({c.cameraId}): {c.count24h}"));
                 var triggerKeySummary = string.Join(", ", triggerKeyCounts.Select(kvp => $"{kvp.Key}: {kvp.Value}"));
-                var summaryMessage = $"In the past 24 hours, there were {totalCount} total events across all cameras: {objectsCount} 'Objects' events and {activityCount} 'Activity' events. Per camera: {perCameraCounts}. Trigger keys: {triggerKeySummary}.";
+
+                // Get DLQ message count if SQS service is available
+                int dlqMessageCount = 0;
+                if (_sqsService != null)
+                {
+                    try
+                    {
+                        dlqMessageCount = await _sqsService.GetDlqMessageCountAsync();
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogLine($"Error retrieving DLQ message count: {ex.Message}");
+                    }
+                }
+
+                var summaryMessage = $"In the past 24 hours, there were {totalCount} total events across all cameras: {objectsCount} 'Objects' events and {activityCount} 'Activity' events. Per camera: {perCameraCounts}. Trigger keys: {triggerKeySummary}. DLQ messages: {dlqMessageCount}.";
                 var response = new {
                     cameras = cameras.Values,
                     missing = missingEvents,
@@ -247,6 +272,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                     objectsCount,
                     activityCount,
                     triggerKeyCounts,
+                    dlqMessageCount,
                     summaryMessage
                 };
                 return new APIGatewayProxyResponse {

@@ -52,29 +52,33 @@ namespace UnifiWebhookEventReceiver.Infrastructure
             // Create foundational services
             var responseHelper = new ResponseHelper();
             var credentialsService = new CredentialsService(secretsClient, logger);
+
+            // Create S3StorageService with no SQS dependency for most operations
             var s3StorageService = new S3StorageService(s3Client, responseHelper, logger);
+
+            // Create other services
             var emailService = new EmailService(sesClient, cloudWatchLogsClient, logger, s3StorageService);
             var unifiProtectService = new UnifiProtectService(logger, s3StorageService, credentialsService);
-
-            // Create alarm processing service 
             var alarmProcessingService = new AlarmProcessingService(
                 s3StorageService, 
                 unifiProtectService, 
                 credentialsService, 
                 responseHelper, 
                 logger);
-
-            // Create SQS service
+            // Now create SqsService with all dependencies
             var sqsService = new SqsService(sqsClient, alarmProcessingService, emailService, responseHelper, logger);
 
-            // Create request router
-            var requestRouter = new RequestRouter(sqsService, s3StorageService, unifiProtectService, responseHelper, logger);
+            // For summary, create a new S3StorageService with SQS dependency
+            var s3StorageServiceWithSqs = new S3StorageService(s3Client, responseHelper, logger, sqsService);
+
+            // Create request router (use s3StorageServiceWithSqs if summary is needed)
+            var requestRouter = new RequestRouter(sqsService, s3StorageServiceWithSqs, unifiProtectService, responseHelper, logger);
 
             return (
                 RequestRouter: requestRouter,
                 SqsService: sqsService,
                 AlarmProcessingService: alarmProcessingService,
-                S3StorageService: s3StorageService,
+                S3StorageService: s3StorageServiceWithSqs,
                 UnifiProtectService: unifiProtectService,
                 CredentialsService: credentialsService,
                 EmailService: emailService,

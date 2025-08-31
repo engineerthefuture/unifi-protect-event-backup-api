@@ -41,10 +41,8 @@ for (var i = 0; i < keys.length; i++) {
 }
 
 // Standard 401 Unauthorized response for CloudFront
-const response401 = {
-    status: '401',
-    statusDescription: 'Unauthorized'
-};
+// Standard 401 Unauthorized response for CloudFront (not used for UI, always redirect instead)
+const response401 = responseRedirect;
 
 // Cognito Hosted UI domain and client ID (replace with your values or set as env variables)
 const cognitoDomain = '##COGNITO_DOMAIN##';
