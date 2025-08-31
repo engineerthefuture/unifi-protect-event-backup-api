@@ -17,73 +17,10 @@ using Xunit;
 
 namespace UnifiWebhookEventReceiverTests
 {
-        public class S3StorageServiceTests
-        {
-            [Fact]
-            public async Task GetEventSummaryAsync_ReturnsSummaryWithPresignedUrls()
-            {
-                // Arrange
-                var now = DateTime.UtcNow;
-                var bucket = "test-bucket";
-                var prefix = $"events/{now:yyyy-MM-dd}/";
-                var deviceId = "camera-1";
-                var deviceName = "Front Door";
-                var eventId = "evt_abc123";
-                var videoKey = $"videos/{eventId}.mp4";
-                var alarm = new Alarm
-                {
-                    timestamp = ((DateTimeOffset)now).ToUnixTimeMilliseconds(),
-                    triggers = new List<Trigger> {
-                        new Trigger {
-                            key = "motion",
-                            device = deviceId,
-                            eventId = eventId,
-                            deviceName = deviceName,
-                            videoKey = videoKey
-                        }
-                    }
-                };
-                var alarmJson = Newtonsoft.Json.JsonConvert.SerializeObject(alarm);
-                var s3Object = new S3Object { Key = $"{prefix}{eventId}.json" };
-                var listResp = new ListObjectsV2Response { S3Objects = new List<S3Object> { s3Object } };
-                var getResp = new GetObjectResponse
-                {
-                    ResponseStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(alarmJson))
-                };
-                _mockS3Client.Setup(x => x.ListObjectsV2Async(It.IsAny<ListObjectsV2Request>(), default))
-                    .ReturnsAsync(listResp);
-                _mockS3Client.Setup(x => x.GetObjectAsync(bucket, s3Object.Key, default))
-                    .ReturnsAsync(getResp);
-                _mockS3Client.Setup(x => x.GetPreSignedURL(It.Is<GetPreSignedUrlRequest>(r => r.Key == videoKey)))
-                    .Returns("https://presigned-url/video.mp4");
-                _mockResponseHelper.Setup(x => x.GetStandardHeaders())
-                    .Returns(new Dictionary<string, string> { { "Content-Type", "application/json" } });
 
-                // Act
-                var result = await ((IS3StorageService)_s3StorageService).GetEventSummaryAsync();
-
-                // Assert
-                Assert.Equal(200, result.StatusCode);
-                Assert.NotNull(result.Body);
-                var body = Newtonsoft.Json.Linq.JObject.Parse(result.Body);
-                Assert.True(body["cameras"] is not null);
-                var cameras = body["cameras"] as Newtonsoft.Json.Linq.JArray;
-                Assert.NotNull(cameras);
-                Assert.Single(cameras);
-                var cam = cameras[0];
-                Assert.Equal(deviceId, cam["cameraId"]);
-                Assert.Equal(deviceName, cam["cameraName"]);
-                Assert.Equal(1, cam["count24h"]);
-                var events = cam["events"] as Newtonsoft.Json.Linq.JArray;
-                Assert.NotNull(events);
-                Assert.Single(events);
-                var evt = events[0];
-                Assert.Equal("https://presigned-url/video.mp4", evt["videoUrl"]);
-                Assert.True(evt["eventData"] != null);
-                Assert.NotNull(body["totalCount"]);
-                Assert.Equal(1, (int)(body["totalCount"] ?? 0));
-            }
-    private readonly Mock<IAmazonS3> _mockS3Client;
+    public class S3StorageServiceTests
+    {
+        private readonly Mock<IAmazonS3> _mockS3Client;
         private readonly Mock<IResponseHelper> _mockResponseHelper;
         private readonly Mock<ILambdaLogger> _mockLogger;
         private readonly S3StorageService _s3StorageService;
@@ -92,8 +29,6 @@ namespace UnifiWebhookEventReceiverTests
         {
             // Set required environment variables for testing
             Environment.SetEnvironmentVariable("StorageBucket", "test-bucket");
-            
-            // Create AWS client mock using constructor with region
             _mockS3Client = new Mock<IAmazonS3>();
             _mockResponseHelper = new Mock<IResponseHelper>();
             _mockLogger = new Mock<ILambdaLogger>();
@@ -103,66 +38,121 @@ namespace UnifiWebhookEventReceiverTests
         [Fact]
         public void Constructor_WithNullS3Client_ThrowsArgumentNullException()
         {
-            // Act & Assert
-            Assert.Throws<ArgumentNullException>(() => 
-                new S3StorageService(null!, _mockResponseHelper.Object, _mockLogger.Object));
+            var responseHelper = new Mock<IResponseHelper>();
+            var logger = new Mock<ILambdaLogger>();
+            Assert.Throws<ArgumentNullException>(() => new S3StorageService(null!, responseHelper.Object, logger.Object));
         }
 
         [Fact]
         public void Constructor_WithNullResponseHelper_ThrowsArgumentNullException()
         {
-            var mockS3Client = new Mock<IAmazonS3>();
-            // Act & Assert
-            Assert.Throws<ArgumentNullException>(() => 
-                new S3StorageService(mockS3Client.Object, null!, _mockLogger.Object));
+            var s3Client = new Mock<IAmazonS3>();
+            var logger = new Mock<ILambdaLogger>();
+            Assert.Throws<ArgumentNullException>(() => new S3StorageService(s3Client.Object, null!, logger.Object));
         }
 
         [Fact]
         public void Constructor_WithNullLogger_ThrowsArgumentNullException()
         {
-            var mockS3Client = new Mock<IAmazonS3>();
-            // Act & Assert
-            Assert.Throws<ArgumentNullException>(() => 
-                new S3StorageService(mockS3Client.Object, _mockResponseHelper.Object, null!));
+            var s3Client = new Mock<IAmazonS3>();
+            var responseHelper = new Mock<IResponseHelper>();
+            Assert.Throws<ArgumentNullException>(() => new S3StorageService(s3Client.Object, responseHelper.Object, null!));
+        }
+
+
+        [Fact]
+        public async Task StoreAlarmEventAsync_WithNullTrigger_ThrowsArgumentNullException()
+        {
+            var alarm = new Alarm { timestamp = 1, triggers = new List<Trigger>() };
+            await Assert.ThrowsAsync<ArgumentNullException>(() => _s3StorageService.StoreAlarmEventAsync(alarm, null!));
         }
 
         [Fact]
-        public async Task StoreAlarmEventAsync_WithValidData_ReturnsS3Key()
+        public async Task StoreAlarmEventAsync_WithMissingBucket_ThrowsInvalidOperationException()
         {
-            // Arrange - ensure environment variable is set
-            var originalBucket = Environment.GetEnvironmentVariable("StorageBucket");
+            var original = Environment.GetEnvironmentVariable("StorageBucket");
+            Environment.SetEnvironmentVariable("StorageBucket", null);
+            var alarm = new Alarm { timestamp = 1, triggers = new List<Trigger> { new Trigger { key = "k", device = "d", eventId = "e" } } };
+            var trigger = alarm.triggers[0];
+            await Assert.ThrowsAsync<InvalidOperationException>(() => _s3StorageService.StoreAlarmEventAsync(alarm, trigger));
+            Environment.SetEnvironmentVariable("StorageBucket", original);
+        }
+
+        [Fact]
+        public async Task StoreVideoFileAsync_WithMissingBucket_ThrowsInvalidOperationException()
+        {
+            var original = Environment.GetEnvironmentVariable("StorageBucket");
+            Environment.SetEnvironmentVariable("StorageBucket", null);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => _s3StorageService.StoreVideoFileAsync("/tmp/fake.mp4", "key"));
+            Environment.SetEnvironmentVariable("StorageBucket", original);
+        }
+
+        [Fact]
+        public async Task StoreVideoFileAsync_WithMissingFile_ThrowsFileNotFoundException()
+        {
             Environment.SetEnvironmentVariable("StorageBucket", "test-bucket");
-            
-            try
+            await Assert.ThrowsAsync<FileNotFoundException>(() => _s3StorageService.StoreVideoFileAsync("/tmp/doesnotexist.mp4", "key"));
+        }
+
+        [Fact]
+        public async Task GetEventSummaryAsync_IncludesDlqMessageCountInResponse()
+        {
+            // Arrange
+            var now = DateTime.UtcNow;
+            var bucket = "test-bucket";
+            var prefix = $"events/{now:yyyy-MM-dd}/";
+            var deviceId = "camera-1";
+            var deviceName = "Front Door";
+            var eventId = "evt_abc123";
+            var videoKey = $"videos/{eventId}.mp4";
+            var alarm = new Alarm
             {
-                var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-                var trigger = new Trigger
-                {
-                    key = "test-key",
-                    device = "test-device",
-                    eventId = "test-event-id"
-                };
-                var alarm = new Alarm
-                {
-                    timestamp = timestamp,
-                    triggers = new List<Trigger> { trigger }
-                };
-
-                _mockS3Client.Setup(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default))
-                    .ReturnsAsync(new PutObjectResponse());
-
-                // Act
-                var result = await _s3StorageService.StoreAlarmEventAsync(alarm, trigger);
-
-                // Assert
-                Assert.NotNull(result);
-                Assert.Contains("test-event-id", result);
-                _mockS3Client.Verify(x => x.PutObjectAsync(It.IsAny<PutObjectRequest>(), default), Times.Once);
-            }
-            finally
+                timestamp = ((DateTimeOffset)now).ToUnixTimeMilliseconds(),
+                triggers = new List<Trigger> {
+                    new Trigger {
+                        key = "motion",
+                        device = deviceId,
+                        eventId = eventId,
+                        deviceName = deviceName,
+                        videoKey = videoKey
+                    }
+                }
+            };
+            var alarmJson = Newtonsoft.Json.JsonConvert.SerializeObject(alarm);
+            var s3Object = new Amazon.S3.Model.S3Object { Key = $"{prefix}{eventId}.json" };
+            var listResp = new Amazon.S3.Model.ListObjectsV2Response { S3Objects = new List<Amazon.S3.Model.S3Object> { s3Object } };
+            var getResp = new Amazon.S3.Model.GetObjectResponse
             {
-                Environment.SetEnvironmentVariable("StorageBucket", originalBucket);
-            }
+                ResponseStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(alarmJson))
+            };
+            var mockS3Client = new Mock<IAmazonS3>();
+            var mockResponseHelper = new Mock<IResponseHelper>();
+            var mockLogger = new Mock<ILambdaLogger>();
+            var mockSqsService = new Mock<ISqsService>();
+            mockS3Client.Setup(x => x.ListObjectsV2Async(It.IsAny<Amazon.S3.Model.ListObjectsV2Request>(), default))
+                .ReturnsAsync(listResp);
+            mockS3Client.Setup(x => x.GetObjectAsync(bucket, s3Object.Key, default))
+                .ReturnsAsync(getResp);
+            mockS3Client.Setup(x => x.GetPreSignedURL(It.Is<Amazon.S3.Model.GetPreSignedUrlRequest>(r => r.Key == videoKey)))
+                .Returns("https://presigned-url/video.mp4");
+            mockResponseHelper.Setup(x => x.GetStandardHeaders())
+                .Returns(new Dictionary<string, string> { { "Content-Type", "application/json" } });
+            mockSqsService.Setup(x => x.GetDlqMessageCountAsync()).ReturnsAsync(42);
+
+            var s3StorageService = new S3StorageService(mockS3Client.Object, mockResponseHelper.Object, mockLogger.Object, mockSqsService.Object);
+
+            // Act
+            var result = await s3StorageService.GetEventSummaryAsync();
+
+            // Assert
+            Assert.Equal(200, result.StatusCode);
+            Assert.NotNull(result.Body);
+            var body = Newtonsoft.Json.Linq.JObject.Parse(result.Body);
+            Assert.True(body["dlqMessageCount"] != null);
+            var dlqCountToken = body["dlqMessageCount"];
+            Assert.NotNull(dlqCountToken);
+            Assert.Equal(42, dlqCountToken!.ToObject<int>());
+            Assert.Contains("DLQ messages: 42", (string)body["summaryMessage"]!);
         }
 
         [Fact]

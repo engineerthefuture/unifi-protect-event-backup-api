@@ -64,7 +64,10 @@ function triggerBadge(key) {
 
 // Render the dashboard with the fetched data
 function renderDashboard(data) {
-    document.getElementById("summaryTile").innerText = `Total Events (24h): ${data.totalCount}`;
+    // Show the time the API request was performed
+    const now = new Date();
+    const timeStr = now.toLocaleString(undefined, { hour12: false });
+    document.getElementById("summaryTile").innerText = `Total Events (last 24h as of ${timeStr}): ${data.totalCount}`;
     // Show summary message if present
     const summaryMsgDiv = document.getElementById('summaryMessage');
     if (data.summaryMessage) {
