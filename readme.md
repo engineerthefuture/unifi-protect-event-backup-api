@@ -713,12 +713,52 @@ Fetches current camera metadata from your Unifi Protect system and stores it in 
 
 ## 🌐 Web UI & Edge Authentication
 
+
 ### Lambda@Edge Authentication with Cognito
-- All access to the UI and event backup resources is protected by AWS Lambda@Edge, which validates Cognito JWTs on every request.
-- Unauthenticated users are redirected to the Cognito Hosted UI for login.
-- Only users created by an admin in Cognito can log in (self-sign-up is disabled).
-- After login, the Cognito access token is set as a cookie via a secure callback page (`/auth-callback.html`).
-- The Lambda@Edge function only allows requests with a valid Cognito access token.
+
+All access to the UI and event backup resources is protected by AWS Lambda@Edge, which validates Cognito JWTs on every request. Unauthenticated users are redirected to the Cognito Hosted UI for login. Only users created by an admin in Cognito can log in (self-sign-up is disabled). After login, the Cognito access token is set as a cookie via a secure callback page (`/auth-callback.html`). The Lambda@Edge function only allows requests with a valid Cognito access token.
+
+#### Authentication Flow Diagram
+
+```mermaid
+sequenceDiagram
+  participant User
+  participant CloudFront
+  participant LambdaEdge as Lambda@Edge (Auth)
+  participant Cognito as Cognito Hosted UI
+  participant UI as S3 Web UI
+
+  User->>CloudFront: Request UI (index.html)
+  CloudFront->>LambdaEdge: Forward request
+  LambdaEdge->>LambdaEdge: Check for valid Cognito token cookie
+  alt Token valid
+    LambdaEdge->>CloudFront: Allow request
+    CloudFront->>UI: Serve UI content
+    UI->>API: Make API request (with Cognito token)
+    CloudFront->>LambdaEdge: Forward API request
+    LambdaEdge->>LambdaEdge: Validate Cognito token
+    LambdaEdge->>CloudFront: Allow API request
+    CloudFront->>API: Forward to API Gateway
+  else Token missing/expired
+    LambdaEdge->>User: Redirect to Cognito Hosted UI
+    User->>Cognito: Login
+    Cognito->>User: Redirect to /auth-callback.html (with token)
+    User->>CloudFront: Request /auth-callback.html
+    CloudFront->>UI: Serve /auth-callback.html
+    UI->>User: Set Cognito token cookie, redirect to UI
+    User->>CloudFront: Request UI (now with token)
+    CloudFront->>LambdaEdge: Forward request
+    LambdaEdge->>LambdaEdge: Validate Cognito token
+    LambdaEdge->>CloudFront: Allow request
+    CloudFront->>UI: Serve UI content
+  end
+```
+
+**Key Points:**
+- All requests to the UI and API are intercepted by Lambda@Edge, which checks for a valid Cognito JWT in cookies.
+- If the token is missing or expired, the user is redirected to the Cognito Hosted UI for login.
+- After successful login, Cognito redirects to `/auth-callback.html`, which sets the token cookie and redirects back to the UI.
+- Only authenticated users can access the UI and API endpoints.
 
 ### UI for Viewing and Managing Event Backup
 - The static web UI is deployed to S3 and served via CloudFront, protected by Lambda@Edge authentication.
@@ -764,4 +804,3 @@ Fetches current camera metadata from your Unifi Protect system and stores it in 
 **Note:** Only users added this way will be able to log in to the UI.
 
 ---
-
