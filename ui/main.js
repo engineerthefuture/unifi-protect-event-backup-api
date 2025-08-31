@@ -100,16 +100,25 @@ function renderDashboard(data) {
             const thumbDiv = evDiv.querySelector('.thumbnail');
             const imgEl = thumbDiv.querySelector('img');
             (async() => {
+                let video;
                 try {
-                    const video = document.createElement('video');
-                    video.src = event.videoUrl;
-                    video.crossOrigin = 'anonymous';
+                    video = document.createElement('video');
                     video.muted = true;
                     video.playsInline = true;
+                    video.crossOrigin = 'anonymous';
                     video.preload = 'auto';
+                    video.style.display = 'none';
+                    document.body.appendChild(video);
+                    video.src = event.videoUrl;
+                    video.load();
                     await new Promise((resolve, reject) => {
-                        video.addEventListener('loadeddata', resolve, { once: true });
+                        let resolved = false;
+                        const done = () => { if (!resolved) { resolved = true;
+                                resolve(); } };
+                        video.addEventListener('loadeddata', done, { once: true });
+                        video.addEventListener('canplay', done, { once: true });
                         video.addEventListener('error', reject, { once: true });
+                        setTimeout(done, 2500);
                     });
                     video.currentTime = 0;
                     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -121,6 +130,8 @@ function renderDashboard(data) {
                     imgEl.src = canvas.toDataURL('image/jpeg', 0.7);
                 } catch (e) {
                     imgEl.src = 'data:image/svg+xml,%3Csvg width="640" height="360" xmlns="http://www.w3.org/2000/svg"%3E%3Crect width="100%25" height="100%25" fill="%23222"/%3E%3Ctext x="50%25" y="50%25" fill="%23fff" font-size="24" text-anchor="middle" alignment-baseline="middle" dy=".3em"%3ENo Thumbnail%3C/text%3E%3C/svg%3E';
+                } finally {
+                    if (video && video.parentNode) video.parentNode.removeChild(video);
                 }
             })();
 
