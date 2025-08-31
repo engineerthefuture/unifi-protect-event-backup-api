@@ -188,11 +188,11 @@ Resources:
         - profile
       AllowedOAuthFlowsUserPoolClient: true
       CallbackURLs:
-        - !Sub "https://${WebsiteCloudFront.DomainName}/auth-callback.html"
         - !If [HasCustomDomain, !Sub "https://${DomainName}/auth-callback.html", !Ref "AWS::NoValue"]
+        - !Sub "https://${WebsiteCloudFront.DomainName}/auth-callback.html"
       LogoutURLs:
-        - !Sub "https://${WebsiteCloudFront.DomainName}/auth-callback.html"
         - !If [HasCustomDomain, !Sub "https://${DomainName}/auth-callback.html", !Ref "AWS::NoValue"]
+        - !Sub "https://${WebsiteCloudFront.DomainName}/auth-callback.html"
 
   # ACM Certificate for custom domain (DNS validated)
   Certificate:
@@ -381,3 +381,8 @@ Outputs:
   CognitoUserPoolClientId:
     Description: "Cognito User Pool Client ID"
     Value: !Ref CognitoUserPoolClient
+
+  # Custom CloudFront domain (the custom domain name used in Route53 A record)
+  CustomCloudFrontDomain:
+    Description: "Custom CloudFront domain name"
+    Value: !Ref DomainName
