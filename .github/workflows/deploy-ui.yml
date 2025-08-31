@@ -222,6 +222,10 @@ jobs:
 
       - name: Patch UI main.js with API connection details
         run: |
+          # Ensure API_URL is always https://
+          if [[ ! "$API_URL" =~ ^https?:// ]]; then
+            API_URL="https://$API_URL"
+          fi
           sed -i.bak \
             -e "s|%%API_URL%%|$API_URL|g" \
             -e "s|%%API_KEY%%|$API_KEY|g" \
