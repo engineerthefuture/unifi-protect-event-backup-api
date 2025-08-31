@@ -734,7 +734,7 @@ sequenceDiagram
   alt Token valid
     LambdaEdge->>CloudFront: Allow request
     CloudFront->>UI: Serve UI content
-    UI->>API: Make API request (with Cognito token)
+    UI->>API: Make API request (with API key)
     CloudFront->>LambdaEdge: Forward API request
     LambdaEdge->>LambdaEdge: Validate Cognito token
     LambdaEdge->>CloudFront: Allow API request
