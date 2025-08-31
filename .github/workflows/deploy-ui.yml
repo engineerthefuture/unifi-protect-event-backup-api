@@ -235,9 +235,10 @@ jobs:
           COGNITO_DOMAIN_PREFIX="bf-${{ steps.env.outputs.ENV_PREFIX }}-${{ vars.APP_NAME_UI }}"
           COGNITO_DOMAIN="https://$COGNITO_DOMAIN_PREFIX.auth.us-east-1.amazoncognito.com"
           REDIRECT_URI="https://$CLOUDFRONT_DOMAIN/auth-callback.html"
-          REDIRECT_URI_ENC=$(python3 -c "import urllib.parse; print(urllib.parse.quote('https://$CLOUDFRONT_DOMAIN/auth-callback.html'))")
-          LOGIN_URL="$COGNITO_DOMAIN/login?client_id=$USER_POOL_CLIENT_ID&response_type=token&scope=openid&redirect_uri=$REDIRECT_URI_ENC"
-          sed -i.bak "s|var loginUrl = '%%COGNITO_LOGIN_URL%%';|var loginUrl = '$LOGIN_URL';|g" ui/main.js
+          LOGIN_URL="$COGNITO_DOMAIN/login?client_id=$USER_POOL_CLIENT_ID&response_type=token&scope=openid&redirect_uri="
+          sed -i "s|%%COGNITO_REPLACEMENT%%|$LOGIN_URL|g" ui/main.js
+          sed -i "s|%%REDIRECT_URI%%|$REDIRECT_URI|g" ui/main.js
+          
 
       - name: Copy UI contents to S3 bucket
         run: |
