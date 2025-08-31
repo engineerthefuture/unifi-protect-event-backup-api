@@ -11,10 +11,7 @@
 
 // Injected at deploy time by workflow:
 window.__CONFIG__ = {
-    API_URL: (function(url) {
-        if (!/^https?:\/\//.test(url)) return 'https://' + url;
-        return url;
-    })('%%API_URL%%'), // PATCHED BY WORKFLOW
+    API_URL: '%%API_URL%%', // PATCHED BY WORKFLOW
     API_KEY: '%%API_KEY%%' // PATCHED BY WORKFLOW
 };
 
