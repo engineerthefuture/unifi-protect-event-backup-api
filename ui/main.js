@@ -197,10 +197,112 @@ fetchSummary()
         document.getElementById('progressPercent').innerText = '100%';
         setTimeout(() => renderDashboard(data), 300);
     })
-    .catch(err => {
-        clearInterval(progressInterval);
-        document.getElementById("summaryTile").innerText = 'Failed to load summary';
-        document.getElementById('progressBar').style.width = '100%';
-        document.getElementById('progressPercent').innerText = 'Error';
-        document.getElementById('dashboard').innerHTML = `<div style="color:#f55">${err.message}</div>`;
+    (data.cameras || []).forEach(camera => {
+        const camDiv = document.createElement('div');
+        camDiv.className = 'camera-card';
+        const header = document.createElement('div');
+        header.className = 'camera-header';
+        header.innerHTML = `
+            <span>${camera.cameraName}</span>
+            <span>${camera.count24h || 0} events</span>
+        `;
+        camDiv.appendChild(header);
+
+        // Show only the latest event by default
+        const events = camera.events || [];
+        let shownCount = 0;
+        const maxInitial = 1;
+
+        function renderEvents(start, end) {
+            for (let i = start; i < end && i < events.length; i++) {
+                const event = events[i];
+                const evDiv = document.createElement('div');
+                evDiv.className = 'event-card';
+                const trigger = (event.eventData && event.eventData.triggers && event.eventData.triggers[0]) || {};
+                evDiv.innerHTML = `
+                    <div class="event-meta">
+                        <span class="event-trigger">${triggerBadge(trigger.key)}</span>
+                        <span class="event-device">Device: ${trigger.deviceName || 'N/A'}</span>
+                    </div>
+                    <div class="event-date">
+                        ${trigger.date ? new Date(trigger.date + (trigger.date.match(/Z|[+-]\d{2}:?\d{2}$/) ? '' : 'Z')).toLocaleString('en-US', { timeZone: 'America/New_York', timeZoneName: 'short' }) : ''}
+                    </div>
+                    <div class="thumbnail">
+                        <img src="" alt="thumbnail" loading="lazy" style="background:#222;min-width:100px;min-height:56px;">
+                        <div class="play-overlay">▶</div>
+                    </div>
+                    <p class="event-name">${event.eventData?.name || ''}</p>
+                    <p class="file-name">${event.originalFileName || ''}</p>
+                `;
+                // Generate thumbnail from first frame
+                const thumbDiv = evDiv.querySelector('.thumbnail');
+                const imgEl = thumbDiv.querySelector('img');
+                (async() => {
+                    let video;
+                    try {
+                        video = document.createElement('video');
+                        video.muted = true;
+                        video.playsInline = true;
+                        video.crossOrigin = 'anonymous';
+                        video.preload = 'auto';
+                        video.style.display = 'none';
+                        document.body.appendChild(video);
+                        video.src = event.videoUrl;
+                        video.load();
+                        await new Promise((done, reject) => {
+                            video.addEventListener('loadeddata', done, { once: true });
+                            video.addEventListener('canplay', done, { once: true });
+                            video.addEventListener('error', reject, { once: true });
+                        });
+                        video.currentTime = 0;
+                        const canvas = document.createElement('canvas');
+                        const ctx = canvas.getContext('2d');
+                        canvas.width = video.videoWidth;
+                        canvas.height = video.videoHeight;
+                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        imgEl.src = canvas.toDataURL('image/jpeg');
+                        if (video && video.parentNode) video.parentNode.removeChild(video);
+                    } catch (e) {
+                        imgEl.src = '';
+                    }
+                })();
+                // Lazy load video only on click
+                thumbDiv.addEventListener('click', () => {
+                    if (!thumbDiv.querySelector('video')) {
+                        const videoEl = document.createElement('video');
+                        videoEl.src = event.videoUrl;
+                        videoEl.controls = true;
+                        videoEl.classList.add('show');
+                        thumbDiv.appendChild(videoEl);
+                        videoEl.play();
+                    } else {
+                        const videoEl = thumbDiv.querySelector('video');
+                        videoEl.classList.add('show');
+                        videoEl.play();
+                    }
+                });
+                camDiv.appendChild(evDiv);
+                shownCount++;
+            }
+        }
+        renderEvents(0, maxInitial);
+
+        if (events.length > maxInitial) {
+            const seeMoreBtn = document.createElement('button');
+            seeMoreBtn.textContent = 'See more';
+            seeMoreBtn.style.marginTop = '10px';
+            seeMoreBtn.style.alignSelf = 'flex-end';
+            seeMoreBtn.onclick = function() {
+                renderEvents(shownCount, events.length);
+                seeMoreBtn.remove();
+                // Add link to Unifi UI at the bottom
+                const linkDiv = document.createElement('div');
+                linkDiv.style.marginTop = '18px';
+                linkDiv.style.textAlign = 'right';
+                linkDiv.innerHTML = `<a href="https://unifi.ui.com" target="_blank" rel="noopener" style="color:#3fa7ff;text-decoration:underline;font-size:1em;">View all videos on live system</a>`;
+                camDiv.appendChild(linkDiv);
+            };
+            camDiv.appendChild(seeMoreBtn);
+        }
+        container.appendChild(camDiv);
     });
