@@ -1,0 +1,48 @@
+name: UI - Deploy Static Files to S3
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+    paths:
+      - 'ui/**'
+
+jobs:
+  deploy-ui-static:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+      OIDC_ROLE_NAME: ${{ vars.OIDC_ROLE_NAME }}
+      APP_NAME_UI: ${{ vars.APP_NAME_UI }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.OIDC_ROLE_NAME }}
+          aws-region: us-east-1
+      - name: Determine environment and set UI domain
+        id: env
+        run: |
+          if [[ "${{ github.ref_name }}" == "main" ]]; then
+            echo "ENV_PREFIX=prod" >> $GITHUB_OUTPUT
+          else
+            echo "ENV_PREFIX=dev" >> $GITHUB_OUTPUT
+          fi
+      - name: Sync UI contents to S3 bucket (excluding config.js)
+        run: |
+          BUCKET_NAME=bf-${{ steps.env.outputs.ENV_PREFIX }}-s3-${{ env.APP_NAME_UI }}
+          aws s3 sync ui/ s3://$BUCKET_NAME/ --delete --exclude 'config.js'
+      - name: Invalidate CloudFront cache
+        run: |
+          STACK_NAME=bf-${{ steps.env.outputs.ENV_PREFIX }}-${{ env.APP_NAME_UI }}
+          DISTRIBUTION_ID=$(aws cloudformation describe-stacks \
+            --stack-name $STACK_NAME \
+            --query "Stacks[0].Outputs[?OutputKey=='CloudFrontDistributionId'].OutputValue" \
+            --output text)
+          aws cloudfront create-invalidation --distribution-id $DISTRIBUTION_ID --paths '/*'
