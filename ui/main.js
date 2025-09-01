@@ -9,12 +9,6 @@
  * Created: 08-28-2025
  ***********************/
 
-// Injected at deploy time by workflow:
-window.__CONFIG__ = {
-    API_URL: '%%API_URL%%', // PATCHED BY WORKFLOW
-    API_KEY: '%%API_KEY%%' // PATCHED BY WORKFLOW
-};
-
 /************************
  * Cognito token check: redirect to login if missing or expired
  */
@@ -36,7 +30,7 @@ window.__CONFIG__ = {
         }
     }
     var token = getCookie('CognitoAccessToken');
-    var loginUrl = '%%COGNITO_REPLACEMENT%%';
+    var loginUrl = window.__CONFIG__.LOGIN_URL;
     if (!token || isJwtExpired(token)) {
         window.location.replace(loginUrl);
     }

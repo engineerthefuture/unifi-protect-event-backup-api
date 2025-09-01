@@ -1,4 +1,4 @@
-name: Build, Test, and Deploy to AWS (UI)
+name: UI - Build, Test, and Deploy to AWS
 
 on:
   push:
@@ -9,10 +9,10 @@ on:
       - 'bugfix-**'
       - 'hotfix-**'
     paths:
-      - 'ui/**'
       - 'authorization-lambda-at-edge/**'
       - 'templates/ui-cf-stack.yaml'
       - '.github/workflows/deploy-ui.yml'
+      - 'ui/config.js'
 
 jobs:
   deploy-ui:
@@ -221,7 +221,7 @@ jobs:
           echo "API endpoint for UI: $API_URL"
           echo "API key for UI: $API_KEY"
 
-      - name: Patch UI main.js with API connection details
+      - name: Patch UI config.js with API connection details
         run: |
           # Ensure API_URL is always https://
           if [[ ! "$API_URL" =~ ^https?:// ]]; then
@@ -230,9 +230,9 @@ jobs:
           sed -i.bak \
             -e "s|%%API_URL%%|$API_URL|g" \
             -e "s|%%API_KEY%%|$API_KEY|g" \
-            ui/main.js
+            ui/config.js
 
-      - name: Patch main.js with Cognito login URL
+      - name: Patch config.js with Cognito login URL
         run: |
           STACK_NAME=bf-${{ steps.env.outputs.ENV_PREFIX }}-${{ vars.APP_NAME_UI }}
           CLOUDFRONT_DOMAIN=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='CustomCloudFrontDomain'].OutputValue" --output text)
@@ -242,7 +242,7 @@ jobs:
           REDIRECT_URI="https://$CLOUDFRONT_DOMAIN/auth-callback.html"
           LOGIN_URL="$COGNITO_DOMAIN/login?client_id=$USER_POOL_CLIENT_ID&response_type=token&scope=openid&redirect_uri=$REDIRECT_URI"
           LOGIN_URL_ESCAPED=$(printf '%s' "$LOGIN_URL" | sed 's/&/\\&/g')
-          sed -i "s|%%COGNITO_REPLACEMENT%%|$LOGIN_URL_ESCAPED|g" ui/main.js
+          sed -i "s|%%COGNITO_REPLACEMENT%%|$LOGIN_URL_ESCAPED|g" ui/config.js
           
 
       - name: Copy UI contents to S3 bucket
