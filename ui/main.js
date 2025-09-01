@@ -93,7 +93,6 @@ function renderDashboard(data) {
             evDiv.innerHTML = `
                 <div class="event-meta">
                     <span class="event-trigger">${triggerBadge(trigger.key)}</span>
-                    <span class="event-device">Device: ${trigger.deviceName || 'N/A'}</span>
                 </div>
                 <div class="event-date">
                     ${trigger.date ? new Date(trigger.date + (trigger.date.match(/Z|[+-]\d{2}:?\d{2}$/) ? '' : 'Z')).toLocaleString('en-US', { timeZone: 'America/New_York', timeZoneName: 'short' }) : ''}
