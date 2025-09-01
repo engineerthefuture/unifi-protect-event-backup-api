@@ -127,6 +127,56 @@ The S3 storage bucket is configured with an automatic lifecycle policy that dele
 
 The lifecycle rule applies to both JSON event files and MP4 video files, ensuring the bucket remains within reasonable storage limits while preserving recent events for analysis and review.
 
+### 📑 Event Flow Sequence Diagram
+
+Below is a sequence diagram illustrating how an event is triggered on the Unifi Protect system, sent to the `/alarmevent` endpoint, and processed through all backend steps:
+
+```mermaid
+sequenceDiagram
+  participant Camera as Unifi Camera
+  participant UDM as Unifi Dream Machine
+  participant API as API Gateway
+  participant Lambda as Lambda (Webhook Handler)
+  participant SQS as SQS Queue
+  participant Lambda2 as Lambda (Delayed Processor)
+  participant Secrets as AWS Secrets Manager
+  participant S3 as S3 Storage
+  participant Browser as HeadlessChromium
+  participant DLQ as Dead Letter Queue
+
+  Camera->>UDM: Detects motion/intrusion event
+  UDM->>API: Sends webhook POST /alarmevent (event JSON)
+  API->>Lambda: Forwards event (validates API key)
+  Lambda->>SQS: Queues event with 2-min delay
+  Lambda->>API: Returns HTTP 200 OK (immediate response)
+  API->>UDM: Success response
+  Note over SQS: 2-minute delay for video availability
+  SQS->>Lambda2: Triggers delayed processing
+  Lambda2->>Secrets: Retrieves Unifi credentials
+  Lambda2->>Lambda2: Validates and parses event JSON
+  Lambda2->>Lambda2: Maps device MAC to name
+  Lambda2->>S3: Stores event JSON file
+  Lambda2->>Browser: Launches browser automation
+  Browser->>UDM: Logs in and navigates to event page
+  Browser->>UDM: Extracts video blob URL
+  Browser->>Browser: Downloads video content
+  Browser->>S3: Uploads MP4 video file
+  Browser->>S3: Uploads diagnostic screenshots
+  Lambda2->>S3: Confirms storage of all files
+  alt Video download fails
+    Lambda2->>DLQ: Sends original event + failure metadata
+  end
+  Lambda2->>CloudWatch: Logs processing details
+  S3->>API: Serves presigned URLs for event/video retrieval
+```
+
+**Key Steps:**
+- Unifi camera detects an event and sends a webhook to the API Gateway
+- Lambda handler immediately queues the event in SQS and returns success
+- After delay, Lambda processor retrieves credentials, parses event, stores JSON, and automates browser for video download
+- Video and screenshots are uploaded to S3; failures are sent to DLQ
+- Presigned URLs allow secure retrieval of event data and videos
+
 ## 🏛️ Architecture
 
 ```mermaid
