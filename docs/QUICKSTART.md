@@ -68,25 +68,44 @@ GitHub organizations are required for AWS OIDC integration. If you don't already
 
 ### 1.3 Configure GitHub Repository Settings
 
-#### Repository Variables (Settings → Secrets and variables → Actions → Variables)
-Set these **Repository Variables**:
 
-| Variable | Value | Description |
-|----------|-------|-------------|
+#### Repository Variables (Settings → Secrets and variables → Actions → Variables)
+Set these **Repository Variables** (required for deployment and operation):
+
+| Variable | Example Value | Description |
+|----------|---------------|-------------|
 | `AWS_ACCOUNT_ID` | `123456789012` | Your 12-digit AWS Account ID |
 | `OIDC_ROLE_NAME` | `GitHubActionsRole` | IAM role name for GitHub Actions |
 | `OWNER_NAME` | `Your Name` | Resource owner for tagging |
 | `APP_NAME` | `unifi-protect-event-backup-api` | Application name |
+| `APP_NAME_UI` | `unifi-protect-event-backup-ui` | UI application name |
 | `APP_DESCRIPTION` | `Unifi webhook alarm event processing and backup API` | Description |
+| `HOSTED_ZONE_ID` | `Z1234567890ABC` | Route53 Hosted Zone ID for your domain |
+| `PROD_DOMAIN_NAME` | `api.example.com` | Production custom domain name |
+| `DEV_DOMAIN_NAME` | `api-dev.example.com` | Development custom domain name |
+| `PROD_DOMAIN_NAME_UI` | `ui.example.com` | Production custom domain for UI |
+| `DEV_DOMAIN_NAME_UI` | `ui-dev.example.com` | Development custom domain for UI |
+| `UNIFI_API_METADATA_PATH` | `/proxy/protect/api/cameras` | Unifi Protect API path for camera metadata |
+| `DEVICE_METADATA_JSON` | See docs or JSON string | Device MAC/name mapping JSON |
+| `SUPPORT_EMAIL` | `alerts@example.com` | DLQ failure notification recipients |
+| `COGNITO_DOMAIN_PREFIX` | `myapp-auth` | Cognito domain prefix for hosted UI |
+| `MAX_RETENTION_DAYS` | `30` | Maximum S3 retention days for event/video files |
 
 #### Repository Secrets (Settings → Secrets and variables → Actions → Secrets)
-Set these **Repository Secrets**:
+Set these **Repository Secrets** (required for deployment and operation):
 
-| Secret | Value | Description |
-|--------|-------|-------------|
-| `UNIFI_HOST` | `udm.local` or `192.168.1.1` | Your Unifi Dream Machine hostname/IP |
+| Secret | Example Value | Description |
+|--------|---------------|-------------|
 | `UNIFI_USERNAME` | `your-unifi-username` | Unifi Protect username |
 | `UNIFI_PASSWORD` | `your-unifi-password` | Unifi Protect password |
+| `UNIFI_HOST_IP` | `192.168.1.1` | Unifi Dream Machine IP address |
+| `DEV_UNIFI_HOST` | `dev-udm.local` | Development Unifi Dream Machine hostname/IP |
+| `PROD_UNIFI_HOST` | `prod-udm.local` | Production Unifi Dream Machine hostname/IP |
+| `DEV_UI_API_KEY` | `dev-ui-api-key-value` | API key for development UI |
+| `PROD_UI_API_KEY` | `prod-ui-api-key-value` | API key for production UI |
+| `UNIFI_API_METADATA_PATH` | `/proxy/protect/api/cameras` | Unifi Protect API path for camera metadata (if sensitive) |
+| `UNIFI_API_KEY` | `unifi-api-key-value` | API key for Unifi Protect API |
+
 
 > **Security Note**: These secrets are encrypted by GitHub and only accessible to your Actions workflows.
 
