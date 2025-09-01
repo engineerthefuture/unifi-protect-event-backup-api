@@ -30,7 +30,7 @@
         }
     }
     var token = getCookie('CognitoAccessToken');
-    var loginUrl = window.__CONFIG__.LOGIN_URL;
+    var loginUrl = window.__CONFIG__ ? .LOGIN_URL;
     if (!token || isJwtExpired(token)) {
         window.location.replace(loginUrl);
     }
