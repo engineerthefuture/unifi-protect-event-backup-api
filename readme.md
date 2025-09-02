@@ -827,6 +827,21 @@ sequenceDiagram
 4. After login, Cognito redirects to `/auth-callback.html`, which sets the cookie and redirects to the UI
 5. Authenticated users can view and manage event backup data
 
+## 🖼️ UI Screenshots
+
+Below are screenshots showing the user flow for the Unifi Protect Event Backup UI:
+
+1. **Login Screen**
+
+<img src="docs/assets/login_screen.jpg" alt="Login Screen" style="max-width:500px; width:100%; border:1px solid #ccc; border-radius:8px; margin-bottom:16px;" />
+
+2. **Loading Screen**
+
+<img src="docs/assets/loading_screen.jpg" alt="Loading Screen" style="max-width:500px; width:100%; border:1px solid #ccc; border-radius:8px; margin-bottom:16px;" />
+
+3. **Dashboard View**
+
+<img src="docs/assets/DashboardView.jpg" alt="Dashboard View" style="max-width:500px; width:100%; border:1px solid #ccc; border-radius:8px; margin-bottom:16px;" />
 
 #### Admin User Management
 
@@ -854,5 +869,3 @@ sequenceDiagram
   - The user will receive a temporary password and must set a new password on first login.
 
 **Note:** Only users added this way will be able to log in to the UI.
-
----
