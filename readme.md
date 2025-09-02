@@ -841,7 +841,7 @@ Below are screenshots showing the user flow for the Unifi Protect Event Backup U
 
 3. **Dashboard View**
 
-<img src="docs/assets/DashboardView.jpg" alt="Dashboard View" style="max-width:500px; width:100%; border:1px solid #ccc; border-radius:8px; margin-bottom:16px;" />
+<img src="docs/assets/dashboard_view.jpg" alt="Dashboard View" style="max-width:500px; width:100%; border:1px solid #ccc; border-radius:8px; margin-bottom:16px;" />
 
 #### Admin User Management
 
