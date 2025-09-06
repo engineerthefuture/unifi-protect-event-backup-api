@@ -143,6 +143,128 @@ Conditions:
 
 # Resources
 Resources: 
+  # SQS Queue for summary event processing
+  SummaryEventQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${FunctionName}-summary-event-queue"
+      MessageRetentionPeriod: 1209600  # 14 days
+      ReceiveMessageWaitTimeSeconds: 20
+      VisibilityTimeout: 300
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt SummaryEventDeadLetterQueue.Arn
+        maxReceiveCount: 3
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${FunctionName}-summary-event-queue"
+        - Key: "Purpose"
+          Value: "Summary event processing"
+
+  # Dead Letter Queue for summary event processing
+  SummaryEventDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${FunctionName}-summary-event-dlq"
+      MessageRetentionPeriod: 1209600
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${FunctionName}-summary-event-dlq"
+        - Key: "Purpose"
+          Value: "DLQ for summary event processing"
+
+  # Inline Node.js Lambda for summary event processing
+  SummaryLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${FunctionName}-summary-processor"
+      Description: "Processes summary events from the summary event SQS queue."
+      Handler: index.handler
+      Role: !GetAtt SummaryLambdaRole.Arn
+      Runtime: nodejs20.x
+      Timeout: 60
+      MemorySize: 256
+      Environment:
+        Variables:
+          SUMMARY_EVENT_QUEUE_URL: !Ref SummaryEventQueue
+          SUMMARY_EVENT_DLQ_URL: !Ref SummaryEventDeadLetterQueue
+      Code:
+        ZipFile: |
+          // Simple Node.js Lambda handler for summary event processing
+          exports.handler = async (event, context) => {
+            console.log('Received event:', JSON.stringify(event));
+            for (const record of event.Records) {
+              try {
+                const body = JSON.parse(record.body);
+                // TODO: Implement summary event processing logic here
+                console.log('Processing summary event:', body);
+              } catch (err) {
+                console.error('Error processing record:', err);
+                throw err;
+              }
+            }
+            return {};
+          };
+
+  # IAM Role for SummaryLambdaFunction
+  SummaryLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${FunctionName}-summary-lambda-role"
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/CloudWatchLogsReadOnlyAccess
+      Policies:
+        - PolicyName: SQSSummaryEventPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                  - sqs:GetQueueUrl
+                Resource:
+                  - !GetAtt SummaryEventQueue.Arn
+                  - !GetAtt SummaryEventDeadLetterQueue.Arn
+      Path: /
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${FunctionName}-summary-lambda-role"
+
+  # Event source mapping for SummaryLambdaFunction
+  SummaryEventSQSEventSourceMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !GetAtt SummaryEventQueue.Arn
+      FunctionName: !Ref SummaryLambdaFunction
+      BatchSize: 1
+      MaximumBatchingWindowInSeconds: 0
+
+  # Allow main Lambda to send messages to summary event queue
+  LambdaSummaryEventSQSPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: LambdaSummaryEventSQSPolicy
+      Roles:
+        - !Ref RoleName
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - sqs:SendMessage
+            Resource:
+              - !GetAtt SummaryEventQueue.Arn
+              - !GetAtt SummaryEventDeadLetterQueue.Arn
   # OPTIONS method for {proxy+} with CORS headers
   ApiGatewayProxyOptions:
     Type: 'AWS::ApiGateway::Method'
@@ -606,6 +728,17 @@ Resources:
           BuildSha: !Ref BuildSha
           BuildTimestamp: !Ref BuildTimestamp
           MaxRetentionDays: !Ref RetentionDays
+          SummaryEventQueueUrl: !Ref SummaryEventQueue
+          SummaryEventDlqUrl: !Ref SummaryEventDeadLetterQueue
+  SummaryEventQueue:
+    Description: SQS queue for summary event processing
+    Value: !Ref SummaryEventQueue
+  SummaryEventDeadLetterQueue:
+    Description: DLQ for summary event processing
+    Value: !Ref SummaryEventDeadLetterQueue
+  SummaryLambdaFunction:
+    Description: Lambda function for summary event processing
+    Value: !Ref SummaryLambdaFunction
       Tags: 
         - Key: "FunctionName"
           Value: !Sub "${FunctionName}"

@@ -30,6 +30,15 @@ namespace UnifiWebhookEventReceiver.Services
     /// </summary>
     public interface IS3StorageService
     {
+    /// <summary>
+    /// Gets a presigned S3 URL for a video file with a specified duration in hours.
+    /// </summary>
+    /// <param name="bucket">S3 bucket name</param>
+    /// <param name="videoKey">S3 key for the video</param>
+    /// <param name="now">Current time</param>
+    /// <param name="durationHours">Duration in hours for the presigned URL</param>
+    /// <returns>Presigned URL string</returns>
+    Task<string> GetPresignedUrlAsync(string bucket, string videoKey, DateTime now, int durationHours);
         /// <summary>
         /// Returns the latest video file and associated event data as a presigned download link.
         /// </summary>

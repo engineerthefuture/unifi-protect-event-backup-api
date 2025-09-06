@@ -27,6 +27,10 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
     /// </summary>
     public class S3StorageService : IS3StorageService
     {
+        /// <summary>Default duration (in hours) for presigned S3 URLs.</summary>
+        private const int DEFAULT_PRESIGNED_URL_HOURS = 1;
+        private const int MAX_PRESIGNED_URL_HOURS = 24;
+
         /// <summary>
         /// Returns the latest video file and associated event data as a presigned download link.
         /// </summary>
@@ -201,7 +205,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                             var sanitizedAlarm = CloneAlarmWithoutSourcesAndConditions(alarm);
                             var eventObj = new CameraEventSummary {
                                 eventData = sanitizedAlarm,
-                                videoUrl = videoExists ? await GetPresignedUrlAsync(bucket, videoKey, now) : null,
+                                videoUrl = videoExists ? await GetPresignedUrlAsync(bucket, videoKey, now, DEFAULT_PRESIGNED_URL_HOURS) : null,
                                 originalFileName = originalFileName
                             };
 
@@ -302,14 +306,14 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             return JsonConvert.DeserializeObject<Alarm>(json);
         }
 
-        private async Task<string> GetPresignedUrlAsync(string bucket, string videoKey, DateTime now)
+    public async Task<string> GetPresignedUrlAsync(string bucket, string videoKey, DateTime now, int durationHours)
         {
             var req = new GetPreSignedUrlRequest
             {
                 BucketName = bucket,
                 Key = videoKey,
                 Verb = HttpVerb.GET,
-                Expires = now.AddHours(1)
+                Expires = now.AddHours(durationHours)
             };
             return await _s3Client.GetPreSignedURLAsync(req);
         }
