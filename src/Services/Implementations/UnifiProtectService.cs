@@ -328,11 +328,10 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// </summary>
         /// <param name="deviceName">Name of the device to determine coordinates for</param>
         /// <returns>Tuple containing archive and download button coordinates</returns>
-        private static ((int x, int y) archiveButton, (int x, int y) downloadButton) GetDeviceSpecificCoordinates(string deviceName)
+    private static (int x, int y) GetDeviceSpecificCoordinates(string deviceName)
         {
             // Get device MAC address using the existing method
             string? deviceMac = AppConfiguration.GetDeviceMac(deviceName);
-            
             // Use the new JSON-based configuration to get coordinates, fallback to MAC if not found by name
             return AppConfiguration.GetDeviceCoordinates(deviceMac ?? deviceName);
         }
@@ -626,13 +625,13 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// <param name="timestamp">The event timestamp for screenshot naming</param>
         private async Task PerformVideoDownloadActions(IPage page, string deviceName, string downloadDirectory, Trigger trigger, long timestamp)
         {
-            var coordinates = GetDeviceSpecificCoordinates(deviceName);
-            
-            _logger.LogLine($"Device: {deviceName ?? "Unknown"} - Using archive button coordinates: ({coordinates.archiveButton.x}, {coordinates.archiveButton.y})");
+
+            var archiveButton = GetDeviceSpecificCoordinates(deviceName);
+            _logger.LogLine($"Device: {deviceName ?? "Unknown"} - Using archive button coordinates: ({archiveButton.x}, {archiveButton.y})");
 
             // Click archive button
-            await page.Mouse.ClickAsync(coordinates.archiveButton.x, coordinates.archiveButton.y);
-            _logger.LogLine("Clicked on archive button at coordinates: " + coordinates.archiveButton);
+            await page.Mouse.ClickAsync(archiveButton.x, archiveButton.y);
+            _logger.LogLine($"Clicked on archive button at coordinates: ({archiveButton.x}, {archiveButton.y})");
 
             var screenshotPath = Path.Combine(downloadDirectory, "afterarchivebuttonclick-screenshot.png");
             await page.ScreenshotAsync(screenshotPath);
