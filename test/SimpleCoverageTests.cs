@@ -111,19 +111,14 @@ namespace UnifiWebhookEventReceiver.Tests
             try
             {
                 // Test that integer properties have reasonable default values
-                Assert.True(AppConfiguration.DownloadButtonX > 0);
-                Assert.True(AppConfiguration.DownloadButtonY > 0);
                 Assert.True(AppConfiguration.ProcessingDelaySeconds >= 0);
 
-                // Test specific default values for DownloadButton and ProcessingDelaySeconds
-                Assert.Equal(1095, AppConfiguration.DownloadButtonX);
-                Assert.Equal(275, AppConfiguration.DownloadButtonY);
+                // Test specific default value for ProcessingDelaySeconds
                 Assert.Equal(120, AppConfiguration.ProcessingDelaySeconds);
 
-                // Test GetDeviceCoordinates default values (archive and download)
+                // Test GetDeviceCoordinates default values (archive only)
                 var coords = AppConfiguration.GetDeviceCoordinates("");
-                Assert.Equal((1205, 240), coords.archiveButton);
-                Assert.Equal((1026, 258), coords.downloadButton);
+                Assert.Equal((AppConfiguration.DEFAULT_ARCHIVE_BUTTON_X, AppConfiguration.DEFAULT_ARCHIVE_BUTTON_Y), coords);
             }
             finally
             {

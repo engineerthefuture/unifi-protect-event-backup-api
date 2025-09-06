@@ -23,6 +23,11 @@ namespace UnifiWebhookEventReceiver.Configuration
     /// </summary>
     public static class AppConfiguration
     {
+        /// <summary>Default X coordinate for archive button click.</summary>
+        public const int DEFAULT_ARCHIVE_BUTTON_X = 1205;
+
+        /// <summary>Default Y coordinate for archive button click.</summary>
+        public const int DEFAULT_ARCHIVE_BUTTON_Y = 240;
         /// <summary>Maximum retention period (in days) for event data, matching S3 lifecycle rule.</summary>
         public static int MaxRetentionDays => int.TryParse(Environment.GetEnvironmentVariable("MaxRetentionDays"), out var days) ? days : 30;
         #region Constants
@@ -76,11 +81,6 @@ namespace UnifiWebhookEventReceiver.Configuration
         /// <summary>Download directory for temporary video files. Defaults to /tmp for Lambda compatibility.</summary>
         public static string DownloadDirectory => Environment.GetEnvironmentVariable("DownloadDirectory") ?? "/tmp";
 
-        /// <summary>X coordinate for download button click. Defaults to 1095.</summary>
-        public static int DownloadButtonX => int.TryParse(Environment.GetEnvironmentVariable("DownloadButtonX"), out var downloadX) ? downloadX : 1095;
-
-        /// <summary>Y coordinate for download button click. Defaults to 275.</summary>
-        public static int DownloadButtonY => int.TryParse(Environment.GetEnvironmentVariable("DownloadButtonY"), out var downloadY) ? downloadY : 275;
 
         /// <summary>SQS queue URL for delayed alarm processing</summary>
         public static string? AlarmProcessingQueueUrl => Environment.GetEnvironmentVariable("AlarmProcessingQueueUrl");
@@ -228,12 +228,12 @@ namespace UnifiWebhookEventReceiver.Configuration
         /// </summary>
         /// <param name="deviceMac">The MAC address of the device</param>
         /// <returns>Tuple containing archive and download button coordinates</returns>
-        public static ((int x, int y) archiveButton, (int x, int y) downloadButton) GetDeviceCoordinates(string deviceMac)
+    public static (int x, int y) GetDeviceCoordinates(string deviceMac)
         {
             if (string.IsNullOrEmpty(deviceMac))
             {
                 // Return default coordinates
-                return ((1205, 240), (1026, 258));
+                return (DEFAULT_ARCHIVE_BUTTON_X, DEFAULT_ARCHIVE_BUTTON_Y);
             }
 
             var device = DeviceMetadata.Devices.Find(d => 
@@ -241,15 +241,12 @@ namespace UnifiWebhookEventReceiver.Configuration
 
             if (device != null)
             {
-                // Calculate download button coordinates based on archive button position
-                int downloadX = device.ArchiveButtonX - 179;  // Offset for download button
-                int downloadY = device.ArchiveButtonY + 18;   // Offset for download button
-                
-                return ((device.ArchiveButtonX, device.ArchiveButtonY), (downloadX, downloadY));
+                // Only return archive button coordinates
+                return (device.ArchiveButtonX, device.ArchiveButtonY);
             }
 
             // Return default coordinates if device not found
-            return ((1205, 240), (1026, 258));
+            return (DEFAULT_ARCHIVE_BUTTON_X, DEFAULT_ARCHIVE_BUTTON_Y);
         }
 
         #endregion

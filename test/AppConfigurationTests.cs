@@ -178,57 +178,6 @@ namespace UnifiWebhookEventReceiverTests
 
         // ArchiveButtonX/Y tests removed: Use GetDeviceCoordinates and DeviceMetadata for coordinate logic.
 
-        [Fact]
-        public void DownloadButtonX_WithEnvironmentVariable_ReturnsValue()
-        {
-            // Arrange
-            Environment.SetEnvironmentVariable("DownloadButtonX", "1200");
-
-            // Act
-            var result = AppConfiguration.DownloadButtonX;
-
-            // Assert
-            Assert.Equal(1200, result);
-        }
-
-        [Fact]
-        public void DownloadButtonX_WithInvalidEnvironmentVariable_ReturnsDefault()
-        {
-            // Arrange
-            Environment.SetEnvironmentVariable("DownloadButtonX", "xyz");
-
-            // Act
-            var result = AppConfiguration.DownloadButtonX;
-
-            // Assert
-            Assert.Equal(1095, result); // Default value
-        }
-
-        [Fact]
-        public void DownloadButtonY_WithEnvironmentVariable_ReturnsValue()
-        {
-            // Arrange
-            Environment.SetEnvironmentVariable("DownloadButtonY", "350");
-
-            // Act
-            var result = AppConfiguration.DownloadButtonY;
-
-            // Assert
-            Assert.Equal(350, result);
-        }
-
-        [Fact]
-        public void DownloadButtonY_WithInvalidEnvironmentVariable_ReturnsDefault()
-        {
-            // Arrange
-            Environment.SetEnvironmentVariable("DownloadButtonY", "abc");
-
-            // Act
-            var result = AppConfiguration.DownloadButtonY;
-
-            // Assert
-            Assert.Equal(275, result); // Default value
-        }
 
         [Fact]
         public void ProcessingDelaySeconds_WithEnvironmentVariable_ReturnsValue()
