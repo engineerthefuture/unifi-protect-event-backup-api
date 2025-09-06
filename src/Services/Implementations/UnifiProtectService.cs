@@ -631,7 +631,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
 
             // Click archive button
             await page.Mouse.ClickAsync(archiveButton.x, archiveButton.y);
-            _logger.LogLine($"Clicked on archive button at coordinates: ({{archiveButton.x}}, {{archiveButton.y}})");
+            _logger.LogLine($"Clicked on archive button at coordinates: ({archiveButton.x}, {archiveButton.y})");
 
             var screenshotPath = Path.Combine(downloadDirectory, "afterarchivebuttonclick-screenshot.png");
             await page.ScreenshotAsync(screenshotPath);
