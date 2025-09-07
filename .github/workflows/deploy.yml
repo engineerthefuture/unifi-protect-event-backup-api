@@ -525,12 +525,13 @@ jobs:
         run: |
           cd summary-event-lambda
           npm install --omit=dev
+          cp src/index.js .
           zip -r ../bf-${{ steps.env.outputs.ENV_PREFIX }}-summary-event-lambda.zip index.js package.json
           cd ..
 
       - name: Upload summary lambda package to S3
         run: |
-          aws s3 cp bf-${{ steps.env.outputs.ENV_PREFIX }}-summary-event-lambda.zip s3://${{ steps.env.outputs.BUCKET_DEPLOYMENT }}/bf-${{ steps.env.outputs.ENV_PREFIX }}-summary-event-lambda.zip
+          aws s3 cp bf-${{ steps.env.outputs.ENV_PREFIX }}-summary-event-lambda.zip s3://${{ steps.env.outputs.BUCKET_DEPLOYMENT }}/bf-${{ steps.env.outputs.ENV_PREFIX }}-lambda-unifi-protect-event-backup-api-summary/bf-${{ steps.env.outputs.ENV_PREFIX }}-summary-event-lambda.zip
 
       - name: Generate build timestamp
         id: timestamp

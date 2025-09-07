@@ -1,4 +1,3 @@
-
 const AWS = require('aws-sdk');
 const s3 = new AWS.S3();
 
@@ -18,6 +17,7 @@ function getEasternDateString(timestamp) {
     return { year, month, day, folder: `${year}-${month}-${day}` };
 }
 
+// Lambda handler
 exports.handler = async(event) => {
     for (const record of event.Records) {
         let summaryEvent;
