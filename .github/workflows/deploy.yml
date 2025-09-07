@@ -83,6 +83,7 @@ jobs:
         id: js_test
         run: |
           npm install --no-audit --no-fund
+          mkdir -p test-results
           npx jest --colors --ci --reporters=default --reporters=jest-junit
         env:
           CI: true
