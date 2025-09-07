@@ -63,15 +63,7 @@ jobs:
           fi
           echo "Deploying to environment: $ENV_PREFIX"
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0.x'
-
-      - name: Restore dependencies
-        run: |
-          dotnet restore UnifiWebhookEventReceiver.csproj
-          dotnet restore test/UnifiWebhookEventReceiverTests.csproj
+      
 
       - name: Set up Node.js for summary-event-lambda
         uses: actions/setup-node@v4
@@ -84,14 +76,15 @@ jobs:
         run: |
           npm install --no-audit --no-fund
           mkdir -p test-results
-          npx jest --colors --ci --reporters=default --reporters=jest-junit
+            set -o pipefail
+            npx jest --colors --ci --reporters=default --reporters=jest-junit 2>&1 | tee jest-output.log
+            if [ ! -f test-results/js-junit.xml ]; then
+              echo "::error::Jest did not produce test-results/js-junit.xml. See jest-output.log for details."
+              cat jest-output.log
+              exit 1
+            fi
         env:
           CI: true
-
-      - name: Debug - List test-results directory
-        run: |
-          ls -l summary-event-lambda/test-results || true
-          cat summary-event-lambda/test-results/js-junit.xml || true
 
       - name: Upload JS unit test results
         uses: actions/upload-artifact@v4
@@ -103,17 +96,21 @@ jobs:
         if: always()
         run: |
           echo "## 📊 JS Unit Test Results" >> $GITHUB_STEP_SUMMARY
-          if [ -f summary-event-lambda/test-results/js-junit.xml ]; then
-            TOTAL=$(grep -o 'tests="[0-9]*"' summary-event-lambda/test-results/js-junit.xml | head -1 | grep -o '[0-9]*')
-            FAILURES=$(grep -o 'failures="[0-9]*"' summary-event-lambda/test-results/js-junit.xml | head -1 | grep -o '[0-9]*')
-            ERRORS=$(grep -o 'errors="[0-9]*"' summary-event-lambda/test-results/js-junit.xml | head -1 | grep -o '[0-9]*')
-            PASSED=$((TOTAL - FAILURES - ERRORS))
-            STATUS=✅
-            if [ "$FAILURES" != "0" ] || [ "$ERRORS" != "0" ]; then STATUS=❌; fi
-            echo "$STATUS $PASSED/$TOTAL tests passed ($FAILURES failures, $ERRORS errors)" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "❌ JS test results not found." >> $GITHUB_STEP_SUMMARY
-          fi
+            if [ -f summary-event-lambda/test-results/js-junit.xml ]; then
+              TOTAL=$(grep -o 'tests="[0-9]*"' summary-event-lambda/test-results/js-junit.xml | head -1 | grep -o '[0-9]*')
+              FAILURES=$(grep -o 'failures="[0-9]*"' summary-event-lambda/test-results/js-junit.xml | head -1 | grep -o '[0-9]*')
+              ERRORS=$(grep -o 'errors="[0-9]*"' summary-event-lambda/test-results/js-junit.xml | head -1 | grep -o '[0-9]*')
+              PASSED=$((TOTAL - FAILURES - ERRORS))
+              STATUS=✅
+              if [ "$FAILURES" != "0" ] || [ "$ERRORS" != "0" ]; then STATUS=❌; fi
+              echo "$STATUS $PASSED/$TOTAL tests passed ($FAILURES failures, $ERRORS errors)" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "❌ JS test results not found." >> $GITHUB_STEP_SUMMARY
+              echo "Contents of summary-event-lambda/test-results directory:" >> $GITHUB_STEP_SUMMARY
+              ls -l summary-event-lambda/test-results || echo "(directory missing)" >> $GITHUB_STEP_SUMMARY
+              echo "--- Jest output log ---" >> $GITHUB_STEP_SUMMARY
+              cat summary-event-lambda/jest-output.log >> $GITHUB_STEP_SUMMARY || echo "(jest-output.log missing)" >> $GITHUB_STEP_SUMMARY
+            fi
 
       - name: Fail if JS unit tests failed
         if: steps.js_test.outcome != 'success'
@@ -121,12 +118,22 @@ jobs:
           echo "❌ JS unit tests failed. Skipping deployment."
           exit 1
 
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        run: |
+          dotnet restore UnifiWebhookEventReceiver.csproj
+          dotnet restore test/UnifiWebhookEventReceiverTests.csproj
+
       - name: Build
         run: |
           dotnet build UnifiWebhookEventReceiver.csproj --configuration Release --no-restore
           dotnet build test/UnifiWebhookEventReceiverTests.csproj --configuration Release --no-restore
 
-      - name: Run APIregression tests with coverage
+      - name: Run API regression tests with coverage
         id: test
         run: |
           echo "Running API regression tests with code coverage analysis..."
