@@ -15,91 +15,6 @@ Metadata:
         Value: !Ref AppName
       - Key: SupportEmail
         Value: !Ref SupportEmail
-
-# Parameters
-# ...existing parameters...
-
-# Resources
-Resources:
-  # SQS Queue for summary event processing
-  SummaryEventQueue:
-    Type: AWS::SQS::Queue
-    Properties:
-      QueueName: !Sub "${FunctionName}-summary-event-queue"
-      MessageRetentionPeriod: 1209600  # 14 days
-      ReceiveMessageWaitTimeSeconds: 20
-      VisibilityTimeout: 300
-      RedrivePolicy:
-        deadLetterTargetArn: !GetAtt SummaryEventDeadLetterQueue.Arn
-        maxReceiveCount: 3
-      Tags:
-        - Key: "Name"
-          Value: !Sub "${FunctionName}-summary-event-queue"
-        - Key: "Purpose"
-          Value: "Summary event processing"
-
-  # Dead Letter Queue for summary event processing
-  SummaryEventDeadLetterQueue:
-    Type: AWS::SQS::Queue
-    Properties:
-      QueueName: !Sub "${FunctionName}-summary-event-dlq"
-      MessageRetentionPeriod: 1209600
-      Tags:
-        - Key: "Name"
-          Value: !Sub "${FunctionName}-summary-event-dlq"
-        - Key: "Purpose"
-          Value: "DLQ for summary event processing"
-
-  # Summary Event Lambda Function
-  SummaryEventLambda:
-    Type: AWS::Lambda::Function
-    Properties:
-  FunctionName: !Sub "bf-${EnvPrefix}-lambda-unifi-protect-event-backup-api-summary"
-      Code:
-        S3Bucket: !Ref BucketNameDeployment
-        S3Key: !Sub "bf-${EnvPrefix}-summary-event-lambda.zip"
-      Description: !Sub "${EnvPrefix} - ${AppName} summary event processor"
-      Handler: src/index.handler
-      MemorySize: 256
-      Timeout: 60
-      Runtime: nodejs18.x
-      Role: !GetAtt LambdaRole.Arn
-      Environment:
-        Variables:
-          SUMMARY_BUCKET_NAME: !Ref BucketName
-      Events:
-        SQSTrigger:
-          Type: SQS
-          Properties:
-            Queue: !GetAtt SummaryEventQueue.Arn
-# ...other resources...
-
-# Outputs
-# ...existing outputs...
-Outputs:
-  ApiGateway:
-    Description: "API Gateway RestApiId"
-    Value: !Ref ApiGateway
-    Export:
-      Name: !Sub "${AWS::StackName}-ApiGateway"
-AWSTemplateFormatVersion: "2010-09-09"
-Description: Creates a Cloudformation stack for the Unfi Protect Event Backup API.
-
-# Stack-level tags
-Metadata:
-  AWS::CloudFormation::Interface:
-    Tags:
-      - Key: Owner
-        Value: !Ref OwnerName
-      - Key: Description
-        Value: !Ref AppDescription
-      - Key: Environment
-        Value: !Ref EnvPrefix
-      - Key: AppName
-        Value: !Ref AppName
-      - Key: SupportEmail
-        Value: !Ref SupportEmail
-
     
 # Parameters
 Parameters:
@@ -220,6 +135,30 @@ Conditions:
 
 # Resources
 Resources: 
+  
+  # Summary Event Lambda Function
+  SummaryEventLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "bf-${EnvPrefix}-lambda-unifi-protect-event-backup-api-summary"
+      Code:
+        S3Bucket: !Ref BucketNameDeployment
+        S3Key: !Sub "bf-${EnvPrefix}-summary-event-lambda.zip"
+      Description: !Sub "${EnvPrefix} - ${AppName} summary event processor"
+      Handler: src/index.handler
+      MemorySize: 256
+      Timeout: 60
+      Runtime: nodejs22.x
+      Role: !GetAtt SummaryLambdaRole.Arn
+      Environment:
+        Variables:
+          SUMMARY_BUCKET_NAME: !Ref BucketName
+      Events:
+        SQSTrigger:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt SummaryEventQueue.Arn
+  
   # SQS Queue for summary event processing
   SummaryEventQueue:
     Type: AWS::SQS::Queue
@@ -248,39 +187,6 @@ Resources:
           Value: !Sub "${FunctionName}-summary-event-dlq"
         - Key: "Purpose"
           Value: "DLQ for summary event processing"
-
-  # Inline Node.js Lambda for summary event processing
-  SummaryLambdaFunction:
-    Type: AWS::Lambda::Function
-    Properties:
-      FunctionName: !Sub "${FunctionName}-summary"
-      Description: "Processes summary events from the summary event SQS queue."
-      Handler: index.handler
-      Role: !GetAtt SummaryLambdaRole.Arn
-      Runtime: nodejs20.x
-      Timeout: 60
-      MemorySize: 256
-      Environment:
-        Variables:
-          SUMMARY_EVENT_QUEUE_URL: !Ref SummaryEventQueue
-          SUMMARY_EVENT_DLQ_URL: !Ref SummaryEventDeadLetterQueue
-      Code:
-        ZipFile: |
-          // Simple Node.js Lambda handler for summary event processing
-          exports.handler = async (event, context) => {
-            console.log('Received event:', JSON.stringify(event));
-            for (const record of event.Records) {
-              try {
-                const body = JSON.parse(record.body);
-                // TODO: Implement summary event processing logic here
-                console.log('Processing summary event:', body);
-              } catch (err) {
-                console.error('Error processing record:', err);
-                throw err;
-              }
-            }
-            return {};
-          };
 
   # IAM Role for SummaryLambdaFunction
   SummaryLambdaRole:
@@ -342,6 +248,7 @@ Resources:
             Resource:
               - !GetAtt SummaryEventQueue.Arn
               - !GetAtt SummaryEventDeadLetterQueue.Arn
+  
   # OPTIONS method for {proxy+} with CORS headers
   ApiGatewayProxyOptions:
     Type: 'AWS::ApiGateway::Method'
@@ -883,6 +790,11 @@ Resources:
 
 # Output useful details
 Outputs:
+  ApiGateway:
+    Description: "API Gateway RestApiId"
+    Value: !Ref ApiGateway
+    Export:
+      Name: !Sub "${AWS::StackName}-ApiGateway"
   UsagePlan:
     Description: API Gateway Usage Plan ID
     Value: !Ref UsagePlan
