@@ -17,7 +17,7 @@ function getEasternDateString(timestamp) {
     return { year, month, day, folder: `${year}-${month}-${day}` };
 }
 
-exports.handler = async (event) => {
+exports.handler = async(event) => {
     for (const record of event.Records) {
         let summaryEvent;
         try {

@@ -20,6 +20,7 @@ on:
       - 'UnifiWebhookEventReceiver.sln'
       - 'aws-lambda-tools-defaults.json'
       - 'global.json'
+      - 'summary-event-lambda/**'
 
 jobs:
   # Build job: Compiles code, runs tests, and prepares deployment artifacts

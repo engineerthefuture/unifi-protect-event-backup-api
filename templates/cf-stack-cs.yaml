@@ -1,4 +1,56 @@
-# Summary Event Lambda Function
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Creates a Cloudformation stack for the Unfi Protect Event Backup API.
+
+# Stack-level tags
+Metadata:
+  AWS::CloudFormation::Interface:
+    Tags:
+      - Key: Owner
+        Value: !Ref OwnerName
+      - Key: Description
+        Value: !Ref AppDescription
+      - Key: Environment
+        Value: !Ref EnvPrefix
+      - Key: AppName
+        Value: !Ref AppName
+      - Key: SupportEmail
+        Value: !Ref SupportEmail
+
+# Parameters
+# ...existing parameters...
+
+# Resources
+Resources:
+  # SQS Queue for summary event processing
+  SummaryEventQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${FunctionName}-summary-event-queue"
+      MessageRetentionPeriod: 1209600  # 14 days
+      ReceiveMessageWaitTimeSeconds: 20
+      VisibilityTimeout: 300
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt SummaryEventDeadLetterQueue.Arn
+        maxReceiveCount: 3
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${FunctionName}-summary-event-queue"
+        - Key: "Purpose"
+          Value: "Summary event processing"
+
+  # Dead Letter Queue for summary event processing
+  SummaryEventDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${FunctionName}-summary-event-dlq"
+      MessageRetentionPeriod: 1209600
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${FunctionName}-summary-event-dlq"
+        - Key: "Purpose"
+          Value: "DLQ for summary event processing"
+
+  # Summary Event Lambda Function
   SummaryEventLambda:
     Type: AWS::Lambda::Function
     Properties:
@@ -20,7 +72,10 @@
           Type: SQS
           Properties:
             Queue: !GetAtt SummaryEventQueue.Arn
-# Add ApiGateway output for REST API ID
+# ...other resources...
+
+# Outputs
+# ...existing outputs...
 Outputs:
   ApiGateway:
     Description: "API Gateway RestApiId"
