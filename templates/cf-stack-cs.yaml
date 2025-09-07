@@ -213,6 +213,17 @@ Resources:
                 Resource:
                   - !GetAtt SummaryEventQueue.Arn
                   - !GetAtt SummaryEventDeadLetterQueue.Arn
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource:
+                  - !Sub arn:aws:s3:::${BucketName}/*
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource:
+                  - !Sub arn:aws:s3:::${BucketName}
       Path: /
       Tags:
         - Key: "Name"
