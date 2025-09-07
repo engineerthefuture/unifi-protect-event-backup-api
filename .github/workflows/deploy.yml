@@ -87,14 +87,20 @@ jobs:
         env:
           CI: true
 
+      - name: Upload JS unit test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: js-test-results
+          path: test-results/js-junit.xml
+
       - name: Post JS unit test summary
         if: always()
         run: |
           echo "## 📊 JS Unit Test Results" >> $GITHUB_STEP_SUMMARY
-          if [ -f summary-event-lambda/test-results/js-junit.xml ]; then
-            TOTAL=$(grep -o 'tests="[0-9]*"' summary-event-lambda/test-results/js-junit.xml | head -1 | grep -o '[0-9]*')
-            FAILURES=$(grep -o 'failures="[0-9]*"' summary-event-lambda/test-results/js-junit.xml | head -1 | grep -o '[0-9]*')
-            ERRORS=$(grep -o 'errors="[0-9]*"' summary-event-lambda/test-results/js-junit.xml | head -1 | grep -o '[0-9]*')
+          if [ -f test-results/js-junit.xml ]; then
+            TOTAL=$(grep -o 'tests="[0-9]*"' test-results/js-junit.xml | head -1 | grep -o '[0-9]*')
+            FAILURES=$(grep -o 'failures="[0-9]*"' test-results/js-junit.xml | head -1 | grep -o '[0-9]*')
+            ERRORS=$(grep -o 'errors="[0-9]*"' test-results/js-junit.xml | head -1 | grep -o '[0-9]*')
             PASSED=$((TOTAL - FAILURES - ERRORS))
             STATUS=✅
             if [ "$FAILURES" != "0" ] || [ "$ERRORS" != "0" ]; then STATUS=❌; fi
@@ -108,12 +114,6 @@ jobs:
         run: |
           echo "❌ JS unit tests failed. Skipping deployment."
           exit 1
-
-      - name: Upload JS unit test results
-        uses: actions/upload-artifact@v4
-        with:
-          name: js-test-results
-          path: summary-event-lambda/test-results/js-junit.xml
 
       - name: Build
         run: |
