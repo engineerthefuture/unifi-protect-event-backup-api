@@ -532,13 +532,6 @@ jobs:
         run: |
           aws s3 cp bf-${{ steps.env.outputs.ENV_PREFIX }}-summary-event-lambda.zip s3://${{ steps.env.outputs.BUCKET_DEPLOYMENT }}/bf-${{ steps.env.outputs.ENV_PREFIX }}-summary-event-lambda.zip
 
-      - name: Update Summary Event Lambda function code
-        run: |
-          aws lambda update-function-code \
-            --function-name bf-${{ steps.env.outputs.ENV_PREFIX }}-lambda-summary-event \
-            --s3-bucket ${{ steps.env.outputs.BUCKET_DEPLOYMENT }} \
-            --s3-key bf-${{ steps.env.outputs.ENV_PREFIX }}-summary-event-lambda.zip
-
       - name: Generate build timestamp
         id: timestamp
         run: echo "BUILD_TIMESTAMP=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
@@ -584,6 +577,13 @@ jobs:
             --function-name ${{ steps.env.outputs.LAMBDA_NAME }} \
             --s3-bucket ${{ steps.env.outputs.BUCKET_DEPLOYMENT }} \
             --s3-key ${{ steps.env.outputs.S3_KEY_PREFIX }}/publish.zip
+
+      - name: Update Summary Event Lambda function code
+        run: |
+          aws lambda update-function-code \
+            --function-name bf-${{ steps.env.outputs.ENV_PREFIX }}-lambda-unifi-protect-event-backup-api-summary \
+            --s3-bucket ${{ steps.env.outputs.BUCKET_DEPLOYMENT }} \
+            --s3-key bf-${{ steps.env.outputs.ENV_PREFIX }}-summary-event-lambda.zip
 
       # Create UI API Gateway API key and attach to usage plan (post-stack)
       - name: Create UI API Gateway API Key and attach to Usage Plan

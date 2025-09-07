@@ -54,7 +54,7 @@ Resources:
   SummaryEventLambda:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: !Sub "bf-${EnvPrefix}-lambda-summary-event"
+  FunctionName: !Sub "bf-${EnvPrefix}-lambda-unifi-protect-event-backup-api-summary"
       Code:
         S3Bucket: !Ref BucketNameDeployment
         S3Key: !Sub "bf-${EnvPrefix}-summary-event-lambda.zip"
