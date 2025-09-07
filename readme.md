@@ -39,7 +39,7 @@ An enterprise-grade AWS Lambda function that receives and processes webhook even
 
 ## 📋 Overview
 
-This serverless application provides a comprehensive backup and retrieval system for Unifi Protect alarm events and associated video content. When motion detection, intrusion alerts, or other configured events occur in your Unifi Protect system, webhooks are sent to this Lambda function which processes and stores both the event data and downloads the corresponding video files to Amazon S3.
+This serverless application provides a comprehensive backup, summary, and retrieval system for Unifi Protect alarm events and associated video content. When motion detection, intrusion alerts, or other configured events occur in your Unifi Protect system, webhooks are sent to this Lambda function which processes and stores both the event data and downloads the corresponding video files to Amazon S3. In addition, a dedicated summary event Lambda processes events from a summary SQS queue to maintain daily event counters and generate summary files for each camera, enabling fast summary queries and analytics.
 
 ### ⚡ Key Benefits
 - **Zero Infrastructure Management**: Fully serverless AWS architecture
@@ -54,12 +54,13 @@ This serverless application provides a comprehensive backup and retrieval system
 ### Core Functionality
 - **Webhook Processing**: Receives real-time alarm events from Unifi Dream Machine
 - **Asynchronous Processing**: SQS-based delayed processing for improved reliability
+- **Summary Event Processing**: Dedicated summary event Lambda processes events from a summary SQS queue, updating daily summary files and event counters for each camera
 - **Dead Letter Queue**: Automatic retry mechanism for failed video downloads with rich failure metadata
 - **Automated Video Download**: Browser automation for video retrieval using HeadlessChromium optimized for AWS Lambda
-- **Data Storage**: Stores event data and videos in S3 with organized folder structure
+- **Data Storage**: Stores event data, summary files, and videos in S3 with organized folder structure
 - **Device Mapping**: Maps device MAC addresses to human-readable names via a single DeviceMetadata JSON configuration (set as a GitHub repository variable and passed to CloudFormation)
 - **Configurable UI Automation**: Device-specific UI coordinates are now managed in DeviceMetadata JSON, not environment variables
-- **Event Retrieval**: RESTful API for retrieving stored alarm events and video presigned URLs
+- **Event Retrieval**: RESTful API for retrieving stored alarm events, video presigned URLs, and daily event summaries
 
 ### Technical Features
 - **Multi-Environment Deployment**: Separate development and production environments
@@ -68,6 +69,7 @@ This serverless application provides a comprehensive backup and retrieval system
 - **Scalable Architecture**: Serverless design that scales automatically
 - **Configurable UI Automation**: Environment variable-based coordinate configuration for browser interactions
 - **Enterprise Test Coverage**: 78 unit tests with line, branch, and method coverage analysis plus complexity metrics
+- **Summary File Generation**: Automated daily summary files and event counters for each camera, updated by the summary event Lambda
 
 ## 🎥 Video Download Capabilities
 
@@ -109,11 +111,12 @@ S3 Bucket Structure:
 │   └── YYYY-MM-DD/
 │       ├── {eventId}_{deviceMac}_{timestamp}.json
 │       └── {eventId}_{deviceMac}_{timestamp}.mp4
+│       └── summary_{YYYY-MM-DD}.json   
 └── screenshots/
-    └── YYYY-MM-DD/
-        ├── {eventId}_{deviceMac}_{timestamp}_login-screenshot.png
-        ├── {eventId}_{deviceMac}_{timestamp}_pageload-screenshot.png
-        └── {eventId}_{deviceMac}_{timestamp}_afterarchivebuttonclick-screenshot.png
+  └── YYYY-MM-DD/
+    ├── {eventId}_{deviceMac}_{timestamp}_login-screenshot.png
+    ├── {eventId}_{deviceMac}_{timestamp}_pageload-screenshot.png
+    └── {eventId}_{deviceMac}_{timestamp}_afterarchivebuttonclick-screenshot.png
 ```
 
 ### ⏰ Data Retention Policy
@@ -129,7 +132,7 @@ The lifecycle rule applies to both JSON event files and MP4 video files, ensurin
 
 ### 📑 Event Flow Sequence Diagram
 
-Below is a sequence diagram illustrating how an event is triggered on the Unifi Protect system, sent to the `/alarmevent` endpoint, and processed through all backend steps:
+Below is a sequence diagram illustrating how an event is triggered on the Unifi Protect system, sent to the `/alarmevent` endpoint, and processed through all backend steps, including summary event processing:
 
 ```mermaid
 sequenceDiagram
@@ -143,6 +146,8 @@ sequenceDiagram
   participant S3 as S3 Storage
   participant Browser as HeadlessChromium
   participant DLQ as Dead Letter Queue
+  participant SummaryQueue as Summary Event Queue
+  participant SummaryLambda as Summary Event Lambda
 
   Camera->>UDM: Detects motion/intrusion event
   UDM->>API: Sends webhook POST /alarmevent (event JSON)
@@ -163,6 +168,9 @@ sequenceDiagram
   Browser->>S3: Uploads MP4 video file
   Browser->>S3: Uploads diagnostic screenshots
   Lambda2->>S3: Confirms storage of all files
+  Lambda2->>SummaryQueue: Sends event summary message
+  SummaryQueue->>SummaryLambda: Triggers summary event Lambda
+  SummaryLambda->>S3: Updates daily summary file
   alt Video download fails
     Lambda2->>DLQ: Sends original event + failure metadata
   end
@@ -175,7 +183,9 @@ sequenceDiagram
 - Lambda handler immediately queues the event in SQS and returns success
 - After delay, Lambda processor retrieves credentials, parses event, stores JSON, and automates browser for video download
 - Video and screenshots are uploaded to S3; failures are sent to DLQ
-- Presigned URLs allow secure retrieval of event data and videos
+- Each processed event is also sent to the summary event SQS queue
+- The summary event Lambda updates daily summary files and event counters for each camera in S3
+- Presigned URLs allow secure retrieval of event data, videos, and summary information
 
 ## 🏛️ Architecture
 
@@ -201,6 +211,7 @@ graph TB
             DLQ[Dead Letter Queue<br/>maxReceiveCount: 3<br/>14-day retention]
             RETRY_DLQ[Alarm Processing DLQ<br/>Failed video downloads<br/>Original message + metadata]
             ESM[Event Source Mapping<br/>BatchSize: 1<br/>Auto-scaling]
+            SUMMARY_QUEUE[Summary Event Queue]
         end
         
         subgraph "Lambda Function"
@@ -212,12 +223,14 @@ graph TB
             VALIDATOR[Input Validator]
             BROWSER[PuppeteerSharp Browser<br/>Headless Chrome]
             DOWNLOADER[Video Downloader<br/>CDP Protocol]
+            SUMMARY_LAMBDA[Summary Event Lambda]
         end
         
         subgraph "Storage & Security"
             S3[(S3 Bucket<br/>AES256 Encryption)]
             EVENTS["Event JSON Files<br/>{eventId}_{deviceMac}_{timestamp}"]
             VIDEOS["Video Files<br/>videos/{eventId}_{deviceMac}_{timestamp}"]
+            SUMMARY_FILES["Summary Files<br/>summary_{date}.json"]
             SECRETS[AWS Secrets Manager<br/>Unifi Credentials<br/>KMS Encrypted]
         end
         
@@ -305,6 +318,14 @@ graph TB
     HANDLER --> METRICS
     BROWSER --> CW
     
+    %% Summary event flow additions
+    DELAYED -->|Send Summary Event| SUMMARY_QUEUE
+    SUMMARY_QUEUE -->|Trigger| SUMMARY_LAMBDA
+    SUMMARY_LAMBDA -->|Update Daily Summary| SUMMARY_FILES
+    SUMMARY_FILES --> S3
+    SUMMARY_LAMBDA --> CW
+    SUMMARY_LAMBDA --> METRICS
+    
     %% Security flows
     HANDLER -.-> IAM
     S3 -.-> ENCRYPT
@@ -340,8 +361,8 @@ graph TB
     
     class API,AUTH,CORS aws
     class IAM,KMS,SECRETS security
-    class QUEUE,DLQ,ESM,HANDLER,DELAYED processing
-    class S3,EVENTS,VIDEOS storage
+    class QUEUE,DLQ,ESM,HANDLER,DELAYED,SUMMARY_QUEUE,SUMMARY_LAMBDA processing
+    class S3,EVENTS,VIDEOS,SUMMARY_FILES storage
 ```
 
 ### 🔑 Key Architectural Components
@@ -357,10 +378,13 @@ graph TB
 - **Fault Tolerance**: Ensures no alarm events are lost due to temporary video availability issues
 
 #### 📊 **SQS Delayed Processing Architecture**
+#### 📊 **SQS Delayed & Summary Event Processing Architecture**
 - **Immediate Webhook Response**: API Gateway responds instantly (HTTP 200) after queuing the event
 - **Configurable Delay**: Default 2-minute delay ensures video availability before processing
 - **Message-Level Delay**: Each SQS message includes `DelaySeconds` for precise timing control
 - **Auto-scaling**: Event Source Mapping automatically scales Lambda concurrency based on queue depth
+- **Summary Event Queue**: Each processed event is sent to a dedicated summary SQS queue for daily aggregation
+- **Summary Event Lambda**: Processes summary queue messages, updating daily summary files and event counters in S3
 - **Error Handling**: Dead Letter Queue captures failed messages after 3 retry attempts
 - **Long Polling**: 20-second ReceiveMessageWaitTimeSeconds reduces API calls and improves efficiency
 
@@ -475,8 +499,8 @@ See [DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed setup instructions.
 
 ### 🎯 Core Endpoints
 
-#### 1. � Event Summary - `GET /{stage}/summary`
-Returns the latest event and event count for each camera in the last 24 hours, plus a total event count. Each camera's latest event includes a presigned video link.
+#### 1. 📊 Event Summary - `GET /{stage}/summary`
+Returns the latest event and event count for each camera in the last 24 hours, plus a total event count. Each camera's latest event includes a presigned video link. Powered by the summary event Lambda and daily summary files in S3 for fast, efficient queries.
 - **Purpose**: Get a summary of recent activity for all cameras
 - **Authentication**: API Key required
 - **Parameters**: None required
@@ -486,6 +510,7 @@ Returns the latest event and event count for each camera in the last 24 hours, p
   - `latestEvent`: The most recent event object
   - `videoUrl`: Presigned S3 URL for the latest event's video
   - `totalCount`: Total number of events in the last 24 hours (across all cameras)
+  - `summaryDate`: Date of the summary file used
 
 #### 2. �📨 Webhook Receiver - `POST /{stage}/alarmevent`
 Receives and queues alarm events from Unifi Protect systems for delayed processing
@@ -495,7 +520,7 @@ Receives and queues alarm events from Unifi Protect systems for delayed processi
 - **Response**: Immediate success with queue information (eventId, processing delay, estimated completion time)
 - **Processing**: Events queued in SQS with 2-minute delay for improved video download reliability
 
-#### 3. 🔍 Event Retrieval - `GET /{stage}/?eventId={eventId}`
+#### 3. 🔍 Event Retrieval - `GET /?eventId={eventId}`
 Retrieves stored alarm event data and video by event ID
 - **Purpose**: Fetch specific alarm event JSON data and video download URL using the Unifi Protect event ID
 - **Authentication**: API Key required
@@ -503,7 +528,7 @@ Retrieves stored alarm event data and video by event ID
 - **Response**: Complete alarm event JSON object with presigned video download URL
 - **Optimization**: Uses eventId as filename prefix for direct file lookup without JSON parsing
 
-#### 4. 📹 Latest Video Access - `GET /{stage}/latestvideo`
+#### 4. 📹 Latest Video Access - `GET /latestvideo`
 Provides presigned URL for downloading the most recent video file from all stored events
 - **Purpose**: Get secure download URL for the latest MP4 video file
 - **Authentication**: API Key required
@@ -513,7 +538,7 @@ Provides presigned URL for downloading the most recent video file from all store
 - **Optimization**: Efficiently searches from today's date folder backwards, day by day
 - **Payload Limit Solution**: Uses presigned URLs to handle large video files (>6MB) that exceed API Gateway limits
 
-#### 5. 📊 Camera Metadata - `GET /{stage}/metadata`
+#### 5. 📊 Camera Metadata - `GET /metadata`
 Fetches and stores current camera metadata from the Unifi Protect API
 - **Purpose**: Retrieve camera configuration, names, and technical specifications from your Unifi Protect system
 - **Authentication**: API Key required
