@@ -88,11 +88,16 @@ jobs:
         env:
           CI: true
 
+      - name: Debug - List test-results directory
+        run: |
+          ls -l summary-event-lambda/test-results || true
+          cat summary-event-lambda/test-results/js-junit.xml || true
+
       - name: Upload JS unit test results
         uses: actions/upload-artifact@v4
         with:
           name: js-test-results
-          path: summary-event-lambda/test-results/js-junit.xml
+          path: summary-event-lambda/test-results/
 
       - name: Post JS unit test summary
         if: always()
