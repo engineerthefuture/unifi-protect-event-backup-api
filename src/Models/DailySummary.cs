@@ -43,9 +43,15 @@ namespace UnifiWebhookEventReceiver.Models
     public class DailySummaryEvent
     {
         public string EventId { get; set; } = string.Empty;
+        public string Device { get; set; } = string.Empty;
         public long Timestamp { get; set; }
+        public string AlarmS3Key { get; set; } = string.Empty;
+        public string VideoS3Key { get; set; } = string.Empty;
+        public string PresignedVideoUrl { get; set; } = string.Empty;
+        public string AlarmName { get; set; } = string.Empty;
         public string DeviceName { get; set; } = string.Empty;
         public string EventType { get; set; } = string.Empty;
+        public Dictionary<string, object> Metadata { get; set; } = new();
     }
 
     /// <summary>

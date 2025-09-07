@@ -287,7 +287,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                             
                             var previousCameraCount = cameras.Count;
                             var previousMissingEventCount = missingEvents.Count;
-                            await ProcessDeviceEvents(bucket, deviceLatestEvents, dailySummary.deviceCounts, cameras, missingEvents, now);
+                            ProcessDeviceEventsFromSummary(deviceLatestEvents, dailySummary.deviceCounts, cameras, missingEvents);
                             _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Cameras after processing: {previousCameraCount} → {cameras.Count}");
                             _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Missing events after processing: {previousMissingEventCount} → {missingEvents.Count}");
                         }
@@ -391,11 +391,11 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         }
 
         /// <summary>
-        /// Processes device events from the daily summary and populates camera data.
+        /// Processes device events directly from summary data without additional S3 calls.
         /// </summary>
-        private async Task ProcessDeviceEvents(string bucket, Dictionary<string, List<DailySummaryEvent>> deviceLatestEvents,
+        private void ProcessDeviceEventsFromSummary(Dictionary<string, List<DailySummaryEvent>> deviceLatestEvents,
             Dictionary<string, int> deviceCounts, Dictionary<string, CameraSummaryMulti> cameras,
-            List<CameraEventSummary> missingEvents, DateTime now)
+            List<CameraEventSummary> missingEvents)
         {
             foreach (var deviceGroup in deviceLatestEvents)
             {
@@ -416,189 +416,59 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 
                 var camera = cameras[deviceName];
                 
-                // Process the most recent events for this device
+                // Process events directly from summary data
                 foreach (var summaryEvent in deviceEvents)
                 {
-                    await ProcessSingleSummaryEvent(bucket, summaryEvent, camera, missingEvents, now);
+                    ProcessSingleSummaryEventFromData(summaryEvent, camera, missingEvents);
                 }
             }
         }
 
         /// <summary>
-        /// Processes a single summary event to create a detailed camera event summary.
+        /// Creates a camera event summary directly from summary event data without additional S3 calls.
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S3776:Cognitive Complexity of methods should not be too high", Justification = "Complex event file resolution logic with multiple fallback patterns")]
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S1541:Methods should not be too complex", Justification = "Complex event file resolution logic with multiple fallback patterns")]
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S138:Functions should not have too many lines of code", Justification = "Complex event file resolution logic with comprehensive error handling")]
-        private async Task ProcessSingleSummaryEvent(string bucket, DailySummaryEvent summaryEvent,
-            CameraSummaryMulti camera, List<CameraEventSummary> missingEvents, DateTime now)
+        private void ProcessSingleSummaryEventFromData(DailySummaryEvent summaryEvent,
+            CameraSummaryMulti camera, List<CameraEventSummary> missingEvents)
         {
             try
             {
-                // Convert timestamp to Eastern Time to match the folder structure used by alarm processing
-                var eventDate = ConvertToEasternTime(summaryEvent.Timestamp);
-                var dateFolder = $"{eventDate.Year}-{eventDate.Month:D2}-{eventDate.Day:D2}";
-                
-                // Try to find the event file - since we don't have the device name in the exact format,
-                // we'll first try a simple pattern and then fall back to listing files if needed
-                var eventKeyPattern = $"{dateFolder}/{summaryEvent.EventId}";
-                var videoKeyPattern = $"{dateFolder}/{summaryEvent.EventId}";
-                
-                // First try the simple format (just EventId)
-                var eventKey = $"{eventKeyPattern}.json";
-                var videoKey = $"{videoKeyPattern}.mp4";
-                
-                // Read the full alarm data for detailed event information
-                var alarm = await ReadAlarmFromS3Async(bucket, eventKey);
-                
-                // If not found with simple format, try with device name pattern
-                if (alarm == null)
+                // Create a minimal alarm object from summary data
+                var alarm = new Alarm
                 {
-                    var deviceName = summaryEvent.DeviceName;
-                    eventKey = $"{dateFolder}/{summaryEvent.EventId}_{deviceName}_{summaryEvent.Timestamp}.json";
-                    videoKey = $"{dateFolder}/{summaryEvent.EventId}_{deviceName}_{summaryEvent.Timestamp}.mp4";
-                    alarm = await ReadAlarmFromS3Async(bucket, eventKey);
-                }
-                
-                if (alarm != null)
+                    timestamp = summaryEvent.Timestamp,
+                    name = summaryEvent.AlarmName ?? $"Event {summaryEvent.EventId}",
+                    triggers = new List<Trigger>
+                    {
+                        new Trigger
+                        {
+                            eventId = summaryEvent.EventId,
+                            device = summaryEvent.Device,
+                            deviceName = summaryEvent.DeviceName,
+                            key = summaryEvent.EventType ?? "motion"
+                        }
+                    }
+                };
+
+                var eventObj = new CameraEventSummary
                 {
-                    var sanitizedAlarm = CloneAlarmWithoutSourcesAndConditions(alarm);
-                    
-                    // Check if video exists
-                    bool videoExists = await CheckVideoExistsAsync(bucket, videoKey);
-                    
-                    var eventObj = new CameraEventSummary
-                    {
-                        eventData = sanitizedAlarm,
-                        videoUrl = videoExists ? await GetPresignedUrlAsync(bucket, videoKey, now, DEFAULT_PRESIGNED_URL_HOURS) : null,
-                        originalFileName = alarm.triggers?.FirstOrDefault()?.originalFileName ?? System.IO.Path.GetFileName(videoKey)
-                    };
-                    
-                    if (videoExists)
-                    {
-                        camera.events.Add(eventObj);
-                    }
-                    else
-                    {
-                        missingEvents.Add(eventObj);
-                    }
+                    eventData = alarm,
+                    videoUrl = !string.IsNullOrEmpty(summaryEvent.PresignedVideoUrl) ? summaryEvent.PresignedVideoUrl : null,
+                    originalFileName = System.IO.Path.GetFileName(summaryEvent.VideoS3Key) ?? $"{summaryEvent.EventId}.mp4"
+                };
+
+                // If there's a presigned URL, the video exists
+                if (!string.IsNullOrEmpty(summaryEvent.PresignedVideoUrl))
+                {
+                    camera.events.Add(eventObj);
                 }
                 else
                 {
-                    // Create a minimal event summary from the summary data when full event data is missing
-                    _logger.LogLine($"Event file missing for {summaryEvent.EventId}, creating minimal event summary from summary data");
-                    
-                    var minimalAlarm = new Alarm
-                    {
-                        timestamp = summaryEvent.Timestamp,
-                        name = $"Event {summaryEvent.EventId}",
-                        triggers = new List<Trigger>
-                        {
-                            new Trigger
-                            {
-                                eventId = summaryEvent.EventId,
-                                device = summaryEvent.DeviceName,
-                                deviceName = summaryEvent.DeviceName,
-                                key = summaryEvent.EventType,
-                                originalFileName = $"{summaryEvent.EventId}.mp4"
-                            }
-                        }
-                    };
-                    
-                    // Check if video exists (try both patterns)
-                    bool videoExists = await CheckVideoExistsAsync(bucket, videoKey);
-                    if (!videoExists)
-                    {
-                        videoKey = $"{dateFolder}/{summaryEvent.EventId}_{summaryEvent.DeviceName}_{summaryEvent.Timestamp}.mp4";
-                        videoExists = await CheckVideoExistsAsync(bucket, videoKey);
-                    }
-                    
-                    var eventObj = new CameraEventSummary
-                    {
-                        eventData = minimalAlarm,
-                        videoUrl = videoExists ? await GetPresignedUrlAsync(bucket, videoKey, now, DEFAULT_PRESIGNED_URL_HOURS) : null,
-                        originalFileName = $"{summaryEvent.EventId}.mp4"
-                    };
-                    
-                    if (videoExists)
-                    {
-                        camera.events.Add(eventObj);
-                    }
-                    else
-                    {
-                        missingEvents.Add(eventObj);
-                    }
+                    missingEvents.Add(eventObj);
                 }
             }
             catch (Exception ex)
             {
                 _logger.LogLine($"Error processing summary event {summaryEvent.EventId}: {ex.Message}");
-                
-                // Even if there's an error, try to create a minimal event from summary data
-                try
-                {
-                    var minimalAlarm = new Alarm
-                    {
-                        timestamp = summaryEvent.Timestamp,
-                        name = $"Event {summaryEvent.EventId} (Error)",
-                        triggers = new List<Trigger>
-                        {
-                            new Trigger
-                            {
-                                eventId = summaryEvent.EventId,
-                                device = summaryEvent.DeviceName,
-                                deviceName = summaryEvent.DeviceName,
-                                key = summaryEvent.EventType,
-                                originalFileName = $"{summaryEvent.EventId}.mp4"
-                            }
-                        }
-                    };
-                    
-                    var eventObj = new CameraEventSummary
-                    {
-                        eventData = minimalAlarm,
-                        videoUrl = null, // Don't try to check video if we're already in error state
-                        originalFileName = $"{summaryEvent.EventId}.mp4"
-                    };
-                    
-                    missingEvents.Add(eventObj);
-                    _logger.LogLine($"Created minimal event summary for {summaryEvent.EventId} despite error");
-                }
-                catch (Exception fallbackEx)
-                {
-                    _logger.LogLine($"Failed to create fallback event for {summaryEvent.EventId}: {fallbackEx.Message}");
-                }
-            }
-        }
-
-        /// <summary>
-        /// Converts a Unix timestamp to Eastern Time (UTC-5) to match the folder structure used by alarm processing.
-        /// </summary>
-        private static DateTime ConvertToEasternTime(long timestamp)
-        {
-            var utcDate = DateTimeOffset.FromUnixTimeMilliseconds(timestamp).UtcDateTime;
-            // Convert to Eastern Time (UTC-5, ignoring DST for consistency with summary lambda)
-            return utcDate.AddHours(-5);
-        }
-
-        /// <summary>
-        /// Checks if a video file exists in S3.
-        /// </summary>
-        private async Task<bool> CheckVideoExistsAsync(string bucket, string videoKey)
-        {
-            try
-            {
-                var headRequest = new GetObjectMetadataRequest
-                {
-                    BucketName = bucket,
-                    Key = videoKey
-                };
-                await _s3Client.GetObjectMetadataAsync(headRequest);
-                return true;
-            }
-            catch (AmazonS3Exception e) when (e.ErrorCode == "NoSuchKey" || e.ErrorCode == "NotFound")
-            {
-                return false;
             }
         }
 
@@ -672,14 +542,6 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             public string? summaryDate { get; set; }
             public int dlqMessageCount { get; set; }
             public Dictionary<string, int> dlqCounts { get; set; } = new();
-        }
-
-        private async Task<Alarm?> ReadAlarmFromS3Async(string bucket, string key)
-        {
-            using var getResp = await _s3Client.GetObjectAsync(bucket, key);
-            using var reader = new StreamReader(getResp.ResponseStream);
-            var json = await reader.ReadToEndAsync();
-            return JsonConvert.DeserializeObject<Alarm>(json);
         }
 
     public async Task<string> GetPresignedUrlAsync(string bucket, string videoKey, DateTime now, int durationHours)
