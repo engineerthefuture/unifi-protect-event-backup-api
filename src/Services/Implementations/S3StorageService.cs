@@ -152,7 +152,8 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 {
                     return await BuildSummaryResponse(summaryResult.cameras, summaryResult.missingEvents, 
                         summaryResult.totalCount, summaryResult.objectsCount, summaryResult.activityCount, 
-                        summaryResult.triggerKeyCounts, summaryResult.summaryDate, headers);
+                        summaryResult.triggerKeyCounts, summaryResult.summaryDate, headers, 
+                        summaryResult.dlqMessageCount, summaryResult.dlqCounts);
                 }
 
                 // Fallback to simple empty response if no summary files found
@@ -186,6 +187,8 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             int objectsCount = 0;
             int activityCount = 0;
             var triggerKeyCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            var dlqCounts = new Dictionary<string, int>();
+            int dlqMessageCount = 0;
             string? summaryDate = null;
             bool summaryDataFound = false;
 
@@ -209,10 +212,29 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                         // Merge event type counts with trigger key counts for backward compatibility
                         ProcessEventTypeCounts(dailySummary.eventCounts, triggerKeyCounts, ref objectsCount, ref activityCount);
                         
-                        // Process the most recent events for each device to maintain UI compatibility
+                        // Aggregate DLQ counts from summary
+                        if (dailySummary.dlqCounts != null)
+                        {
+                            foreach (var dlqEntry in dailySummary.dlqCounts)
+                            {
+                                if (dlqCounts.ContainsKey(dlqEntry.Key))
+                                {
+                                    dlqCounts[dlqEntry.Key] += dlqEntry.Value;
+                                }
+                                else
+                                {
+                                    dlqCounts[dlqEntry.Key] = dlqEntry.Value;
+                                }
+                            }
+                        }
+                        
+                        // Add DLQ message count from metadata for backward compatibility
+                        dlqMessageCount += dailySummary.metadata.dlqMessageCount;
+                        
+                        // Process all events for each device
                         var deviceLatestEvents = dailySummary.events
                             .GroupBy(e => e.DeviceName)
-                            .ToDictionary(g => g.Key, g => g.OrderByDescending(e => e.Timestamp).Take(3).ToList());
+                            .ToDictionary(g => g.Key, g => g.OrderByDescending(e => e.Timestamp).ToList());
                         
                         await ProcessDeviceEvents(bucket, deviceLatestEvents, dailySummary.deviceCounts, cameras, missingEvents, now);
                     }
@@ -236,7 +258,9 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 objectsCount = objectsCount,
                 activityCount = activityCount,
                 triggerKeyCounts = triggerKeyCounts,
-                summaryDate = summaryDate
+                summaryDate = summaryDate,
+                dlqMessageCount = dlqMessageCount,
+                dlqCounts = dlqCounts
             };
         }
 
@@ -383,24 +407,27 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// </summary>
         private async Task<APIGatewayProxyResponse> BuildSummaryResponse(Dictionary<string, CameraSummaryMulti> cameras,
             List<CameraEventSummary> missingEvents, int totalCount, int objectsCount, int activityCount,
-            Dictionary<string, int> triggerKeyCounts, string? summaryDate, Dictionary<string, string> headers)
+            Dictionary<string, int> triggerKeyCounts, string? summaryDate, Dictionary<string, string> headers,
+            int dlqMessageCount = 0, Dictionary<string, int>? dlqCounts = null)
         {
             var perCameraCounts = string.Join(", ", cameras.Values.Select(c => $"{c.cameraName} ({c.cameraId}): {c.count24h}"));
             var triggerKeySummary = string.Join(", ", triggerKeyCounts.Select(kvp => $"{kvp.Key}: {kvp.Value}"));
 
-            // Get DLQ message counts if SQS service is available
-            int dlqMessageCount = 0;
-            Dictionary<string, int> dlqCounts = new();
-            if (_sqsService != null)
+            // Use provided DLQ data or fallback to SQS query if not available
+            if (dlqCounts == null || dlqCounts.Count == 0)
             {
-                try
+                dlqCounts = new Dictionary<string, int>();
+                if (_sqsService != null)
                 {
-                    dlqCounts = await _sqsService.GetAllDlqMessageCountsAsync();
-                    dlqMessageCount = dlqCounts.Values.Sum(); // Total across all DLQs for backward compatibility
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogLine($"Error retrieving DLQ message counts: {ex.Message}");
+                    try
+                    {
+                        dlqCounts = await _sqsService.GetAllDlqMessageCountsAsync();
+                        dlqMessageCount = dlqCounts.Values.Sum(); // Total across all DLQs for backward compatibility
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogLine($"Error retrieving DLQ message counts: {ex.Message}");
+                    }
                 }
             }
 
@@ -443,6 +470,8 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             public int activityCount { get; set; }
             public Dictionary<string, int> triggerKeyCounts { get; set; } = new();
             public string? summaryDate { get; set; }
+            public int dlqMessageCount { get; set; }
+            public Dictionary<string, int> dlqCounts { get; set; } = new();
         }
 
         private async Task<Alarm?> ReadAlarmFromS3Async(string bucket, string key)

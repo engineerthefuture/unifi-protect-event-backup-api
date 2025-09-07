@@ -1,8 +1,12 @@
 const { S3Client, GetObjectCommand, PutObjectCommand, ListObjectsV2Command } = require('@aws-sdk/client-s3');
+const { SQSClient, GetQueueAttributesCommand } = require('@aws-sdk/client-sqs');
 const s3 = new S3Client();
+const sqs = new SQSClient();
 
 // Use environment variable directly
 const BUCKET_NAME = process.env.SUMMARY_BUCKET_NAME || '';
+const ALARM_PROCESSING_DLQ_URL = process.env.AlarmProcessingDlqUrl || '';
+const SUMMARY_EVENT_DLQ_URL = process.env.SummaryEventDlqUrl || '';
 
 // Helper to get ET midnight for a given timestamp
 function getEasternDateString(timestamp) {
@@ -83,6 +87,68 @@ async function findMissingVideoFiles(folder) {
     return missingVideoEvents;
 }
 
+// Helper to get DLQ message counts
+async function getDlqMessageCounts() {
+    const dlqCounts = {};
+    let totalDlqCount = 0;
+    
+    // Get Alarm Processing DLQ count
+    if (ALARM_PROCESSING_DLQ_URL) {
+        try {
+            const count = await getDlqCountForQueue(ALARM_PROCESSING_DLQ_URL);
+            dlqCounts['AlarmProcessingDLQ'] = count;
+            totalDlqCount += count;
+            console.log(`[INFO] Alarm Processing DLQ message count: ${count}`);
+        } catch (error) {
+            console.error(`[ERROR] Failed to get Alarm Processing DLQ count:`, error);
+            dlqCounts['AlarmProcessingDLQ'] = 0;
+        }
+    } else {
+        console.log(`[INFO] Alarm Processing DLQ URL not configured`);
+        dlqCounts['AlarmProcessingDLQ'] = 0;
+    }
+    
+    // Get Summary Event DLQ count
+    if (SUMMARY_EVENT_DLQ_URL) {
+        try {
+            const count = await getDlqCountForQueue(SUMMARY_EVENT_DLQ_URL);
+            dlqCounts['SummaryEventDLQ'] = count;
+            totalDlqCount += count;
+            console.log(`[INFO] Summary Event DLQ message count: ${count}`);
+        } catch (error) {
+            console.error(`[ERROR] Failed to get Summary Event DLQ count:`, error);
+            dlqCounts['SummaryEventDLQ'] = 0;
+        }
+    } else {
+        console.log(`[INFO] Summary Event DLQ URL not configured`);
+        dlqCounts['SummaryEventDLQ'] = 0;
+    }
+    
+    console.log(`[INFO] Total DLQ message count: ${totalDlqCount}`);
+    
+    return {
+        dlqCounts,
+        totalDlqCount
+    };
+}
+
+// Helper to get message count for a specific DLQ
+async function getDlqCountForQueue(queueUrl) {
+    try {
+        const command = new GetQueueAttributesCommand({
+            QueueUrl: queueUrl,
+            AttributeNames: ['ApproximateNumberOfMessages']
+        });
+        
+        const response = await sqs.send(command);
+        const count = parseInt(response.Attributes?.ApproximateNumberOfMessages || '0', 10);
+        return count;
+    } catch (error) {
+        console.error(`[ERROR] Failed to get queue attributes for ${queueUrl}:`, error);
+        throw error;
+    }
+}
+
 // Lambda handler
 exports.handler = async(event) => {
     for (const record of event.Records) {
@@ -109,13 +175,15 @@ exports.handler = async(event) => {
                 dateFormatted: new Date(year, month - 1, day).toISOString().split('T')[0],
                 lastUpdated: new Date().toISOString(),
                 totalEvents: 0,
-                missingVideoCount: 0
+                missingVideoCount: 0,
+                dlqMessageCount: 0
             },
             eventCounts: {},
             deviceCounts: {},
             hourlyCounts: {},
             events: [],
-            missingVideoEvents: []
+            missingVideoEvents: [],
+            dlqCounts: {}
         };
         
         let fileExisted = true;
@@ -140,15 +208,18 @@ exports.handler = async(event) => {
                 dateFormatted: new Date(year, month - 1, day).toISOString().split('T')[0],
                 lastUpdated: new Date().toISOString(),
                 totalEvents: 0,
-                missingVideoCount: 0
+                missingVideoCount: 0,
+                dlqMessageCount: 0
             };
         }
         if (!summaryData.metadata.missingVideoCount) summaryData.metadata.missingVideoCount = 0;
+        if (!summaryData.metadata.dlqMessageCount) summaryData.metadata.dlqMessageCount = 0;
         if (!summaryData.eventCounts) summaryData.eventCounts = {};
         if (!summaryData.deviceCounts) summaryData.deviceCounts = {};
         if (!summaryData.hourlyCounts) summaryData.hourlyCounts = {};
         if (!summaryData.events) summaryData.events = [];
         if (!summaryData.missingVideoEvents) summaryData.missingVideoEvents = [];
+        if (!summaryData.dlqCounts) summaryData.dlqCounts = {};
 
         // Add the new event to the summary
         summaryData.events.push(summaryEvent);
@@ -176,9 +247,14 @@ exports.handler = async(event) => {
         const missingVideoEvents = await findMissingVideoFiles(folder);
         summaryData.missingVideoEvents = missingVideoEvents;
 
+        // Check DLQ message counts
+        const { dlqCounts, totalDlqCount } = await getDlqMessageCounts();
+        summaryData.dlqCounts = dlqCounts;
+
         // Update metadata
         summaryData.metadata.totalEvents = summaryData.events.length;
         summaryData.metadata.missingVideoCount = missingVideoEvents.length;
+        summaryData.metadata.dlqMessageCount = totalDlqCount;
         summaryData.metadata.lastUpdated = new Date().toISOString();
 
         console.log(`[INFO] Updated counters:`, {
@@ -187,7 +263,8 @@ exports.handler = async(event) => {
             deviceName,
             deviceCount: summaryData.deviceCounts[deviceName],
             totalEvents: summaryData.metadata.totalEvents,
-            missingVideoCount: summaryData.metadata.missingVideoCount
+            missingVideoCount: summaryData.metadata.missingVideoCount,
+            dlqMessageCount: summaryData.metadata.dlqMessageCount
         });
 
         // Save back to S3

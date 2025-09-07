@@ -22,6 +22,19 @@ namespace UnifiWebhookEventReceiver.Models
         public string dateFormatted { get; set; } = string.Empty;
         public string lastUpdated { get; set; } = string.Empty;
         public int totalEvents { get; set; }
+        public int missingVideoCount { get; set; }
+        public int dlqMessageCount { get; set; }
+    }
+
+    /// <summary>
+    /// Represents an individual missing video event in the daily summary.
+    /// </summary>
+    public class MissingVideoEvent
+    {
+        public string eventId { get; set; } = string.Empty;
+        public string jsonFile { get; set; } = string.Empty;
+        public string lastModified { get; set; } = string.Empty;
+        public long size { get; set; }
     }
 
     /// <summary>
@@ -45,5 +58,7 @@ namespace UnifiWebhookEventReceiver.Models
         public Dictionary<string, int> deviceCounts { get; set; } = new();
         public Dictionary<string, int> hourlyCounts { get; set; } = new();
         public List<DailySummaryEvent> events { get; set; } = new();
+        public List<MissingVideoEvent> missingVideoEvents { get; set; } = new();
+        public Dictionary<string, int> dlqCounts { get; set; } = new();
     }
 }
