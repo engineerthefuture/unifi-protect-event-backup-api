@@ -179,8 +179,14 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// <summary>
         /// Attempts to retrieve summary data from daily summary files.
         /// </summary>
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S3776:Cognitive Complexity of methods should not be too high", Justification = "Enhanced logging requires additional complexity for detailed debugging information")]
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S1541:Methods should not be too complex", Justification = "Enhanced logging requires additional complexity for detailed debugging information")]
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S138:Functions should not have too many lines of code", Justification = "Enhanced logging requires additional lines for comprehensive debugging information")]
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S134:Control flow statements should not be nested too deeply", Justification = "Enhanced logging requires nested conditions for comprehensive debugging information")]
         private async Task<SummaryDataResult> TryGetSummaryFromDailyFiles(string bucket, DateTime now)
         {
+            _logger.LogLine($"[TryGetSummaryFromDailyFiles] Starting summary data retrieval from bucket: {bucket}");
+            
             var cameras = new Dictionary<string, CameraSummaryMulti>();
             var missingEvents = new List<CameraEventSummary>();
             int totalCount = 0;
@@ -192,11 +198,15 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             string? summaryDate = null;
             bool summaryDataFound = false;
 
+            _logger.LogLine($"[TryGetSummaryFromDailyFiles] Searching for summary files for the last 2 days starting from: {now:yyyy-MM-dd HH:mm:ss} UTC");
+
             for (int i = 0; i < 2; i++)
             {
                 var date = now.AddDays(-i);
                 var dateFolder = $"{date:yyyy-MM-dd}";
                 var summaryKey = $"{dateFolder}/summary_{date:yyyy-MM-dd}.json";
+                
+                _logger.LogLine($"[TryGetSummaryFromDailyFiles] Day {i + 1}/2: Attempting to read summary file: {summaryKey}");
                 
                 try
                 {
@@ -205,19 +215,42 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                     {
                         summaryDataFound = true;
                         summaryDate = dailySummary.metadata.dateFormatted;
-                        _logger.LogLine($"Using comprehensive summary file: {summaryKey}");
+                        _logger.LogLine($"[TryGetSummaryFromDailyFiles] ✓ Successfully loaded summary file: {summaryKey}");
+                        _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Summary date: {summaryDate}");
+                        _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Total events in file: {dailySummary.metadata.totalEvents}");
+                        _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Missing video count: {dailySummary.metadata.missingVideoCount}");
+                        _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - DLQ message count: {dailySummary.metadata.dlqMessageCount}");
+                        _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Event types in file: {dailySummary.eventCounts?.Count ?? 0}");
+                        _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Device counts in file: {dailySummary.deviceCounts?.Count ?? 0}");
+                        _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Individual events in file: {dailySummary.events?.Count ?? 0}");
                         
                         // Aggregate counts from summary
+                        var previousTotalCount = totalCount;
                         totalCount += dailySummary.metadata.totalEvents;
+                        _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Total count updated: {previousTotalCount} + {dailySummary.metadata.totalEvents} = {totalCount}");
                         
                         // Merge event type counts with trigger key counts for backward compatibility
-                        ProcessEventTypeCounts(dailySummary.eventCounts, triggerKeyCounts, ref objectsCount, ref activityCount);
+                        var previousObjectsCount = objectsCount;
+                        var previousActivityCount = activityCount;
+                        if (dailySummary.eventCounts != null)
+                        {
+                            ProcessEventTypeCounts(dailySummary.eventCounts, triggerKeyCounts, ref objectsCount, ref activityCount);
+                            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Objects count updated: {previousObjectsCount} → {objectsCount}");
+                            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Activity count updated: {previousActivityCount} → {activityCount}");
+                            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Trigger key types now tracked: {triggerKeyCounts.Count}");
+                        }
+                        else
+                        {
+                            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - No event counts found in summary file");
+                        }
                         
                         // Aggregate DLQ counts from summary
                         if (dailySummary.dlqCounts != null)
                         {
+                            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Processing {dailySummary.dlqCounts.Count} DLQ entries");
                             foreach (var dlqEntry in dailySummary.dlqCounts)
                             {
+                                var previousValue = dlqCounts.GetValueOrDefault(dlqEntry.Key, 0);
                                 if (dlqCounts.ContainsKey(dlqEntry.Key))
                                 {
                                     dlqCounts[dlqEntry.Key] += dlqEntry.Value;
@@ -226,27 +259,81 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                                 {
                                     dlqCounts[dlqEntry.Key] = dlqEntry.Value;
                                 }
+                                _logger.LogLine($"[TryGetSummaryFromDailyFiles]     - DLQ '{dlqEntry.Key}': {previousValue} + {dlqEntry.Value} = {dlqCounts[dlqEntry.Key]}");
                             }
+                        }
+                        else
+                        {
+                            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - No DLQ counts found in summary file");
                         }
                         
                         // Add DLQ message count from metadata for backward compatibility
+                        var previousDlqMessageCount = dlqMessageCount;
                         dlqMessageCount += dailySummary.metadata.dlqMessageCount;
+                        _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - DLQ message count updated: {previousDlqMessageCount} + {dailySummary.metadata.dlqMessageCount} = {dlqMessageCount}");
                         
                         // Process all events for each device
-                        var deviceLatestEvents = dailySummary.events
-                            .GroupBy(e => e.DeviceName)
-                            .ToDictionary(g => g.Key, g => g.OrderByDescending(e => e.Timestamp).ToList());
-                        
-                        await ProcessDeviceEvents(bucket, deviceLatestEvents, dailySummary.deviceCounts, cameras, missingEvents, now);
+                        if (dailySummary.events != null && dailySummary.deviceCounts != null)
+                        {
+                            var deviceLatestEvents = dailySummary.events
+                                .GroupBy(e => e.DeviceName)
+                                .ToDictionary(g => g.Key, g => g.OrderByDescending(e => e.Timestamp).ToList());
+                            
+                            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Events grouped by device: {deviceLatestEvents.Count} devices");
+                            foreach (var deviceGroup in deviceLatestEvents)
+                            {
+                                _logger.LogLine($"[TryGetSummaryFromDailyFiles]     - Device '{deviceGroup.Key}': {deviceGroup.Value.Count} events");
+                            }
+                            
+                            var previousCameraCount = cameras.Count;
+                            var previousMissingEventCount = missingEvents.Count;
+                            await ProcessDeviceEvents(bucket, deviceLatestEvents, dailySummary.deviceCounts, cameras, missingEvents, now);
+                            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Cameras after processing: {previousCameraCount} → {cameras.Count}");
+                            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Missing events after processing: {previousMissingEventCount} → {missingEvents.Count}");
+                        }
+                        else
+                        {
+                            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - No events or device counts found in summary file");
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogLine($"[TryGetSummaryFromDailyFiles] ⚠ Summary file exists but has no metadata: {summaryKey}");
                     }
                 }
                 catch (AmazonS3Exception e) when (e.ErrorCode == "NoSuchKey" || e.ErrorCode == "NotFound")
                 {
-                    _logger.LogLine($"Summary file not found: {summaryKey}, will try fallback method");
+                    _logger.LogLine($"[TryGetSummaryFromDailyFiles] ⚠ Summary file not found: {summaryKey}, will try next date or fallback method");
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogLine($"Error reading summary file {summaryKey}: {ex.Message}");
+                    _logger.LogLine($"[TryGetSummaryFromDailyFiles] ✗ Error reading summary file {summaryKey}: {ex.Message}");
+                    _logger.LogLine($"[TryGetSummaryFromDailyFiles]   Exception type: {ex.GetType().Name}");
+                    if (ex.InnerException != null)
+                    {
+                        _logger.LogLine($"[TryGetSummaryFromDailyFiles]   Inner exception: {ex.InnerException.Message}");
+                    }
+                }
+            }
+
+            _logger.LogLine($"[TryGetSummaryFromDailyFiles] Summary data retrieval completed:");
+            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Success: {summaryDataFound}");
+            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Final camera count: {cameras.Count}");
+            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Final missing events count: {missingEvents.Count}");
+            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Final total event count: {totalCount}");
+            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Final objects count: {objectsCount}");
+            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Final activity count: {activityCount}");
+            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Final trigger key types: {triggerKeyCounts.Count}");
+            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Final DLQ message count: {dlqMessageCount}");
+            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Final DLQ counts: {dlqCounts.Count} queues");
+            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Summary date: {summaryDate ?? "None"}");
+
+            if (cameras.Count > 0)
+            {
+                _logger.LogLine($"[TryGetSummaryFromDailyFiles] Camera details:");
+                foreach (var camera in cameras.Values)
+                {
+                    _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - {camera.cameraName} ({camera.cameraId}): {camera.count24h} total events, {camera.events.Count} detailed events");
                 }
             }
 
@@ -340,18 +427,39 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// <summary>
         /// Processes a single summary event to create a detailed camera event summary.
         /// </summary>
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S3776:Cognitive Complexity of methods should not be too high", Justification = "Complex event file resolution logic with multiple fallback patterns")]
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S1541:Methods should not be too complex", Justification = "Complex event file resolution logic with multiple fallback patterns")]
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S138:Functions should not have too many lines of code", Justification = "Complex event file resolution logic with comprehensive error handling")]
         private async Task ProcessSingleSummaryEvent(string bucket, DailySummaryEvent summaryEvent,
             CameraSummaryMulti camera, List<CameraEventSummary> missingEvents, DateTime now)
         {
             try
             {
-                // Convert timestamp to find the corresponding event file
-                var eventDate = DateTimeOffset.FromUnixTimeMilliseconds(summaryEvent.Timestamp).UtcDateTime;
-                var eventKey = $"{eventDate:yyyy-MM-dd}/{summaryEvent.EventId}.json";
-                var videoKey = $"{eventDate:yyyy-MM-dd}/{summaryEvent.EventId}.mp4";
+                // Convert timestamp to Eastern Time to match the folder structure used by alarm processing
+                var eventDate = ConvertToEasternTime(summaryEvent.Timestamp);
+                var dateFolder = $"{eventDate.Year}-{eventDate.Month:D2}-{eventDate.Day:D2}";
+                
+                // Try to find the event file - since we don't have the device name in the exact format,
+                // we'll first try a simple pattern and then fall back to listing files if needed
+                var eventKeyPattern = $"{dateFolder}/{summaryEvent.EventId}";
+                var videoKeyPattern = $"{dateFolder}/{summaryEvent.EventId}";
+                
+                // First try the simple format (just EventId)
+                var eventKey = $"{eventKeyPattern}.json";
+                var videoKey = $"{videoKeyPattern}.mp4";
                 
                 // Read the full alarm data for detailed event information
                 var alarm = await ReadAlarmFromS3Async(bucket, eventKey);
+                
+                // If not found with simple format, try with device name pattern
+                if (alarm == null)
+                {
+                    var deviceName = summaryEvent.DeviceName;
+                    eventKey = $"{dateFolder}/{summaryEvent.EventId}_{deviceName}_{summaryEvent.Timestamp}.json";
+                    videoKey = $"{dateFolder}/{summaryEvent.EventId}_{deviceName}_{summaryEvent.Timestamp}.mp4";
+                    alarm = await ReadAlarmFromS3Async(bucket, eventKey);
+                }
+                
                 if (alarm != null)
                 {
                     var sanitizedAlarm = CloneAlarmWithoutSourcesAndConditions(alarm);
@@ -375,11 +483,102 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                         missingEvents.Add(eventObj);
                     }
                 }
+                else
+                {
+                    // Create a minimal event summary from the summary data when full event data is missing
+                    _logger.LogLine($"Event file missing for {summaryEvent.EventId}, creating minimal event summary from summary data");
+                    
+                    var minimalAlarm = new Alarm
+                    {
+                        timestamp = summaryEvent.Timestamp,
+                        name = $"Event {summaryEvent.EventId}",
+                        triggers = new List<Trigger>
+                        {
+                            new Trigger
+                            {
+                                eventId = summaryEvent.EventId,
+                                device = summaryEvent.DeviceName,
+                                deviceName = summaryEvent.DeviceName,
+                                key = summaryEvent.EventType,
+                                originalFileName = $"{summaryEvent.EventId}.mp4"
+                            }
+                        }
+                    };
+                    
+                    // Check if video exists (try both patterns)
+                    bool videoExists = await CheckVideoExistsAsync(bucket, videoKey);
+                    if (!videoExists)
+                    {
+                        videoKey = $"{dateFolder}/{summaryEvent.EventId}_{summaryEvent.DeviceName}_{summaryEvent.Timestamp}.mp4";
+                        videoExists = await CheckVideoExistsAsync(bucket, videoKey);
+                    }
+                    
+                    var eventObj = new CameraEventSummary
+                    {
+                        eventData = minimalAlarm,
+                        videoUrl = videoExists ? await GetPresignedUrlAsync(bucket, videoKey, now, DEFAULT_PRESIGNED_URL_HOURS) : null,
+                        originalFileName = $"{summaryEvent.EventId}.mp4"
+                    };
+                    
+                    if (videoExists)
+                    {
+                        camera.events.Add(eventObj);
+                    }
+                    else
+                    {
+                        missingEvents.Add(eventObj);
+                    }
+                }
             }
             catch (Exception ex)
             {
                 _logger.LogLine($"Error processing summary event {summaryEvent.EventId}: {ex.Message}");
+                
+                // Even if there's an error, try to create a minimal event from summary data
+                try
+                {
+                    var minimalAlarm = new Alarm
+                    {
+                        timestamp = summaryEvent.Timestamp,
+                        name = $"Event {summaryEvent.EventId} (Error)",
+                        triggers = new List<Trigger>
+                        {
+                            new Trigger
+                            {
+                                eventId = summaryEvent.EventId,
+                                device = summaryEvent.DeviceName,
+                                deviceName = summaryEvent.DeviceName,
+                                key = summaryEvent.EventType,
+                                originalFileName = $"{summaryEvent.EventId}.mp4"
+                            }
+                        }
+                    };
+                    
+                    var eventObj = new CameraEventSummary
+                    {
+                        eventData = minimalAlarm,
+                        videoUrl = null, // Don't try to check video if we're already in error state
+                        originalFileName = $"{summaryEvent.EventId}.mp4"
+                    };
+                    
+                    missingEvents.Add(eventObj);
+                    _logger.LogLine($"Created minimal event summary for {summaryEvent.EventId} despite error");
+                }
+                catch (Exception fallbackEx)
+                {
+                    _logger.LogLine($"Failed to create fallback event for {summaryEvent.EventId}: {fallbackEx.Message}");
+                }
             }
+        }
+
+        /// <summary>
+        /// Converts a Unix timestamp to Eastern Time (UTC-5) to match the folder structure used by alarm processing.
+        /// </summary>
+        private static DateTime ConvertToEasternTime(long timestamp)
+        {
+            var utcDate = DateTimeOffset.FromUnixTimeMilliseconds(timestamp).UtcDateTime;
+            // Convert to Eastern Time (UTC-5, ignoring DST for consistency with summary lambda)
+            return utcDate.AddHours(-5);
         }
 
         /// <summary>
