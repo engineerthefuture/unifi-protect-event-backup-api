@@ -12,6 +12,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
 using Amazon.Lambda.APIGatewayEvents;
@@ -622,6 +623,77 @@ namespace UnifiWebhookEventReceiverTests
             _mockS3StorageService.Verify(x => x.StoreAlarmEventAsync(
                 It.IsAny<Alarm>(), 
                 It.Is<Trigger>(t => t.device == deviceMac)), Times.Once);
+        }
+
+        #endregion
+
+        #region Thumbnail Processing Tests
+
+        [Fact]
+        public async Task ProcessAlarmAsync_WithThumbnailData_StoresThumbnailSuccessfully()
+        {
+            // Arrange
+            SetValidAlarmBucketEnvironment();
+            var alarm = CreateValidAlarm();
+            alarm.triggers[0].thumbnail = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/wAALCAABAAEBAREA/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwBVWX/2Q==";
+            
+            var credentials = new UnifiCredentials { hostname = "unifi.local", username = "admin", password = "password", apikey = "test-key" };
+            _mockCredentialsService.Setup(x => x.GetUnifiCredentialsAsync())
+                .ReturnsAsync(credentials);
+
+            _mockS3StorageService.Setup(x => x.GenerateS3Keys(It.IsAny<Trigger>(), It.IsAny<long>()))
+                .Returns(("events/2023/01/01/alm_123_1672531200000.json", "videos/2023/01/01/evt_123_1672531200000.mp4"));
+
+            _mockS3StorageService.Setup(x => x.StoreAlarmEventAsync(It.IsAny<Alarm>(), It.IsAny<Trigger>()))
+                .ReturnsAsync("events/2023/01/01/alm_123_1672531200000.json");
+
+            _mockS3StorageService.Setup(x => x.StoreThumbnailAsync(It.IsAny<string>(), It.IsAny<string>()))
+                .Returns(Task.CompletedTask);
+
+            var expectedResponse = new APIGatewayProxyResponse { StatusCode = 200 };
+            _mockResponseHelper.Setup(x => x.CreateSuccessResponse(It.IsAny<Trigger>(), It.IsAny<long>()))
+                .Returns(expectedResponse);
+
+            // Act
+            var result = await _alarmProcessingService.ProcessAlarmAsync(alarm);
+
+            // Assert
+            Assert.Equal(200, result.StatusCode);
+            _mockS3StorageService.Verify(x => x.StoreAlarmEventAsync(It.IsAny<Alarm>(), It.IsAny<Trigger>()), Times.Once);
+            _mockS3StorageService.Verify(x => x.StoreThumbnailAsync(
+                It.Is<string>(data => data.Contains("data:image/jpeg;base64,")),
+                It.Is<string>(key => key.EndsWith(".jpg") && key.Contains("evt_test_123") && key.Contains("test-device-mac"))), Times.Once);
+        }
+
+        [Fact]
+        public async Task ProcessAlarmAsync_WithoutThumbnailData_DoesNotStoreThumbnail()
+        {
+            // Arrange
+            SetValidAlarmBucketEnvironment();
+            var alarm = CreateValidAlarm();
+            // Don't set thumbnail property (it should be null/empty)
+            
+            var credentials = new UnifiCredentials { hostname = "unifi.local", username = "admin", password = "password", apikey = "test-key" };
+            _mockCredentialsService.Setup(x => x.GetUnifiCredentialsAsync())
+                .ReturnsAsync(credentials);
+
+            _mockS3StorageService.Setup(x => x.GenerateS3Keys(It.IsAny<Trigger>(), It.IsAny<long>()))
+                .Returns(("events/2023/01/01/alm_123_1672531200000.json", "videos/2023/01/01/evt_123_1672531200000.mp4"));
+
+            _mockS3StorageService.Setup(x => x.StoreAlarmEventAsync(It.IsAny<Alarm>(), It.IsAny<Trigger>()))
+                .ReturnsAsync("events/2023/01/01/alm_123_1672531200000.json");
+
+            var expectedResponse = new APIGatewayProxyResponse { StatusCode = 200 };
+            _mockResponseHelper.Setup(x => x.CreateSuccessResponse(It.IsAny<Trigger>(), It.IsAny<long>()))
+                .Returns(expectedResponse);
+
+            // Act
+            var result = await _alarmProcessingService.ProcessAlarmAsync(alarm);
+
+            // Assert
+            Assert.Equal(200, result.StatusCode);
+            _mockS3StorageService.Verify(x => x.StoreAlarmEventAsync(It.IsAny<Alarm>(), It.IsAny<Trigger>()), Times.Once);
+            _mockS3StorageService.Verify(x => x.StoreThumbnailAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
         }
 
         #endregion

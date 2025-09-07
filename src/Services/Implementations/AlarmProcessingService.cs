@@ -163,6 +163,18 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             var eventKey = await _s3StorageService.StoreAlarmEventAsync(alarm, trigger);
             _logger.LogLine($"Alarm event stored in S3 with key: {eventKey}");
 
+            // Store thumbnail if provided
+            if (!string.IsNullOrEmpty(trigger.thumbnail))
+            {
+                var thumbnailKey = GenerateThumbnailKey(trigger, alarm.timestamp);
+                _logger.LogLine($"Thumbnail data found, storing to S3 with key: {thumbnailKey}");
+                await _s3StorageService.StoreThumbnailAsync(trigger.thumbnail, thumbnailKey);
+            }
+            else
+            {
+                _logger.LogLine("No thumbnail data provided in trigger");
+            }
+
             // Download and store video if event path is available
             if (!string.IsNullOrEmpty(alarm.eventPath))
             {
@@ -200,6 +212,21 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             // Store alarm data in S3
             var eventKey = await _s3StorageService.StoreAlarmEventAsync(alarm, trigger);
             _logger.LogLine($"Alarm event stored in S3 with key: {eventKey}");
+
+            // Store thumbnail if available
+            if (!string.IsNullOrEmpty(trigger.thumbnail))
+            {
+                try
+                {
+                    var thumbnailKey = GenerateThumbnailKey(trigger, alarm.timestamp);
+                    await _s3StorageService.StoreThumbnailAsync(trigger.thumbnail, thumbnailKey);
+                    _logger.LogLine($"Thumbnail stored in S3 with key: {thumbnailKey}");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogLine($"Failed to store thumbnail (non-critical): {ex.Message}");
+                }
+            }
 
             // Download and store video if event path is available
             if (!string.IsNullOrEmpty(alarm.eventPath))
@@ -377,6 +404,19 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 // Don't fail the entire alarm processing if video download fails
                 // The event data is still valuable without the video
             }
+        }
+
+        /// <summary>
+        /// Generates an S3 key for storing thumbnail images.
+        /// </summary>
+        /// <param name="trigger">The trigger information</param>
+        /// <param name="timestamp">The event timestamp</param>
+        /// <returns>S3 key for the thumbnail file</returns>
+        private static string GenerateThumbnailKey(Trigger trigger, long timestamp)
+        {
+            DateTime dt = DateTimeOffset.FromUnixTimeMilliseconds(timestamp).LocalDateTime;
+            string dateFolder = $"{dt.Year}-{dt.Month:D2}-{dt.Day:D2}";
+            return $"{dateFolder}/{trigger.eventId}_{trigger.device}_{timestamp}.jpg";
         }
 
         #endregion

@@ -81,6 +81,13 @@ namespace UnifiWebhookEventReceiver.Services
         Task StoreScreenshotFileAsync(string screenshotFilePath, string s3Key);
 
         /// <summary>
+        /// Stores a base64-encoded thumbnail image to S3.
+        /// </summary>
+        /// <param name="base64Thumbnail">Base64-encoded thumbnail data (e.g., "data:image/jpeg;base64,...")</param>
+        /// <param name="s3Key">S3 key for the thumbnail</param>
+        Task StoreThumbnailAsync(string base64Thumbnail, string s3Key);
+
+        /// <summary>
         /// Retrieves a binary file from S3.
         /// </summary>
         /// <param name="s3Key">The S3 key of the file to retrieve</param>

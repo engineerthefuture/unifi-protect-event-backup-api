@@ -35,7 +35,21 @@ exports.handler = async(event) => {
         }
         const { year, month, day, folder } = getEasternDateString(summaryEvent.Timestamp);
         const key = `${folder}/summary_${year}_${month}_${day}.json`;
-        let summaryData = { events: [], counters: {} };
+        
+        // Initialize default summary structure
+        let summaryData = {
+            metadata: {
+                date: `${year}-${month}-${day}`,
+                dateFormatted: new Date(year, month - 1, day).toISOString().split('T')[0],
+                lastUpdated: new Date().toISOString(),
+                totalEvents: 0
+            },
+            eventCounts: {},
+            deviceCounts: {},
+            hourlyCounts: {},
+            events: []
+        };
+        
         let fileExisted = true;
         try {
             const s3Obj = await s3.send(new GetObjectCommand({ Bucket: BUCKET_NAME, Key: key }));
@@ -51,6 +65,20 @@ exports.handler = async(event) => {
                 continue;
             }
         }
+        // Initialize summary structure if needed
+        if (!summaryData.metadata) {
+            summaryData.metadata = {
+                date: `${year}-${month}-${day}`,
+                dateFormatted: new Date(year, month - 1, day).toISOString().split('T')[0],
+                lastUpdated: new Date().toISOString(),
+                totalEvents: 0
+            };
+        }
+        if (!summaryData.eventCounts) summaryData.eventCounts = {};
+        if (!summaryData.deviceCounts) summaryData.deviceCounts = {};
+        if (!summaryData.hourlyCounts) summaryData.hourlyCounts = {};
+        if (!summaryData.events) summaryData.events = [];
+
         // Add the new event to the summary
         summaryData.events.push(summaryEvent);
         console.log(`[INFO] Added event to summary:`, {
@@ -59,18 +87,30 @@ exports.handler = async(event) => {
             EventType: summaryEvent.EventType || summaryEvent.Type
         });
 
-        // Increment counters for event attributes
-        const type = summaryEvent.EventType || summaryEvent.Type || 'Unknown';
-        const device = summaryEvent.DeviceName || 'Unknown';
-        if (!summaryData.counters.type) summaryData.counters.type = {};
-        if (!summaryData.counters.device) summaryData.counters.device = {};
-        summaryData.counters.type[type] = (summaryData.counters.type[type] || 0) + 1;
-        summaryData.counters.device[device] = (summaryData.counters.device[device] || 0) + 1;
-        console.log(`[INFO] Incremented counters:`, {
-            type,
-            typeCount: summaryData.counters.type[type],
-            device,
-            deviceCount: summaryData.counters.device[device]
+        // Extract event details
+        const eventType = summaryEvent.EventType || summaryEvent.Type || 'Unknown';
+        const deviceName = summaryEvent.DeviceName || summaryEvent.Device || 'Unknown';
+        const eventHour = new Date(summaryEvent.Timestamp).getHours();
+
+        // Update event type counters
+        summaryData.eventCounts[eventType] = (summaryData.eventCounts[eventType] || 0) + 1;
+
+        // Update device counters
+        summaryData.deviceCounts[deviceName] = (summaryData.deviceCounts[deviceName] || 0) + 1;
+
+        // Update hourly counters
+        summaryData.hourlyCounts[eventHour] = (summaryData.hourlyCounts[eventHour] || 0) + 1;
+
+        // Update metadata
+        summaryData.metadata.totalEvents = summaryData.events.length;
+        summaryData.metadata.lastUpdated = new Date().toISOString();
+
+        console.log(`[INFO] Updated counters:`, {
+            eventType,
+            eventTypeCount: summaryData.eventCounts[eventType],
+            deviceName,
+            deviceCount: summaryData.deviceCounts[deviceName],
+            totalEvents: summaryData.metadata.totalEvents
         });
 
         // Save back to S3

@@ -11,6 +11,7 @@
 
 using Amazon.Lambda.APIGatewayEvents;
 using Amazon.Lambda.SQSEvents;
+using System.Collections.Generic;
 
 namespace UnifiWebhookEventReceiver.Services
 {
@@ -31,6 +32,12 @@ namespace UnifiWebhookEventReceiver.Services
     /// </summary>
     /// <returns>Approximate number of messages in the DLQ</returns>
     Task<int> GetDlqMessageCountAsync();
+
+        /// <summary>
+        /// Gets the message counts for all DLQ queues.
+        /// </summary>
+        /// <returns>Dictionary containing DLQ names and their message counts</returns>
+        Task<Dictionary<string, int>> GetAllDlqMessageCountsAsync();
 
         /// <summary>
         /// Determines if the request body represents an SQS event.

@@ -57,8 +57,16 @@ describe('summary-event-lambda', () => {
 
     it('should update counters for event type and device', async() => {
         const summaryData = {
-            events: [],
-            counters: { type: { motion: 1 }, device: { DeviceA: 1 } }
+            metadata: {
+                date: '2025-09-07',
+                dateFormatted: '2025-09-07',
+                lastUpdated: '2025-09-07T12:00:00.000Z',
+                totalEvents: 1
+            },
+            eventCounts: { motion: 1 },
+            deviceCounts: { DeviceA: 1 },
+            hourlyCounts: { 12: 1 },
+            events: [{ EventId: 'evt1', DeviceName: 'DeviceA', EventType: 'motion' }]
         };
         mockS3GetObject(summaryData);
         const event = {
