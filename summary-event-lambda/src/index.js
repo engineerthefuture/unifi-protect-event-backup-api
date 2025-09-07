@@ -1,4 +1,4 @@
-const { S3Client, GetObjectCommand, PutObjectCommand } = require('@aws-sdk/client-s3');
+const { S3Client, GetObjectCommand, PutObjectCommand, ListObjectsV2Command } = require('@aws-sdk/client-s3');
 const s3 = new S3Client();
 
 // Use environment variable directly
@@ -15,6 +15,72 @@ function getEasternDateString(timestamp) {
     const month = String(et.getMonth() + 1).padStart(2, '0');
     const day = String(et.getDate()).padStart(2, '0');
     return { year, month, day, folder: `${year}-${month}-${day}` };
+}
+
+// Helper to find events with JSON metadata but missing video files
+async function findMissingVideoFiles(folder) {
+    const missingVideoEvents = [];
+    
+    try {
+        // List all objects in the date folder
+        const listParams = {
+            Bucket: BUCKET_NAME,
+            Prefix: `${folder}/`,
+            MaxKeys: 1000 // Adjust if needed
+        };
+        
+        const response = await s3.send(new ListObjectsV2Command(listParams));
+        const objects = response.Contents || [];
+        
+        // Group files by event ID
+        const eventFiles = {};
+        
+        for (const obj of objects) {
+            const key = obj.Key;
+            const fileName = key.split('/').pop(); // Get just the filename
+            
+            // Skip summary files and other non-event files
+            if (fileName.startsWith('summary_') || !fileName.includes('_')) {
+                continue;
+            }
+            
+            // Extract event ID from filename (assuming format: type_eventId_timestamp.extension)
+            const parts = fileName.split('_');
+            if (parts.length >= 3) {
+                const eventId = parts[1];
+                
+                if (!eventFiles[eventId]) {
+                    eventFiles[eventId] = { json: false, video: false, metadata: null };
+                }
+                
+                if (fileName.endsWith('.json')) {
+                    eventFiles[eventId].json = true;
+                    eventFiles[eventId].metadata = obj;
+                } else if (fileName.endsWith('.mp4') || fileName.endsWith('.mov')) {
+                    eventFiles[eventId].video = true;
+                }
+            }
+        }
+        
+        // Find events with JSON but no video
+        for (const [eventId, files] of Object.entries(eventFiles)) {
+            if (files.json && !files.video && files.metadata) {
+                missingVideoEvents.push({
+                    eventId: eventId,
+                    jsonFile: files.metadata.Key,
+                    lastModified: files.metadata.LastModified,
+                    size: files.metadata.Size
+                });
+            }
+        }
+        
+        console.log(`[INFO] Found ${missingVideoEvents.length} events with JSON metadata but missing video files in folder ${folder}`);
+        
+    } catch (error) {
+        console.error(`[ERROR] Failed to check for missing video files in folder ${folder}:`, error);
+    }
+    
+    return missingVideoEvents;
 }
 
 // Lambda handler
@@ -34,7 +100,7 @@ exports.handler = async(event) => {
             continue;
         }
         const { year, month, day, folder } = getEasternDateString(summaryEvent.Timestamp);
-        const key = `${folder}/summary_${year}_${month}_${day}.json`;
+        const key = `${folder}/summary_${year}-${month}-${day}.json`;
         
         // Initialize default summary structure
         let summaryData = {
@@ -42,12 +108,14 @@ exports.handler = async(event) => {
                 date: `${year}-${month}-${day}`,
                 dateFormatted: new Date(year, month - 1, day).toISOString().split('T')[0],
                 lastUpdated: new Date().toISOString(),
-                totalEvents: 0
+                totalEvents: 0,
+                missingVideoCount: 0
             },
             eventCounts: {},
             deviceCounts: {},
             hourlyCounts: {},
-            events: []
+            events: [],
+            missingVideoEvents: []
         };
         
         let fileExisted = true;
@@ -71,13 +139,16 @@ exports.handler = async(event) => {
                 date: `${year}-${month}-${day}`,
                 dateFormatted: new Date(year, month - 1, day).toISOString().split('T')[0],
                 lastUpdated: new Date().toISOString(),
-                totalEvents: 0
+                totalEvents: 0,
+                missingVideoCount: 0
             };
         }
+        if (!summaryData.metadata.missingVideoCount) summaryData.metadata.missingVideoCount = 0;
         if (!summaryData.eventCounts) summaryData.eventCounts = {};
         if (!summaryData.deviceCounts) summaryData.deviceCounts = {};
         if (!summaryData.hourlyCounts) summaryData.hourlyCounts = {};
         if (!summaryData.events) summaryData.events = [];
+        if (!summaryData.missingVideoEvents) summaryData.missingVideoEvents = [];
 
         // Add the new event to the summary
         summaryData.events.push(summaryEvent);
@@ -101,8 +172,13 @@ exports.handler = async(event) => {
         // Update hourly counters
         summaryData.hourlyCounts[eventHour] = (summaryData.hourlyCounts[eventHour] || 0) + 1;
 
+        // Check for missing video files in the date folder
+        const missingVideoEvents = await findMissingVideoFiles(folder);
+        summaryData.missingVideoEvents = missingVideoEvents;
+
         // Update metadata
         summaryData.metadata.totalEvents = summaryData.events.length;
+        summaryData.metadata.missingVideoCount = missingVideoEvents.length;
         summaryData.metadata.lastUpdated = new Date().toISOString();
 
         console.log(`[INFO] Updated counters:`, {
@@ -110,7 +186,8 @@ exports.handler = async(event) => {
             eventTypeCount: summaryData.eventCounts[eventType],
             deviceName,
             deviceCount: summaryData.deviceCounts[deviceName],
-            totalEvents: summaryData.metadata.totalEvents
+            totalEvents: summaryData.metadata.totalEvents,
+            missingVideoCount: summaryData.metadata.missingVideoCount
         });
 
         // Save back to S3
