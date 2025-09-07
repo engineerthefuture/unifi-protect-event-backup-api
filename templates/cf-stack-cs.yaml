@@ -187,7 +187,7 @@ Resources:
   SummaryLambdaRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub "${FunctionName}-summary-lambda-role"
+      RoleName: !Sub "${FunctionName}-sum-role"
       AssumeRolePolicyDocument:
         Version: 2012-10-17
         Statement:
