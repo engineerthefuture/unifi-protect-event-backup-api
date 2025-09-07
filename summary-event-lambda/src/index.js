@@ -1,8 +1,9 @@
+
 const AWS = require('aws-sdk');
 const s3 = new AWS.S3();
 
-// Set your bucket name here
-const { BUCKET_NAME } = require('./config');
+// Use environment variable directly
+const BUCKET_NAME = process.env.SUMMARY_BUCKET_NAME || '';
 
 // Helper to get ET midnight for a given timestamp
 function getEasternDateString(timestamp) {

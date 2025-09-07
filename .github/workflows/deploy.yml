@@ -525,8 +525,8 @@ jobs:
         run: |
           cd summary-event-lambda
           npm install --omit=dev
+          zip -r ../bf-${{ steps.env.outputs.ENV_PREFIX }}-summary-event-lambda.zip index.js package.json
           cd ..
-          zip -r bf-${{ steps.env.outputs.ENV_PREFIX }}-summary-event-lambda.zip summary-event-lambda
 
       - name: Upload summary lambda package to S3
         run: |
