@@ -77,7 +77,7 @@ jobs:
           npm install --no-audit --no-fund
           mkdir -p test-results
             set -o pipefail
-            npx jest --colors --ci --reporters=default --reporters=jest-junit 2>&1 | tee jest-output.log
+            npx jest --colors --ci --reporters=default --reporters=jest-junit --outputDirectory=./test-results --outputName=js-junit.xml 2>&1 | tee jest-output.log
             if [ ! -f test-results/js-junit.xml ]; then
               echo "::error::Jest did not produce test-results/js-junit.xml. See jest-output.log for details."
               cat jest-output.log
