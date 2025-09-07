@@ -29,7 +29,7 @@ exports.handler = async(event) => {
         }
         const { year, month, day, folder } = getEasternDateString(summaryEvent.Timestamp);
         const key = `${folder}/summary_${year}_${month}_${day}.json`;
-        let summaryData = { events: [] };
+        let summaryData = { events: [], counters: {} };
         try {
             const s3Obj = await s3.getObject({ Bucket: BUCKET_NAME, Key: key }).promise();
             summaryData = JSON.parse(s3Obj.Body.toString('utf-8'));
@@ -41,6 +41,16 @@ exports.handler = async(event) => {
         }
         // Add the new event to the summary
         summaryData.events.push(summaryEvent);
+
+        // Increment counters for event attributes
+        // Example: count by event type and device name
+        const type = summaryEvent.Type || 'Unknown';
+        const device = summaryEvent.DeviceName || 'Unknown';
+        if (!summaryData.counters.type) summaryData.counters.type = {};
+        if (!summaryData.counters.device) summaryData.counters.device = {};
+        summaryData.counters.type[type] = (summaryData.counters.type[type] || 0) + 1;
+        summaryData.counters.device[device] = (summaryData.counters.device[device] || 0) + 1;
+
         // Save back to S3
         await s3.putObject({
             Bucket: BUCKET_NAME,
