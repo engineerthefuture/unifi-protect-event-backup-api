@@ -730,18 +730,6 @@ Resources:
           MaxRetentionDays: !Ref RetentionDays
           SummaryEventQueueUrl: !Ref SummaryEventQueue
           SummaryEventDlqUrl: !Ref SummaryEventDeadLetterQueue
-  SummaryEventQueue:
-    Description: SQS queue for summary event processing
-    Value: !Ref SummaryEventQueue
-  SummaryEventDeadLetterQueue:
-    Description: DLQ for summary event processing
-    Value: !Ref SummaryEventDeadLetterQueue
-  SummaryLambdaFunction:
-    Description: Lambda function for summary event processing
-    Value: !Ref SummaryLambdaFunction
-      Tags: 
-        - Key: "FunctionName"
-          Value: !Sub "${FunctionName}"
 
   # Root invoker from API gateway to lambda
   LambdaApiGatewayInvoke:
