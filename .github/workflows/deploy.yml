@@ -584,7 +584,7 @@ jobs:
           aws lambda update-function-code \
             --function-name bf-${{ steps.env.outputs.ENV_PREFIX }}-lambda-unifi-protect-event-backup-api-summary \
             --s3-bucket ${{ steps.env.outputs.BUCKET_DEPLOYMENT }} \
-            --s3-key bf-${{ steps.env.outputs.ENV_PREFIX }}-summary-event-lambda.zip
+            --s3-key bf-${{ steps.env.outputs.ENV_PREFIX }}-lambda-unifi-protect-event-backup-api-summary/bf-${{ steps.env.outputs.ENV_PREFIX }}-summary-event-lambda.zip
 
       # Create UI API Gateway API key and attach to usage plan (post-stack)
       - name: Create UI API Gateway API Key and attach to Usage Plan
