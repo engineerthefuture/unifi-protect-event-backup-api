@@ -253,7 +253,7 @@ Resources:
   SummaryLambdaFunction:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: !Sub "${FunctionName}-summary-processor"
+      FunctionName: !Sub "${FunctionName}-summary"
       Description: "Processes summary events from the summary event SQS queue."
       Handler: index.handler
       Role: !GetAtt SummaryLambdaRole.Arn

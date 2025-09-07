@@ -532,6 +532,13 @@ jobs:
         run: |
           aws s3 cp bf-${{ steps.env.outputs.ENV_PREFIX }}-summary-event-lambda.zip s3://${{ steps.env.outputs.BUCKET_DEPLOYMENT }}/bf-${{ steps.env.outputs.ENV_PREFIX }}-summary-event-lambda.zip
 
+      - name: Update Summary Event Lambda function code
+        run: |
+          aws lambda update-function-code \
+            --function-name bf-${{ steps.env.outputs.ENV_PREFIX }}-lambda-summary-event \
+            --s3-bucket ${{ steps.env.outputs.BUCKET_DEPLOYMENT }} \
+            --s3-key bf-${{ steps.env.outputs.ENV_PREFIX }}-summary-event-lambda.zip
+
       - name: Generate build timestamp
         id: timestamp
         run: echo "BUILD_TIMESTAMP=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
