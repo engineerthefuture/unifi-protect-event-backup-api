@@ -29,7 +29,6 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
     {
         /// <summary>Default duration (in hours) for presigned S3 URLs.</summary>
         private const int DEFAULT_PRESIGNED_URL_HOURS = 1;
-        private const int MAX_PRESIGNED_URL_HOURS = 24;
 
         /// <summary>
         /// Returns the latest video file and associated event data as a presigned download link.

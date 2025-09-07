@@ -15,6 +15,7 @@ using Amazon.Lambda.Core;
 using Newtonsoft.Json;
 using UnifiWebhookEventReceiver.Configuration;
 using UnifiWebhookEventReceiver.Services;
+using UnifiWebhookEventReceiver.Models;
 
 namespace UnifiWebhookEventReceiver.Services.Implementations
 {
@@ -23,11 +24,13 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
     /// </summary>
     public class AlarmProcessingService : IAlarmProcessingService
     {
+        private const int PRESIGNED_VIDEO_URL_HOURS = 24;
         private readonly IS3StorageService _s3StorageService;
         private readonly IUnifiProtectService _unifiProtectService;
         private readonly ICredentialsService _credentialsService;
         private readonly IResponseHelper _responseHelper;
         private readonly ILambdaLogger _logger;
+        private readonly ISummaryEventQueueService _summaryEventQueueService;
 
         /// <summary>
         /// Initializes a new instance of the AlarmProcessingService.
@@ -37,13 +40,15 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             IUnifiProtectService unifiProtectService,
             ICredentialsService credentialsService,
             IResponseHelper responseHelper,
-            ILambdaLogger logger)
+            ILambdaLogger logger,
+            ISummaryEventQueueService summaryEventQueueService)
         {
             _s3StorageService = s3StorageService ?? throw new ArgumentNullException(nameof(s3StorageService));
             _unifiProtectService = unifiProtectService ?? throw new ArgumentNullException(nameof(unifiProtectService));
             _credentialsService = credentialsService ?? throw new ArgumentNullException(nameof(credentialsService));
             _responseHelper = responseHelper ?? throw new ArgumentNullException(nameof(responseHelper));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _summaryEventQueueService = summaryEventQueueService ?? throw new ArgumentNullException(nameof(summaryEventQueueService));
         }
 
         /// <summary>
@@ -206,6 +211,39 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             {
                 _logger.LogLine("No event path provided, skipping video download");
             }
+
+            // Queue the alarm results for summary event processing
+            var triggerForSummary = alarm.triggers?.FirstOrDefault();
+            string? presignedVideoUrl = null;
+            if (!string.IsNullOrEmpty(triggerForSummary?.videoKey) && !string.IsNullOrEmpty(AppConfiguration.AlarmBucketName))
+            {
+                try
+                {
+                    presignedVideoUrl = await _s3StorageService.GetPresignedUrlAsync(
+                        AppConfiguration.AlarmBucketName,
+                        triggerForSummary.videoKey,
+                        DateTime.UtcNow,
+                        PRESIGNED_VIDEO_URL_HOURS);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogLine($"Failed to generate presigned video URL: {ex.Message}");
+                }
+            }
+            var summaryEvent = new SummaryEvent
+            {
+                EventId = triggerForSummary?.eventId,
+                Device = triggerForSummary?.device,
+                Timestamp = alarm.timestamp,
+                AlarmS3Key = eventKey,
+                VideoS3Key = triggerForSummary?.videoKey,
+                PresignedVideoUrl = presignedVideoUrl,
+                AlarmName = alarm.name,
+                DeviceName = triggerForSummary?.deviceName,
+                EventType = triggerForSummary?.key,
+                Metadata = new System.Collections.Generic.Dictionary<string, string>()
+            };
+            await _summaryEventQueueService.SendSummaryEventAsync(summaryEvent);
 
             _logger.LogLine("SQS alarm processing completed successfully");
         }
