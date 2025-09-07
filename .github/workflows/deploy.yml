@@ -80,11 +80,34 @@ jobs:
 
       - name: Install JS dependencies and run tests for summary-event-lambda
         working-directory: summary-event-lambda
+        id: js_test
         run: |
           npm install --no-audit --no-fund
-          npx jest --colors
+          npx jest --colors --ci --reporters=default --reporters=jest-junit
         env:
           CI: true
+
+      - name: Post JS unit test summary
+        if: always()
+        run: |
+          echo "## 📊 JS Unit Test Results" >> $GITHUB_STEP_SUMMARY
+          if [ -f summary-event-lambda/test-results/js-junit.xml ]; then
+            TOTAL=$(grep -o 'tests="[0-9]*"' summary-event-lambda/test-results/js-junit.xml | head -1 | grep -o '[0-9]*')
+            FAILURES=$(grep -o 'failures="[0-9]*"' summary-event-lambda/test-results/js-junit.xml | head -1 | grep -o '[0-9]*')
+            ERRORS=$(grep -o 'errors="[0-9]*"' summary-event-lambda/test-results/js-junit.xml | head -1 | grep -o '[0-9]*')
+            PASSED=$((TOTAL - FAILURES - ERRORS))
+            STATUS=✅
+            if [ "$FAILURES" != "0" ] || [ "$ERRORS" != "0" ]; then STATUS=❌; fi
+            echo "$STATUS $PASSED/$TOTAL tests passed ($FAILURES failures, $ERRORS errors)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ JS test results not found." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Fail if JS unit tests failed
+        if: steps.js_test.outcome != 'success'
+        run: |
+          echo "❌ JS unit tests failed. Skipping deployment."
+          exit 1
 
       - name: Upload JS unit test results
         uses: actions/upload-artifact@v4
