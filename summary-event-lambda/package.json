@@ -1,0 +1,9 @@
+{
+  "name": "summary-event-lambda",
+  "version": "1.0.0",
+  "description": "Lambda to process summary events and update daily summary files in S3.",
+  "main": "src/index.js",
+  "dependencies": {
+    "aws-sdk": "^2.1485.0"
+  }
+}

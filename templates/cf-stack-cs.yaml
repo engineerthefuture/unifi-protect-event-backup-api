@@ -1,3 +1,25 @@
+# Summary Event Lambda Function
+  SummaryEventLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "bf-${EnvPrefix}-lambda-summary-event"
+      Code:
+        S3Bucket: !Ref BucketNameDeployment
+        S3Key: !Sub "bf-${EnvPrefix}-summary-event-lambda.zip"
+      Description: !Sub "${EnvPrefix} - ${AppName} summary event processor"
+      Handler: src/index.handler
+      MemorySize: 256
+      Timeout: 60
+      Runtime: nodejs18.x
+      Role: !GetAtt LambdaRole.Arn
+      Environment:
+        Variables:
+          SUMMARY_BUCKET_NAME: !Ref BucketName
+      Events:
+        SQSTrigger:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt SummaryEventQueue.Arn
 # Add ApiGateway output for REST API ID
 Outputs:
   ApiGateway:
