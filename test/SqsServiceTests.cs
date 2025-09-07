@@ -199,7 +199,7 @@ namespace UnifiWebhookEventReceiverTests
         }
 
         [Fact]
-        public async Task ProcessSqsEventAsync_WithValidEvent_ReturnsSuccess()
+    public async Task ProcessSqsEventAsync_WithValidEvent_ProcessesAlarm()
         {
             // Arrange
             var alarm = new Alarm
@@ -227,59 +227,52 @@ namespace UnifiWebhookEventReceiverTests
             var sqsEventJson = JsonConvert.SerializeObject(sqsEvent);
 
             // Act
-            var result = await _sqsService.ProcessSqsEventAsync(sqsEventJson);
+            await _sqsService.ProcessSqsEventAsync(sqsEventJson);
 
             // Assert
-            Assert.Equal(200, result.StatusCode);
             _mockAlarmProcessingService.Verify(x => x.ProcessAlarmForSqsAsync(It.IsAny<Alarm>()), Times.Once);
         }
 
         [Fact]
-        public async Task ProcessSqsEventAsync_WithException_ReturnsErrorResponse()
+    public async Task ProcessSqsEventAsync_WithException_Throws()
         {
             // Arrange
             var invalidJson = "invalid json";
             
             // Act
-            var result = await _sqsService.ProcessSqsEventAsync(invalidJson);
-
-            // Assert
-            Assert.Equal(500, result.StatusCode);
-            _mockResponseHelper.Verify(x => x.CreateErrorResponse(HttpStatusCode.InternalServerError, It.IsAny<string>()), Times.Once);
+            await Assert.ThrowsAsync<Newtonsoft.Json.JsonReaderException>(() => _sqsService.ProcessSqsEventAsync(invalidJson));
         }
 
         [Fact]
-        public async Task ProcessSqsEventAsync_WithEmptyRecords_ReturnsSuccess()
+    public async Task ProcessSqsEventAsync_WithEmptyRecords_ProcessesNoAlarms()
         {
             // Arrange
             var sqsEvent = new SQSEvent { Records = new List<SQSEvent.SQSMessage>() };
             var sqsEventJson = JsonConvert.SerializeObject(sqsEvent);
 
             // Act
-            var result = await _sqsService.ProcessSqsEventAsync(sqsEventJson);
+            await _sqsService.ProcessSqsEventAsync(sqsEventJson);
 
             // Assert
-            Assert.Equal(200, result.StatusCode);
             _mockAlarmProcessingService.Verify(x => x.ProcessAlarmForSqsAsync(It.IsAny<Alarm>()), Times.Never);
         }
 
         [Fact]
-        public async Task ProcessSqsEventAsync_WithNullRecords_ReturnsSuccess()
+    public async Task ProcessSqsEventAsync_WithNullRecords_ProcessesNoAlarms()
         {
             // Arrange
             var sqsEvent = new SQSEvent { Records = null };
             var sqsEventJson = JsonConvert.SerializeObject(sqsEvent);
 
             // Act
-            var result = await _sqsService.ProcessSqsEventAsync(sqsEventJson);
+            await _sqsService.ProcessSqsEventAsync(sqsEventJson);
 
             // Assert
-            Assert.Equal(200, result.StatusCode);
             _mockAlarmProcessingService.Verify(x => x.ProcessAlarmForSqsAsync(It.IsAny<Alarm>()), Times.Never);
         }
 
         [Fact]
-        public async Task ProcessSqsEventAsync_WithProcessingException_ContinuesProcessing()
+    public async Task ProcessSqsEventAsync_WithProcessingException_ContinuesProcessing()
         {
             // Arrange
             var alarm1 = new Alarm { 
@@ -318,10 +311,9 @@ namespace UnifiWebhookEventReceiverTests
             var sqsEventJson = JsonConvert.SerializeObject(sqsEvent);
 
             // Act
-            var result = await _sqsService.ProcessSqsEventAsync(sqsEventJson);
+            await _sqsService.ProcessSqsEventAsync(sqsEventJson);
 
             // Assert
-            Assert.Equal(200, result.StatusCode);
             _mockAlarmProcessingService.Verify(x => x.ProcessAlarmForSqsAsync(It.IsAny<Alarm>()), Times.Exactly(2));
         }
 
@@ -406,7 +398,7 @@ namespace UnifiWebhookEventReceiverTests
         }
 
         [Fact]
-        public async Task ProcessSqsEventAsync_WithInvalidAlarmJson_LogsErrorAndContinues()
+    public async Task ProcessSqsEventAsync_WithInvalidAlarmJson_LogsErrorAndContinues()
         {
             // Arrange
             var sqsEvent = new SQSEvent
@@ -424,10 +416,9 @@ namespace UnifiWebhookEventReceiverTests
             var sqsEventJson = JsonConvert.SerializeObject(sqsEvent);
 
             // Act
-            var result = await _sqsService.ProcessSqsEventAsync(sqsEventJson);
+            await _sqsService.ProcessSqsEventAsync(sqsEventJson);
 
             // Assert
-            Assert.Equal(200, result.StatusCode);
             _mockLogger.Verify(x => x.LogLine(It.Is<string>(s => s.Contains("Error processing SQS message"))), Times.Once);
         }
 

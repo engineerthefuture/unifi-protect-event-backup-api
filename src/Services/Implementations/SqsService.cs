@@ -87,25 +87,17 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// </summary>
         /// <param name="requestBody">JSON string containing the SQS event</param>
         /// <returns>API Gateway response indicating processing status</returns>
-        public async Task<APIGatewayProxyResponse> ProcessSqsEventAsync(string requestBody)
+        public async Task ProcessSqsEventAsync(string requestBody)
         {
             try
             {
                 _logger.LogLine("Detected SQS event, processing delayed alarm");
                 await ProcessSqsEventInternal(requestBody);
-
-                return new APIGatewayProxyResponse
-                {
-                    StatusCode = 200,
-                    Body = JsonConvert.SerializeObject(new { msg = "SQS event processed successfully" }),
-                    Headers = _responseHelper.GetStandardHeaders()
-                };
             }
             catch (Exception ex)
             {
                 _logger.LogLine($"Error processing SQS event: {ex.Message}");
-                return _responseHelper.CreateErrorResponse(System.Net.HttpStatusCode.InternalServerError, 
-                    $"Error processing SQS event: {ex.Message}");
+                throw;
             }
         }
 
