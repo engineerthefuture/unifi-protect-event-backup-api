@@ -94,5 +94,14 @@ namespace UnifiWebhookEventReceiver.Services
         /// <param name="s3Key">The S3 key where the JSON will be stored</param>
         /// <returns>Task representing the upload operation</returns>
         Task StoreJsonStringAsync(string json, string s3Key);
+        /// <summary>
+        /// Generates a presigned URL for a video file in S3.
+        /// </summary>
+        /// <param name="bucket">S3 bucket name</param>
+        /// <param name="videoKey">S3 key for the video file</param>
+        /// <param name="now">Current time (for expiration calculation)</param>
+        /// <param name="durationHours">Duration in hours for which the URL is valid</param>
+        /// <returns>Presigned URL string</returns>
+        Task<string> GetPresignedUrlAsync(string bucket, string videoKey, DateTime now, int durationHours);
     }
 }

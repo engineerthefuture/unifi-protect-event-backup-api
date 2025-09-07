@@ -34,7 +34,8 @@ namespace UnifiWebhookEventReceiverTests
         private readonly Mock<ICredentialsService> _mockCredentialsService;
         private readonly Mock<IResponseHelper> _mockResponseHelper;
         private readonly Mock<ILambdaLogger> _mockLogger;
-        private readonly AlarmProcessingService _alarmProcessingService;
+    private readonly AlarmProcessingService _alarmProcessingService;
+    private readonly Mock<ISummaryEventQueueService> _mockSummaryEventQueueService;
         private readonly string? _originalStorageBucket;
         private readonly string? _originalFunctionName;
 
@@ -53,13 +54,15 @@ namespace UnifiWebhookEventReceiverTests
             _mockCredentialsService = new Mock<ICredentialsService>();
             _mockResponseHelper = new Mock<IResponseHelper>();
             _mockLogger = new Mock<ILambdaLogger>();
+            _mockSummaryEventQueueService = new Mock<ISummaryEventQueueService>();
 
             _alarmProcessingService = new AlarmProcessingService(
                 _mockS3StorageService.Object,
                 _mockUnifiProtectService.Object,
                 _mockCredentialsService.Object,
                 _mockResponseHelper.Object,
-                _mockLogger.Object);
+                _mockLogger.Object,
+                _mockSummaryEventQueueService.Object);
         }
 
         #region Constructor Tests
@@ -69,7 +72,7 @@ namespace UnifiWebhookEventReceiverTests
         {
             // Act & Assert
             Assert.Throws<ArgumentNullException>(() =>
-                new AlarmProcessingService(null!, _mockUnifiProtectService.Object, _mockCredentialsService.Object, _mockResponseHelper.Object, _mockLogger.Object));
+                new AlarmProcessingService(null!, _mockUnifiProtectService.Object, _mockCredentialsService.Object, _mockResponseHelper.Object, _mockLogger.Object, _mockSummaryEventQueueService.Object));
         }
 
         [Fact]
@@ -77,7 +80,7 @@ namespace UnifiWebhookEventReceiverTests
         {
             // Act & Assert
             Assert.Throws<ArgumentNullException>(() =>
-                new AlarmProcessingService(_mockS3StorageService.Object, null!, _mockCredentialsService.Object, _mockResponseHelper.Object, _mockLogger.Object));
+                new AlarmProcessingService(_mockS3StorageService.Object, null!, _mockCredentialsService.Object, _mockResponseHelper.Object, _mockLogger.Object, _mockSummaryEventQueueService.Object));
         }
 
         [Fact]
@@ -85,7 +88,7 @@ namespace UnifiWebhookEventReceiverTests
         {
             // Act & Assert
             Assert.Throws<ArgumentNullException>(() =>
-                new AlarmProcessingService(_mockS3StorageService.Object, _mockUnifiProtectService.Object, null!, _mockResponseHelper.Object, _mockLogger.Object));
+                new AlarmProcessingService(_mockS3StorageService.Object, _mockUnifiProtectService.Object, null!, _mockResponseHelper.Object, _mockLogger.Object, _mockSummaryEventQueueService.Object));
         }
 
         [Fact]
@@ -93,7 +96,7 @@ namespace UnifiWebhookEventReceiverTests
         {
             // Act & Assert
             Assert.Throws<ArgumentNullException>(() =>
-                new AlarmProcessingService(_mockS3StorageService.Object, _mockUnifiProtectService.Object, _mockCredentialsService.Object, null!, _mockLogger.Object));
+                new AlarmProcessingService(_mockS3StorageService.Object, _mockUnifiProtectService.Object, _mockCredentialsService.Object, null!, _mockLogger.Object, _mockSummaryEventQueueService.Object));
         }
 
         [Fact]
@@ -101,14 +104,14 @@ namespace UnifiWebhookEventReceiverTests
         {
             // Act & Assert
             Assert.Throws<ArgumentNullException>(() =>
-                new AlarmProcessingService(_mockS3StorageService.Object, _mockUnifiProtectService.Object, _mockCredentialsService.Object, _mockResponseHelper.Object, null!));
+                new AlarmProcessingService(_mockS3StorageService.Object, _mockUnifiProtectService.Object, _mockCredentialsService.Object, _mockResponseHelper.Object, null!, _mockSummaryEventQueueService.Object));
         }
 
         [Fact]
         public void Constructor_WithValidParameters_CreatesInstance()
         {
             // Act
-            var service = new AlarmProcessingService(_mockS3StorageService.Object, _mockUnifiProtectService.Object, _mockCredentialsService.Object, _mockResponseHelper.Object, _mockLogger.Object);
+            var service = new AlarmProcessingService(_mockS3StorageService.Object, _mockUnifiProtectService.Object, _mockCredentialsService.Object, _mockResponseHelper.Object, _mockLogger.Object, _mockSummaryEventQueueService.Object);
 
             // Assert
             Assert.NotNull(service);

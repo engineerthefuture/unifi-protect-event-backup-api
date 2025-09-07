@@ -39,7 +39,8 @@ namespace UnifiWebhookEventReceiver.Infrastructure
             IUnifiProtectService UnifiProtectService,
             ICredentialsService CredentialsService,
             IEmailService EmailService,
-            IResponseHelper ResponseHelper
+            IResponseHelper ResponseHelper,
+            ISummaryEventQueueService SummaryEventQueueService
         ) CreateServices(ILambdaLogger logger)
         {
             // Create AWS clients
@@ -59,12 +60,14 @@ namespace UnifiWebhookEventReceiver.Infrastructure
             // Create other services
             var emailService = new EmailService(sesClient, cloudWatchLogsClient, logger, s3StorageService);
             var unifiProtectService = new UnifiProtectService(logger, s3StorageService, credentialsService);
+            var summaryEventQueueService = new SummaryEventQueueService(sqsClient, logger);
             var alarmProcessingService = new AlarmProcessingService(
                 s3StorageService, 
                 unifiProtectService, 
                 credentialsService, 
                 responseHelper, 
-                logger);
+                logger,
+                summaryEventQueueService);
             // Now create SqsService with all dependencies
             var sqsService = new SqsService(sqsClient, alarmProcessingService, emailService, responseHelper, logger);
 
@@ -82,7 +85,8 @@ namespace UnifiWebhookEventReceiver.Infrastructure
                 UnifiProtectService: unifiProtectService,
                 CredentialsService: credentialsService,
                 EmailService: emailService,
-                ResponseHelper: responseHelper
+                ResponseHelper: responseHelper,
+                SummaryEventQueueService: summaryEventQueueService
             );
         }
     }

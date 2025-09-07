@@ -1,4 +1,3 @@
-
 name: API - Build, Test, and Deploy to AWS
 
 # This workflow builds the application, runs unit tests, and deploys to AWS
@@ -21,6 +20,7 @@ on:
       - 'UnifiWebhookEventReceiver.sln'
       - 'aws-lambda-tools-defaults.json'
       - 'global.json'
+      - 'summary-event-lambda/**'
 
 jobs:
   # Build job: Compiles code, runs tests, and prepares deployment artifacts
@@ -72,6 +72,49 @@ jobs:
         run: |
           dotnet restore UnifiWebhookEventReceiver.csproj
           dotnet restore test/UnifiWebhookEventReceiverTests.csproj
+
+      - name: Set up Node.js for summary-event-lambda
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+
+      - name: Install JS dependencies and run tests for summary-event-lambda
+        working-directory: summary-event-lambda
+        id: js_test
+        run: |
+          npm install --no-audit --no-fund
+          mkdir -p test-results
+          npx jest --colors --ci --reporters=default --reporters=jest-junit
+        env:
+          CI: true
+
+      - name: Upload JS unit test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: js-test-results
+          path: summary-event-lambda/test-results/js-junit.xml
+
+      - name: Post JS unit test summary
+        if: always()
+        run: |
+          echo "## 📊 JS Unit Test Results" >> $GITHUB_STEP_SUMMARY
+          if [ -f summary-event-lambda/test-results/js-junit.xml ]; then
+            TOTAL=$(grep -o 'tests="[0-9]*"' summary-event-lambda/test-results/js-junit.xml | head -1 | grep -o '[0-9]*')
+            FAILURES=$(grep -o 'failures="[0-9]*"' summary-event-lambda/test-results/js-junit.xml | head -1 | grep -o '[0-9]*')
+            ERRORS=$(grep -o 'errors="[0-9]*"' summary-event-lambda/test-results/js-junit.xml | head -1 | grep -o '[0-9]*')
+            PASSED=$((TOTAL - FAILURES - ERRORS))
+            STATUS=✅
+            if [ "$FAILURES" != "0" ] || [ "$ERRORS" != "0" ]; then STATUS=❌; fi
+            echo "$STATUS $PASSED/$TOTAL tests passed ($FAILURES failures, $ERRORS errors)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ JS test results not found." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Fail if JS unit tests failed
+        if: steps.js_test.outcome != 'success'
+        run: |
+          echo "❌ JS unit tests failed. Skipping deployment."
+          exit 1
 
       - name: Build
         run: |
@@ -521,6 +564,18 @@ jobs:
           role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.OIDC_ROLE_NAME }}
           aws-region: us-east-1
 
+      - name: Package summary event lambda
+        run: |
+          cd summary-event-lambda
+          npm install --omit=dev
+          cp src/index.js .
+          zip -r ../bf-${{ steps.env.outputs.ENV_PREFIX }}-summary-event-lambda.zip index.js package.json
+          cd ..
+
+      - name: Upload summary lambda package to S3
+        run: |
+          aws s3 cp bf-${{ steps.env.outputs.ENV_PREFIX }}-summary-event-lambda.zip s3://${{ steps.env.outputs.BUCKET_DEPLOYMENT }}/bf-${{ steps.env.outputs.ENV_PREFIX }}-lambda-unifi-protect-event-backup-api-summary/bf-${{ steps.env.outputs.ENV_PREFIX }}-summary-event-lambda.zip
+
       - name: Generate build timestamp
         id: timestamp
         run: echo "BUILD_TIMESTAMP=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
@@ -566,6 +621,13 @@ jobs:
             --function-name ${{ steps.env.outputs.LAMBDA_NAME }} \
             --s3-bucket ${{ steps.env.outputs.BUCKET_DEPLOYMENT }} \
             --s3-key ${{ steps.env.outputs.S3_KEY_PREFIX }}/publish.zip
+
+      - name: Update Summary Event Lambda function code
+        run: |
+          aws lambda update-function-code \
+            --function-name bf-${{ steps.env.outputs.ENV_PREFIX }}-lambda-unifi-protect-event-backup-api-summary \
+            --s3-bucket ${{ steps.env.outputs.BUCKET_DEPLOYMENT }} \
+            --s3-key bf-${{ steps.env.outputs.ENV_PREFIX }}-lambda-unifi-protect-event-backup-api-summary/bf-${{ steps.env.outputs.ENV_PREFIX }}-summary-event-lambda.zip
 
       # Create UI API Gateway API key and attach to usage plan (post-stack)
       - name: Create UI API Gateway API Key and attach to Usage Plan

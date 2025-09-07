@@ -1,10 +1,3 @@
-# Add ApiGateway output for REST API ID
-Outputs:
-  ApiGateway:
-    Description: "API Gateway RestApiId"
-    Value: !Ref ApiGateway
-    Export:
-      Name: !Sub "${AWS::StackName}-ApiGateway"
 AWSTemplateFormatVersion: "2010-09-09"
 Description: Creates a Cloudformation stack for the Unfi Protect Event Backup API.
 
@@ -22,7 +15,6 @@ Metadata:
         Value: !Ref AppName
       - Key: SupportEmail
         Value: !Ref SupportEmail
-
     
 # Parameters
 Parameters:
@@ -143,6 +135,126 @@ Conditions:
 
 # Resources
 Resources: 
+  
+  # Summary Event Lambda Function
+  SummaryLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "bf-${EnvPrefix}-lambda-unifi-protect-event-backup-api-summary"
+      Code:
+        S3Bucket: !Ref BucketNameDeployment
+        S3Key: !Sub "bf-${EnvPrefix}-lambda-unifi-protect-event-backup-api-summary/bf-${EnvPrefix}-summary-event-lambda.zip"
+      Description: !Sub "${EnvPrefix} - ${AppName} summary event processor"
+      Handler: src/index.handler
+      MemorySize: 256
+      Timeout: 60
+      Runtime: nodejs22.x
+      Role: !GetAtt SummaryLambdaRole.Arn
+      Environment:
+        Variables:
+          SUMMARY_BUCKET_NAME: !Ref BucketName
+  
+  # SQS Queue for summary event processing
+  SummaryEventQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${FunctionName}-summary-event-queue"
+      MessageRetentionPeriod: 1209600  # 14 days
+      ReceiveMessageWaitTimeSeconds: 20
+      VisibilityTimeout: 300
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt SummaryEventDeadLetterQueue.Arn
+        maxReceiveCount: 3
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${FunctionName}-summary-event-queue"
+        - Key: "Purpose"
+          Value: "Summary event processing"
+
+  # Dead Letter Queue for summary event processing
+  SummaryEventDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${FunctionName}-summary-event-dlq"
+      MessageRetentionPeriod: 1209600
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${FunctionName}-summary-event-dlq"
+        - Key: "Purpose"
+          Value: "DLQ for summary event processing"
+
+  # IAM Role for SummaryLambdaFunction
+  SummaryLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${FunctionName}-summary-lambda-role"
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/CloudWatchLogsReadOnlyAccess
+      Policies:
+        - PolicyName: SQSSummaryEventPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                  - sqs:GetQueueUrl
+                Resource:
+                  - !GetAtt SummaryEventQueue.Arn
+                  - !GetAtt SummaryEventDeadLetterQueue.Arn
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource:
+                  - !Sub arn:aws:s3:::${BucketName}/*
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource:
+                  - !Sub arn:aws:s3:::${BucketName}
+      Path: /
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${FunctionName}-summary-lambda-role"
+
+  # Event source mapping for SummaryLambdaFunction
+  SummaryEventSQSEventSourceMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !GetAtt SummaryEventQueue.Arn
+      FunctionName: !Ref SummaryLambdaFunction
+      BatchSize: 1
+      MaximumBatchingWindowInSeconds: 0
+
+  # Allow main Lambda to send messages to summary event queue
+  LambdaSummaryEventSQSPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: LambdaSummaryEventSQSPolicy
+      Roles:
+        - !Ref RoleName
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - sqs:SendMessage
+            Resource:
+              - !GetAtt SummaryEventQueue.Arn
+              - !GetAtt SummaryEventDeadLetterQueue.Arn
+  
   # OPTIONS method for {proxy+} with CORS headers
   ApiGatewayProxyOptions:
     Type: 'AWS::ApiGateway::Method'
@@ -606,9 +718,8 @@ Resources:
           BuildSha: !Ref BuildSha
           BuildTimestamp: !Ref BuildTimestamp
           MaxRetentionDays: !Ref RetentionDays
-      Tags: 
-        - Key: "FunctionName"
-          Value: !Sub "${FunctionName}"
+          SummaryEventQueueUrl: !Ref SummaryEventQueue
+          SummaryEventDlqUrl: !Ref SummaryEventDeadLetterQueue
 
   # Root invoker from API gateway to lambda
   LambdaApiGatewayInvoke:
@@ -685,6 +796,11 @@ Resources:
 
 # Output useful details
 Outputs:
+  ApiGateway:
+    Description: "API Gateway RestApiId"
+    Value: !Ref ApiGateway
+    Export:
+      Name: !Sub "${AWS::StackName}-ApiGateway"
   UsagePlan:
     Description: API Gateway Usage Plan ID
     Value: !Ref UsagePlan

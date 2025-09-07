@@ -130,7 +130,13 @@ namespace UnifiWebhookEventReceiver
                 // Check if this is an SQS event and process accordingly
                 if (!string.IsNullOrEmpty(requestBody) && requestBody.Contains("\"eventSource\"") && requestBody.Contains("\"Records\""))
                 {
-                    return await ProcessSQSEventWithLogger(requestBody, servicesWithLogger.sqsService, logger);
+                    await ProcessSQSEventWithLogger(requestBody, servicesWithLogger.sqsService, logger);
+                    // For SQS events, return a default 200 OK response (ignored by AWS for SQS triggers)
+                    return new APIGatewayProxyResponse {
+                        StatusCode = 200,
+                        Body = string.Empty,
+                        Headers = new Dictionary<string, string> { { "Content-Type", "application/json" } }
+                    };
                 }
                 else
                 {
@@ -175,37 +181,23 @@ namespace UnifiWebhookEventReceiver
         /// <summary>
         /// Processes the request as an SQS event.
         /// </summary>
-        private static async Task<APIGatewayProxyResponse> ProcessSQSEventWithLogger(string requestBody, ISqsService sqsService, ILambdaLogger logger)
+        private static async Task ProcessSQSEventWithLogger(string requestBody, ISqsService sqsService, ILambdaLogger logger)
         {
             logger.LogLine($"Request body null/empty: {string.IsNullOrEmpty(requestBody)}");
-            
             if (string.IsNullOrEmpty(requestBody))
             {
                 logger.LogLine("Request body is null/empty for SQS event");
-                return new APIGatewayProxyResponse
-                {
-                    StatusCode = 400,
-                    Body = "Bad Request: Empty request body for SQS event",
-                    Headers = new Dictionary<string, string> { { "Content-Type", "application/json" } }
-                };
+                throw new ArgumentException("Empty request body for SQS event");
             }
-            
             logger.LogLine("About to call sqsService.IsSqsEvent()");
             bool isSqsEvent = sqsService.IsSqsEvent(requestBody);
             logger.LogLine($"sqsService.IsSqsEvent() returned: {isSqsEvent}");
-            
             if (!isSqsEvent)
             {
                 logger.LogLine("Event is not a valid SQS event format");
-                return new APIGatewayProxyResponse
-                {
-                    StatusCode = 400,
-                    Body = "Bad Request: Invalid SQS event format",
-                    Headers = new Dictionary<string, string> { { "Content-Type", "application/json" } }
-                };
+                throw new ArgumentException("Invalid SQS event format");
             }
-
-            return await sqsService.ProcessSqsEventAsync(requestBody);
+            await sqsService.ProcessSqsEventAsync(requestBody);
         }
 
         /// <summary>
