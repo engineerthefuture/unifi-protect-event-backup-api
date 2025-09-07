@@ -61,7 +61,9 @@ function renderDashboard(data) {
     // Show the time the API request was performed
     const now = new Date();
     const timeStr = now.toLocaleString(undefined, { hour12: false });
-    document.getElementById("summaryTile").innerText = `Total Events (last 24h as of ${timeStr}): ${data.totalCount}`;
+    const summaryDate = data.summaryDate || 'current day';
+    document.getElementById("summaryTile").innerText = `Total Events (${summaryDate} Eastern as of ${timeStr}): ${data.totalCount}`;
+    
     // Show summary message if present
     const summaryMsgDiv = document.getElementById('summaryMessage');
     if (data.summaryMessage) {
@@ -71,8 +73,10 @@ function renderDashboard(data) {
         summaryMsgDiv.textContent = '';
         summaryMsgDiv.style.display = 'none';
     }
+    
     const container = document.getElementById('dashboard');
     container.innerHTML = '';
+    
     (data.cameras || []).forEach(camera => {
         const camDiv = document.createElement('div');
         camDiv.className = 'camera-card';
@@ -83,74 +87,106 @@ function renderDashboard(data) {
             <span>${camera.count24h || 0} events</span>
         `;
         camDiv.appendChild(header);
-        // Only show the most recent event for each camera
-        const mostRecentEvent = (camera.events || [])[0];
-        if (mostRecentEvent) {
-            const event = mostRecentEvent;
+        
+        // Show all events for the camera (now we get all events for the day)
+        // Limit to the first 5 events per camera to avoid overwhelming the UI
+        const allEvents = camera.events || [];
+        const events = allEvents.slice(0, 5);
+        
+        events.forEach((event, index) => {
             const evDiv = document.createElement('div');
             evDiv.className = 'event-card';
+            if (index === 0) evDiv.classList.add('most-recent'); // Mark the first (most recent) event
+            
             const trigger = (event.eventData && event.eventData.triggers && event.eventData.triggers[0]) || {};
+            const eventDate = new Date(event.eventData?.timestamp || 0);
+            
             evDiv.innerHTML = `
                 <div class="event-meta">
                     <span class="event-trigger">${triggerBadge(trigger.key)}</span>
                 </div>
                 <div class="event-date">
-                    ${trigger.date ? new Date(trigger.date + (trigger.date.match(/Z|[+-]\d{2}:?\d{2}$/) ? '' : 'Z')).toLocaleString('en-US', { timeZone: 'America/New_York', timeZoneName: 'short' }) : ''}
+                    ${eventDate.toLocaleString('en-US', { timeZone: 'America/New_York', timeZoneName: 'short' })}
                 </div>
                 <div class="thumbnail">
                     <img src="" alt="thumbnail" loading="lazy" style="background:#222;min-width:100px;min-height:56px;">
                     <div class="play-overlay">▶</div>
                 </div>
-                <p class="event-name">${event.eventData?.name || ''}</p>
-                <p class="file-name">${event.originalFileName || ''}</p>
+                <p class="event-name">${event.eventData?.name || `Event ${trigger.eventId || ''}`}</p>
+                <p class="file-name">${trigger.originalFileName || event.originalFileName || ''}</p>
             `;
-            // Generate thumbnail from first frame
+            
             const thumbDiv = evDiv.querySelector('.thumbnail');
             const imgEl = thumbDiv.querySelector('img');
-            (async() => {
-                let video;
-                try {
-                    video = document.createElement('video');
-                    video.muted = true;
-                    video.playsInline = true;
-                    video.crossOrigin = 'anonymous';
-                    video.preload = 'auto';
-                    video.style.display = 'none';
-                    document.body.appendChild(video);
-                    video.src = event.videoUrl;
-                    video.load();
-                    await new Promise((resolve, reject) => {
-                        let resolved = false;
-                        const done = () => {
-                            if (!resolved) {
-                                resolved = true;
-                                resolve();
-                            }
-                        };
-                        video.addEventListener('loadeddata', done, { once: true });
-                        video.addEventListener('canplay', done, { once: true });
-                        video.addEventListener('error', reject, { once: true });
-                        setTimeout(done, 2500);
-                    });
-                    video.currentTime = 0;
-                    await new Promise((resolve) => setTimeout(resolve, 100));
-                    const canvas = document.createElement('canvas');
-                    canvas.width = video.videoWidth;
-                    canvas.height = video.videoHeight;
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                    imgEl.src = canvas.toDataURL('image/jpeg', 0.7);
-                } catch (e) {
-                    imgEl.src = 'data:image/svg+xml,%3Csvg width="640" height="360" xmlns="http://www.w3.org/2000/svg"%3E%3Crect width="100%25" height="100%25" fill="%23222"/%3E%3Ctext x="50%25" y="50%25" fill="%23fff" font-size="24" text-anchor="middle" alignment-baseline="middle" dy=".3em"%3ENo Thumbnail%3C/text%3E%3C/svg%3E';
-                } finally {
-                    if (video && video.parentNode) video.parentNode.removeChild(video);
-                }
-            })();
+            
+            // Check if thumbnail data is available in the trigger
+            const thumbnailData = trigger.thumbnail;
+            
+            if (thumbnailData && thumbnailData.startsWith('data:image/')) {
+                // Use the base64 thumbnail data directly
+                imgEl.src = thumbnailData;
+                console.log(`Using stored thumbnail for event ${trigger.eventId}`);
+            } else if (event.videoUrl && index < 3) {
+                // Fallback to generating thumbnail from video (only for first 3 events)
+                imgEl.src = 'data:image/svg+xml,%3Csvg width="640" height="360" xmlns="http://www.w3.org/2000/svg"%3E%3Crect width="100%25" height="100%25" fill="%23222"/%3E%3Ctext x="50%25" y="50%25" fill="%23fff" font-size="16" text-anchor="middle" alignment-baseline="middle" dy=".3em"%3EGenerating...%3C/text%3E%3C/svg%3E';
+                
+                (async() => {
+                    let video;
+                    try {
+                        video = document.createElement('video');
+                        video.muted = true;
+                        video.playsInline = true;
+                        video.crossOrigin = 'anonymous';
+                        video.preload = 'metadata';
+                        video.style.display = 'none';
+                        document.body.appendChild(video);
+                        video.src = event.videoUrl;
+                        video.load();
+                        
+                        await new Promise((resolve, reject) => {
+                            let resolved = false;
+                            const done = () => {
+                                if (!resolved) {
+                                    resolved = true;
+                                    resolve();
+                                }
+                            };
+                            video.addEventListener('loadedmetadata', done, { once: true });
+                            video.addEventListener('canplay', done, { once: true });
+                            video.addEventListener('error', reject, { once: true });
+                            setTimeout(done, 3000);
+                        });
+                        
+                        video.currentTime = 0.5;
+                        await new Promise((resolve) => setTimeout(resolve, 200));
+                        
+                        const canvas = document.createElement('canvas');
+                        canvas.width = video.videoWidth || 640;
+                        canvas.height = video.videoHeight || 360;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        imgEl.src = canvas.toDataURL('image/jpeg', 0.8);
+                    } catch (e) {
+                        console.warn('Failed to generate thumbnail for event:', trigger.eventId, e);
+                        imgEl.src = 'data:image/svg+xml,%3Csvg width="640" height="360" xmlns="http://www.w3.org/2000/svg"%3E%3Crect width="100%25" height="100%25" fill="%23333"/%3E%3Ctext x="50%25" y="50%25" fill="%23fff" font-size="18" text-anchor="middle" alignment-baseline="middle" dy=".3em"%3ENo Thumbnail%3C/text%3E%3C/svg%3E';
+                    } finally {
+                        if (video && video.parentNode) video.parentNode.removeChild(video);
+                    }
+                })();
+            } else if (!event.videoUrl) {
+                imgEl.src = 'data:image/svg+xml,%3Csvg width="640" height="360" xmlns="http://www.w3.org/2000/svg"%3E%3Crect width="100%25" height="100%25" fill="%23333"/%3E%3Ctext x="50%25" y="50%25" fill="%23fff" font-size="18" text-anchor="middle" alignment-baseline="middle" dy=".3em"%3ENo Video%3C/text%3E%3C/svg%3E';
+            } else {
+                // For events beyond the first 3 without thumbnail data, show a simpler placeholder
+                imgEl.src = 'data:image/svg+xml,%3Csvg width="640" height="360" xmlns="http://www.w3.org/2000/svg"%3E%3Crect width="100%25" height="100%25" fill="%23444"/%3E%3Ctext x="50%25" y="50%25" fill="%23fff" font-size="16" text-anchor="middle" alignment-baseline="middle" dy=".3em"%3EClick to Load%3C/text%3E%3C/svg%3E';
+            }
 
-            // Lazy load video only on click
+            // Video click handler
             thumbDiv.addEventListener('click', () => {
+                if (!event.videoUrl) return;
+                
                 imgEl.style.display = 'none';
                 thumbDiv.querySelector('.play-overlay').style.display = 'none';
+                
                 if (!thumbDiv.querySelector('video')) {
                     const videoEl = document.createElement('video');
                     videoEl.src = event.videoUrl;
@@ -164,8 +200,18 @@ function renderDashboard(data) {
                     videoEl.play();
                 }
             });
+            
             camDiv.appendChild(evDiv);
+        });
+        
+        // Add a message if there are more events than displayed
+        if (allEvents.length > 5) {
+            const moreDiv = document.createElement('div');
+            moreDiv.className = 'more-events-indicator';
+            moreDiv.innerHTML = `<p style="text-align: center; color: #888; font-style: italic; margin: 10px 0;">... and ${allEvents.length - 5} more events for this camera</p>`;
+            camDiv.appendChild(moreDiv);
         }
+        
         container.appendChild(camDiv);
     });
 }

@@ -441,7 +441,16 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                             eventId = summaryEvent.EventId,
                             device = summaryEvent.Device,
                             deviceName = summaryEvent.DeviceName,
-                            key = summaryEvent.EventType ?? "motion"
+                            key = summaryEvent.EventType ?? "motion",
+                            eventKey = summaryEvent.AlarmS3Key,
+                            videoKey = summaryEvent.VideoS3Key,
+                            date = DateTimeOffset.FromUnixTimeMilliseconds(summaryEvent.Timestamp)
+                                .ToString("yyyy-MM-dd HH:mm:ss UTC"),
+                            originalFileName = summaryEvent.Metadata?.ContainsKey("originalFileName") == true ? 
+                                summaryEvent.Metadata["originalFileName"]?.ToString() : 
+                                System.IO.Path.GetFileName(summaryEvent.VideoS3Key),
+                            thumbnail = summaryEvent.Metadata?.ContainsKey("thumbnail") == true ? 
+                                summaryEvent.Metadata["thumbnail"]?.ToString() : null
                         }
                     }
                 };

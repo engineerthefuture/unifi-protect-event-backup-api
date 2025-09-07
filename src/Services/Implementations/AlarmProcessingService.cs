@@ -272,6 +272,18 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 EventType = triggerForSummary?.key,
                 Metadata = new System.Collections.Generic.Dictionary<string, string>()
             };
+            
+            // Include thumbnail data in metadata if available
+            if (!string.IsNullOrEmpty(triggerForSummary?.thumbnail))
+            {
+                summaryEvent.Metadata["thumbnail"] = triggerForSummary.thumbnail;
+            }
+            
+            // Include original filename in metadata if available
+            if (!string.IsNullOrEmpty(triggerForSummary?.originalFileName))
+            {
+                summaryEvent.Metadata["originalFileName"] = triggerForSummary.originalFileName;
+            }
             await _summaryEventQueueService.SendSummaryEventAsync(summaryEvent);
 
             _logger.LogLine("SQS alarm processing completed successfully");

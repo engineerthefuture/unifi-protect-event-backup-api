@@ -1,10 +1,13 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Threading.Tasks;
 using Amazon.Lambda.Core;
 using Newtonsoft.Json;
 using UnifiWebhookEventReceiver;
+using UnifiWebhookEventReceiver.Models;
+using UnifiWebhookEventReceiver.Services.Implementations;
 using Xunit;
 
 namespace UnifiWebhookEventReceiverTests
@@ -62,6 +65,39 @@ namespace UnifiWebhookEventReceiverTests
             // Since no summary files exist in test environment, should be empty or fallback message
             var summaryMessage = body["summaryMessage"]?.ToString();
             Assert.Contains("0 total events", summaryMessage);
+        }
+
+        [Fact]
+        public void SummaryEvent_WithCompleteMetadata_PreservesAllMetadataFields()
+        {
+            // Arrange
+            var thumbnailData = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD...";
+            var originalFileName = "doorbell_motion_2025-09-07_15-30-45.mp4";
+            var summaryEvent = new SummaryEvent
+            {
+                EventId = "test-event-123",
+                Device = "AA:BB:CC:DD:EE:FF",
+                DeviceName = "Test Camera",
+                EventType = "motion",
+                Timestamp = 1672531200000,
+                AlarmS3Key = "2022-12-31/test-event-123_AA:BB:CC:DD:EE:FF_1672531200000.json",
+                VideoS3Key = "2022-12-31/test-event-123_AA:BB:CC:DD:EE:FF_1672531200000.mp4",
+                PresignedVideoUrl = "https://example.com/presigned-video-url",
+                Metadata = new Dictionary<string, string>
+                {
+                    ["thumbnail"] = thumbnailData,
+                    ["originalFileName"] = originalFileName
+                }
+            };
+            
+            // Act & Assert
+            Assert.Equal("test-event-123", summaryEvent.EventId);
+            Assert.Equal("AA:BB:CC:DD:EE:FF", summaryEvent.Device);
+            Assert.NotNull(summaryEvent.Metadata);
+            Assert.True(summaryEvent.Metadata.ContainsKey("thumbnail"));
+            Assert.True(summaryEvent.Metadata.ContainsKey("originalFileName"));
+            Assert.Equal(thumbnailData, summaryEvent.Metadata["thumbnail"]);
+            Assert.Equal(originalFileName, summaryEvent.Metadata["originalFileName"]);
         }
     }
 }
