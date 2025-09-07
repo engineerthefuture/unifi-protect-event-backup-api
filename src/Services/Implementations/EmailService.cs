@@ -220,7 +220,8 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         {
             try
             {
-                DateTime dt = DateTimeOffset.FromUnixTimeMilliseconds(timestamp).LocalDateTime;
+                // Convert to Eastern Time (UTC-5) to match file organization
+                DateTime dt = DateTimeOffset.FromUnixTimeMilliseconds(timestamp).UtcDateTime.AddHours(-5);
                 string dateFolder = $"{dt.Year}-{dt.Month:D2}-{dt.Day:D2}";
                 var thumbnailKey = $"{dateFolder}/{trigger.eventId}_{trigger.device}_{timestamp}.jpg";
                 

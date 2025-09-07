@@ -28,9 +28,6 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
     /// </summary>
     public class S3StorageService : IS3StorageService
     {
-        /// <summary>Default duration (in hours) for presigned S3 URLs.</summary>
-        private const int DEFAULT_PRESIGNED_URL_HOURS = 1;
-
         /// <summary>
         /// Returns the latest video file and associated event data as a presigned download link.
         /// </summary>
@@ -132,7 +129,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         }
 
         /// <summary>
-        /// Returns a summary of the last event and event count per camera in the last 24 hours, with a presigned video link for each.
+        /// Returns a summary of the last event and event count per camera in the last calendar day from midnight, with a presigned video link for each.
         /// </summary>
     [System.Diagnostics.CodeAnalysis.SuppressMessage("SonarQube", "S3776:Refactor this method to reduce its Cognitive Complexity from 23 to the 15 allowed.", Justification = "Business logic requires this complexity.")]
     [System.Diagnostics.CodeAnalysis.SuppressMessage("SonarQube", "S1541:The Cyclomatic Complexity of this method is 13 which is greater than 10 authorized.", Justification = "Business logic requires this complexity.")]
