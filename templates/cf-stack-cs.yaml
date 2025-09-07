@@ -137,7 +137,7 @@ Conditions:
 Resources: 
   
   # Summary Event Lambda Function
-  SummaryEventLambda:
+  SummaryLambdaFunction:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: !Sub "bf-${EnvPrefix}-lambda-unifi-protect-event-backup-api-summary"
