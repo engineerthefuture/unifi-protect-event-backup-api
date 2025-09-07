@@ -283,7 +283,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             // Generate S3 keys for the trigger
             var (eventKey, videoKey) = _s3StorageService.GenerateS3Keys(trigger, timestamp);
             trigger.eventKey = Path.GetFileName(eventKey);  // Store just the filename
-            trigger.videoKey = Path.GetFileName(videoKey);  // Store just the filename
+            trigger.videoKey = videoKey;  // Store the full S3 key including date folder
             
             // Update the alarm object with the enhanced trigger
             alarm.triggers[0] = trigger;

@@ -45,7 +45,7 @@ exports.handler = async(event) => {
 
         // Increment counters for event attributes
         // Example: count by event type and device name
-        const type = summaryEvent.Type || 'Unknown';
+    const type = summaryEvent.EventType || summaryEvent.Type || 'Unknown';
         const device = summaryEvent.DeviceName || 'Unknown';
         if (!summaryData.counters.type) summaryData.counters.type = {};
         if (!summaryData.counters.device) summaryData.counters.device = {};
