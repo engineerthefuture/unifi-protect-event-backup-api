@@ -76,21 +76,34 @@ jobs:
         run: |
           npm install --no-audit --no-fund
           mkdir -p test-results
-            set -o pipefail
-            npx jest --colors --ci --reporters=default --reporters=jest-junit --outputDirectory=./test-results --outputName=js-junit.xml 2>&1 | tee jest-output.log
-            if [ ! -f test-results/js-junit.xml ]; then
-              echo "::error::Jest did not produce test-results/js-junit.xml. See jest-output.log for details."
-              cat jest-output.log
-              exit 1
-            fi
+          set -o pipefail
+          npx jest --colors --ci --reporters=default --reporters=jest-junit 2>&1 | tee jest-output.log
+          if [ ! -f test-results/js-junit.xml ]; then
+            echo "::error::Jest did not produce test-results/js-junit.xml. See jest-output.log for details."
+            cat jest-output.log
+            exit 1
+          fi
         env:
           CI: true
+          JEST_JUNIT_OUTPUT_DIR: ./test-results
+          JEST_JUNIT_OUTPUT_NAME: js-junit.xml
 
       - name: Upload JS unit test results
         uses: actions/upload-artifact@v4
         with:
           name: js-test-results
           path: summary-event-lambda/test-results/
+
+      - name: Publish JS unit test results
+        uses: dorny/test-reporter@v1
+        if: always()
+        continue-on-error: true
+        with:
+          name: JS Unit Test Results
+          path: summary-event-lambda/test-results/js-junit.xml
+          reporter: jest-junit
+          fail-on-error: true
+          only-summary: false
 
       - name: Post JS unit test summary
         if: always()
