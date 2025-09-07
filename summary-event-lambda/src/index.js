@@ -1,5 +1,5 @@
-const AWS = require('aws-sdk');
-const s3 = new AWS.S3();
+const { S3Client, GetObjectCommand, PutObjectCommand } = require('@aws-sdk/client-s3');
+const s3 = new S3Client();
 
 // Use environment variable directly
 const BUCKET_NAME = process.env.SUMMARY_BUCKET_NAME || '';
@@ -31,10 +31,11 @@ exports.handler = async(event) => {
         const key = `${folder}/summary_${year}_${month}_${day}.json`;
         let summaryData = { events: [], counters: {} };
         try {
-            const s3Obj = await s3.getObject({ Bucket: BUCKET_NAME, Key: key }).promise();
-            summaryData = JSON.parse(s3Obj.Body.toString('utf-8'));
+            const s3Obj = await s3.send(new GetObjectCommand({ Bucket: BUCKET_NAME, Key: key }));
+            const bodyContents = await streamToString(s3Obj.Body);
+            summaryData = JSON.parse(bodyContents);
         } catch (err) {
-            if (err.code !== 'NoSuchKey') {
+            if (err.name !== 'NoSuchKey' && err.Code !== 'NoSuchKey') {
                 console.error('Error reading summary file:', err);
                 continue;
             }
@@ -52,12 +53,21 @@ exports.handler = async(event) => {
         summaryData.counters.device[device] = (summaryData.counters.device[device] || 0) + 1;
 
         // Save back to S3
-        await s3.putObject({
+        await s3.send(new PutObjectCommand({
             Bucket: BUCKET_NAME,
             Key: key,
             Body: JSON.stringify(summaryData, null, 2),
             ContentType: 'application/json'
-        }).promise();
+        }));
+        // Helper to convert stream to string (for AWS SDK v3 GetObjectCommand)
+        function streamToString(stream) {
+            return new Promise((resolve, reject) => {
+                const chunks = [];
+                stream.on('data', (chunk) => chunks.push(chunk));
+                stream.on('error', reject);
+                stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
+            });
+        }
         console.log(`Updated summary file: ${key}`);
     }
     return { statusCode: 200 };
