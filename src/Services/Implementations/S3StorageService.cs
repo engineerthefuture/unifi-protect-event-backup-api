@@ -195,7 +195,8 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             for (int i = 0; i < 2; i++)
             {
                 var date = now.AddDays(-i);
-                var summaryKey = $"summary_{date:yyyy-MM-dd}.json";
+                var dateFolder = $"{date:yyyy-MM-dd}";
+                var summaryKey = $"{dateFolder}/summary_{date:yyyy-MM-dd}.json";
                 
                 try
                 {

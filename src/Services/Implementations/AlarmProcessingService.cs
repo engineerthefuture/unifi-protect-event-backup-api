@@ -197,6 +197,8 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// <param name="credentials">Unifi credentials for video download</param>
         /// <returns>Task that completes when processing is done</returns>
         /// <exception cref="InvalidOperationException">Thrown when video download fails or configuration is invalid</exception>
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S3776:Cognitive Complexity of methods should not be too high", Justification = "Complex alarm processing logic with comprehensive error handling")]
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S1541:Methods should not be too complex", Justification = "Complex alarm processing logic with comprehensive error handling")]
         private async Task ProcessValidAlarmForSqs(Alarm alarm, UnifiCredentials credentials)
         {
             // Extract and enhance trigger information
@@ -324,6 +326,15 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// <param name="alarm">The alarm object containing event path</param>
         /// <param name="credentials">Unifi credentials for video download</param>
         /// <param name="trigger">The enhanced trigger information</param>
+        /// <summary>
+        /// Downloads video file from Unifi Protect and stores it in S3.
+        /// Handles error scenarios gracefully and cleans up temporary files.
+        /// </summary>
+        /// <param name="alarm">The alarm containing video metadata</param>
+        /// <param name="credentials">Unifi credentials for authentication</param>
+        /// <param name="trigger">Trigger information for file naming</param>
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S3776:Cognitive Complexity of methods should not be too high", Justification = "Complex video download logic with comprehensive error handling")]
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S1541:Methods should not be too complex", Justification = "Complex video download logic with comprehensive error handling")]
         private async Task DownloadAndStoreVideo(Alarm alarm, UnifiCredentials credentials, Trigger trigger)
         {
             try
