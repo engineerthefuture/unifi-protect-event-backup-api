@@ -73,6 +73,25 @@ jobs:
           dotnet restore UnifiWebhookEventReceiver.csproj
           dotnet restore test/UnifiWebhookEventReceiverTests.csproj
 
+      - name: Set up Node.js for summary-event-lambda
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+
+      - name: Install JS dependencies and run tests for summary-event-lambda
+        working-directory: summary-event-lambda
+        run: |
+          npm install --no-audit --no-fund
+          npx jest --colors
+        env:
+          CI: true
+
+      - name: Upload JS unit test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: js-test-results
+          path: summary-event-lambda/test-results/js-junit.xml
+
       - name: Build
         run: |
           dotnet build UnifiWebhookEventReceiver.csproj --configuration Release --no-restore

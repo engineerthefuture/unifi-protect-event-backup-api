@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="jest tests" tests="3" failures="0" errors="0" time="0.375">
+  <testsuite name="summary-event-lambda" errors="0" failures="0" skipped="0" timestamp="2025-09-07T17:36:21" time="0.325" tests="3">
+    <testcase classname="summary-event-lambda should create a new summary file if none exists" name="summary-event-lambda should create a new summary file if none exists" time="0.02">
+    </testcase>
+    <testcase classname="summary-event-lambda should update counters for event type and device" name="summary-event-lambda should update counters for event type and device" time="0.005">
+    </testcase>
+    <testcase classname="summary-event-lambda should handle invalid event JSON gracefully" name="summary-event-lambda should handle invalid event JSON gracefully" time="0.008">
+    </testcase>
+  </testsuite>
+</testsuites>
