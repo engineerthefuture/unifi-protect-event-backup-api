@@ -164,15 +164,15 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             _logger.LogLine($"Alarm event stored in S3 with key: {eventKey}");
 
             // Store thumbnail if provided
-            if (!string.IsNullOrEmpty(trigger.thumbnail))
+            if (!string.IsNullOrEmpty(alarm.thumbnail))
             {
                 var thumbnailKey = GenerateThumbnailKey(trigger, alarm.timestamp);
                 _logger.LogLine($"Thumbnail data found, storing to S3 with key: {thumbnailKey}");
-                await _s3StorageService.StoreThumbnailAsync(trigger.thumbnail, thumbnailKey);
+                await _s3StorageService.StoreThumbnailAsync(alarm.thumbnail, thumbnailKey);
             }
             else
             {
-                _logger.LogLine("No thumbnail data provided in trigger");
+                _logger.LogLine("No thumbnail data provided in alarm");
             }
 
             // Download and store video if event path is available
@@ -216,12 +216,12 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             _logger.LogLine($"Alarm event stored in S3 with key: {eventKey}");
 
             // Store thumbnail if available
-            if (!string.IsNullOrEmpty(trigger.thumbnail))
+            if (!string.IsNullOrEmpty(alarm.thumbnail))
             {
                 try
                 {
                     var thumbnailKey = GenerateThumbnailKey(trigger, alarm.timestamp);
-                    await _s3StorageService.StoreThumbnailAsync(trigger.thumbnail, thumbnailKey);
+                    await _s3StorageService.StoreThumbnailAsync(alarm.thumbnail, thumbnailKey);
                     _logger.LogLine($"Thumbnail stored in S3 with key: {thumbnailKey}");
                 }
                 catch (Exception ex)
@@ -276,9 +276,9 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             };
             
             // Include thumbnail data in metadata if available
-            if (!string.IsNullOrEmpty(triggerForSummary?.thumbnail))
+            if (!string.IsNullOrEmpty(alarm.thumbnail))
             {
-                summaryEvent.Metadata["thumbnail"] = triggerForSummary.thumbnail;
+                summaryEvent.Metadata["thumbnail"] = alarm.thumbnail;
             }
             
             // Include original filename in metadata if available

@@ -1217,12 +1217,11 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             return new Alarm
             {
                 name = alarm.name,
-                sources = null,
-                conditions = null,
                 triggers = alarm.triggers,
                 timestamp = alarm.timestamp,
                 eventPath = alarm.eventPath,
-                eventLocalLink = alarm.eventLocalLink
+                eventLocalLink = alarm.eventLocalLink,
+                thumbnail = alarm.thumbnail
             };
         }
 

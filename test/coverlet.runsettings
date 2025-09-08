@@ -5,13 +5,15 @@
       <DataCollector friendlyName="XPlat Code Coverage">
         <Configuration>
           <Format>opencover</Format>
+          <Format>cobertura</Format>
           <Exclude>[xunit*]*,[*.Tests*]*,[*]*.Program,[*]*Exception</Exclude>
-          <ExcludeByAttribute>Obsolete,GeneratedCodeAttribute,CompilerGeneratedAttribute,ExcludeFromCodeCoverageAttribute</ExcludeByAttribute>
+          <ExcludeByAttribute>Obsolete,GeneratedCodeAttribute,CompilerGeneratedAttribute,ExcludeFromCodeCoverageAttribute,ExcludeFromCoverageAttribute</ExcludeByAttribute>
           <ExcludeByFile>**/bin/**/*,**/obj/**/*</ExcludeByFile>
           <IncludeTestAssembly>false</IncludeTestAssembly>
           <SingleHit>false</SingleHit>
           <UseSourceLink>true</UseSourceLink>
           <IncludeDirectory>../src/</IncludeDirectory>
+          <SkipAutoProps>true</SkipAutoProps>
         </Configuration>
       </DataCollector>
     </DataCollectors>
