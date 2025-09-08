@@ -215,6 +215,7 @@ Resources:
                 Resource:
                   - !GetAtt SummaryEventQueue.Arn
                   - !GetAtt SummaryEventDeadLetterQueue.Arn
+                  - !GetAtt AlarmProcessingDeadLetterQueue.Arn
               - Effect: Allow
                 Action:
                   - s3:GetObject

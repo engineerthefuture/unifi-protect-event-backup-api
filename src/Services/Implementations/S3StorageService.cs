@@ -357,6 +357,10 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 {
                     timestamp = summaryEvent.Timestamp,
                     name = summaryEvent.AlarmName ?? $"Event {summaryEvent.EventId}",
+                    eventPath = summaryEvent.EventPath,
+                    eventLocalLink = summaryEvent.EventLocalLink,
+                    thumbnail = summaryEvent.Metadata?.ContainsKey("thumbnail") == true ? 
+                        summaryEvent.Metadata["thumbnail"]?.ToString() : null,
                     triggers = new List<Trigger>
                     {
                         new Trigger
