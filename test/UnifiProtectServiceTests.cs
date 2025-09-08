@@ -313,5 +313,55 @@ namespace UnifiWebhookEventReceiverTests
             // through the fact that our changes don't break the existing validation tests
             Assert.True(true); // This test validates the method was added without breaking compilation
         }
+
+        [Fact]
+        public void CleanupTempFile_WithValidFilePath_DoesNotThrow()
+        {
+            // Arrange
+            var filePath = "/tmp/nonexistent.mp4";
+
+            // Act & Assert - Should not throw even if file doesn't exist
+            _unifiProtectService.CleanupTempFile(filePath);
+        }
+
+        [Fact]
+        public void CleanupTempFile_WithNullFilePath_DoesNotThrow()
+        {
+            // Act & Assert - Should handle null gracefully
+            _unifiProtectService.CleanupTempFile(null);
+        }
+
+        [Fact]
+        public void CleanupTempFile_WithEmptyFilePath_DoesNotThrow()
+        {
+            // Act & Assert - Should handle empty string gracefully
+            _unifiProtectService.CleanupTempFile("");
+        }
+
+        [Fact]
+        public void CleanupTempFile_WithExistingFile_DeletesFile()
+        {
+            // Arrange
+            var tempFilePath = Path.GetTempFileName();
+            File.WriteAllText(tempFilePath, "test content");
+            Assert.True(File.Exists(tempFilePath));
+
+            try
+            {
+                // Act
+                _unifiProtectService.CleanupTempFile(tempFilePath);
+
+                // Assert
+                Assert.False(File.Exists(tempFilePath));
+            }
+            finally
+            {
+                // Cleanup - in case the test fails
+                if (File.Exists(tempFilePath))
+                {
+                    File.Delete(tempFilePath);
+                }
+            }
+        }
     }
 }
