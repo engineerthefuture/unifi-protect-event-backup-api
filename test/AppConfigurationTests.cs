@@ -478,5 +478,223 @@ namespace UnifiWebhookEventReceiverTests
             // Assert
             Assert.Null(result);
         }
+
+        [Fact]
+        public void AwsRegion_ReturnsUSEast1()
+        {
+            // Act
+            var result = AppConfiguration.AwsRegion;
+
+            // Assert
+            Assert.Equal(RegionEndpoint.USEast1, result);
+        }
+
+        [Fact]
+        public void MaxRetentionDays_WithValidEnvironmentVariable_ReturnsValue()
+        {
+            // Arrange
+            var originalValue = Environment.GetEnvironmentVariable("MaxRetentionDays");
+            Environment.SetEnvironmentVariable("MaxRetentionDays", "60");
+
+            try
+            {
+                // Act
+                var result = AppConfiguration.MaxRetentionDays;
+
+                // Assert
+                Assert.Equal(60, result);
+            }
+            finally
+            {
+                // Cleanup
+                Environment.SetEnvironmentVariable("MaxRetentionDays", originalValue);
+            }
+        }
+
+        [Fact]
+        public void MaxRetentionDays_WithInvalidEnvironmentVariable_ReturnsDefaultValue()
+        {
+            // Arrange
+            var originalValue = Environment.GetEnvironmentVariable("MaxRetentionDays");
+            Environment.SetEnvironmentVariable("MaxRetentionDays", "invalid");
+
+            try
+            {
+                // Act
+                var result = AppConfiguration.MaxRetentionDays;
+
+                // Assert
+                Assert.Equal(30, result); // Default value
+            }
+            finally
+            {
+                // Cleanup
+                Environment.SetEnvironmentVariable("MaxRetentionDays", originalValue);
+            }
+        }
+
+        [Fact]
+        public void MaxRetentionDays_WithoutEnvironmentVariable_ReturnsDefaultValue()
+        {
+            // Arrange
+            var originalValue = Environment.GetEnvironmentVariable("MaxRetentionDays");
+            Environment.SetEnvironmentVariable("MaxRetentionDays", null);
+
+            try
+            {
+                // Act
+                var result = AppConfiguration.MaxRetentionDays;
+
+                // Assert
+                Assert.Equal(30, result); // Default value
+            }
+            finally
+            {
+                // Cleanup
+                Environment.SetEnvironmentVariable("MaxRetentionDays", originalValue);
+            }
+        }
+
+        [Fact]
+        public void DefaultArchiveButtonCoordinates_HaveExpectedValues()
+        {
+            // Assert
+            Assert.Equal(1205, AppConfiguration.DEFAULT_ARCHIVE_BUTTON_X);
+            Assert.Equal(240, AppConfiguration.DEFAULT_ARCHIVE_BUTTON_Y);
+        }
+
+        [Fact]
+        public void GetDeviceName_WithNullOrEmptyMac_ReturnsOriginalValue()
+        {
+            // Act & Assert
+            Assert.Equal("", AppConfiguration.GetDeviceName(""));
+            Assert.Null(AppConfiguration.GetDeviceName(null));
+        }
+
+        [Fact]
+        public void GetDeviceMac_WithNullOrEmptyDeviceName_ReturnsNull()
+        {
+            // Act & Assert
+            Assert.Null(AppConfiguration.GetDeviceMac(""));
+            Assert.Null(AppConfiguration.GetDeviceMac(null));
+        }
+
+        [Fact]
+        public void GetDeviceCoordinates_WithNullOrEmptyMac_ReturnsDefaultCoordinates()
+        {
+            // Act
+            var emptyResult = AppConfiguration.GetDeviceCoordinates("");
+            var nullResult = AppConfiguration.GetDeviceCoordinates(null);
+
+            // Assert
+            Assert.Equal((1205, 240), emptyResult);
+            Assert.Equal((1205, 240), nullResult);
+        }
+
+        [Fact]
+        public void GetDeviceCoordinates_WithUnknownMac_ReturnsDefaultCoordinates()
+        {
+            // Act
+            var result = AppConfiguration.GetDeviceCoordinates("UNKNOWN123456");
+
+            // Assert
+            Assert.Equal((1205, 240), result);
+        }
+
+        [Fact]
+        public void Constants_RouteValues_HaveExpectedValues()
+        {
+            // Assert
+            Assert.Equal("summary", AppConfiguration.ROUTE_SUMMARY);
+            Assert.Equal("aws.events", AppConfiguration.SOURCE_EVENT_TRIGGER);
+        }
+
+        [Fact]
+        public void SummaryEventQueueUrl_WithEnvironmentVariable_ReturnsValue()
+        {
+            // Arrange
+            var originalValue = Environment.GetEnvironmentVariable("SummaryEventQueueUrl");
+            Environment.SetEnvironmentVariable("SummaryEventQueueUrl", "https://sqs.us-east-1.amazonaws.com/123456789012/summary-queue");
+
+            try
+            {
+                // Act
+                var result = AppConfiguration.SummaryEventQueueUrl;
+
+                // Assert
+                Assert.Equal("https://sqs.us-east-1.amazonaws.com/123456789012/summary-queue", result);
+            }
+            finally
+            {
+                // Cleanup
+                Environment.SetEnvironmentVariable("SummaryEventQueueUrl", originalValue);
+            }
+        }
+
+        [Fact]
+        public void SummaryEventQueueUrl_WithoutEnvironmentVariable_ReturnsNull()
+        {
+            // Arrange
+            var originalValue = Environment.GetEnvironmentVariable("SummaryEventQueueUrl");
+            Environment.SetEnvironmentVariable("SummaryEventQueueUrl", null);
+
+            try
+            {
+                // Act
+                var result = AppConfiguration.SummaryEventQueueUrl;
+
+                // Assert
+                Assert.Null(result);
+            }
+            finally
+            {
+                // Cleanup
+                Environment.SetEnvironmentVariable("SummaryEventQueueUrl", originalValue);
+            }
+        }
+
+        [Fact]
+        public void SummaryEventDlqUrl_WithEnvironmentVariable_ReturnsValue()
+        {
+            // Arrange
+            var originalValue = Environment.GetEnvironmentVariable("SummaryEventDlqUrl");
+            Environment.SetEnvironmentVariable("SummaryEventDlqUrl", "https://sqs.us-east-1.amazonaws.com/123456789012/summary-dlq");
+
+            try
+            {
+                // Act
+                var result = AppConfiguration.SummaryEventDlqUrl;
+
+                // Assert
+                Assert.Equal("https://sqs.us-east-1.amazonaws.com/123456789012/summary-dlq", result);
+            }
+            finally
+            {
+                // Cleanup
+                Environment.SetEnvironmentVariable("SummaryEventDlqUrl", originalValue);
+            }
+        }
+
+        [Fact]
+        public void SummaryEventDlqUrl_WithoutEnvironmentVariable_ReturnsNull()
+        {
+            // Arrange
+            var originalValue = Environment.GetEnvironmentVariable("SummaryEventDlqUrl");
+            Environment.SetEnvironmentVariable("SummaryEventDlqUrl", null);
+
+            try
+            {
+                // Act
+                var result = AppConfiguration.SummaryEventDlqUrl;
+
+                // Assert
+                Assert.Null(result);
+            }
+            finally
+            {
+                // Cleanup
+                Environment.SetEnvironmentVariable("SummaryEventDlqUrl", originalValue);
+            }
+        }
     }
 }
