@@ -62,8 +62,8 @@ function renderDashboard(data) {
     const now = new Date();
     const timeStr = now.toLocaleString(undefined, { hour12: false });
     const summaryDate = data.summaryDate || 'current day';
-    document.getElementById("summaryTile").innerText = `Total Events (${summaryDate} Eastern as of ${timeStr}): ${data.totalCount}`;
-    
+    document.getElementById("summaryTile").innerText = `Total Events today ${timeStr} EDT): ${data.totalCount}`;
+
     // Show summary message if present
     const summaryMsgDiv = document.getElementById('summaryMessage');
     if (data.summaryMessage) {
@@ -73,35 +73,34 @@ function renderDashboard(data) {
         summaryMsgDiv.textContent = '';
         summaryMsgDiv.style.display = 'none';
     }
-    
+
     const container = document.getElementById('dashboard');
     container.innerHTML = '';
-    
+
     (data.cameras || []).forEach(camera => {
-        const camDiv = document.createElement('div');
-        camDiv.className = 'camera-card';
-        const header = document.createElement('div');
-        header.className = 'camera-header';
-        header.innerHTML = `
+                const camDiv = document.createElement('div');
+                camDiv.className = 'camera-card';
+                const header = document.createElement('div');
+                header.className = 'camera-header';
+                header.innerHTML = `
             <span>${camera.cameraName}</span>
             <span>${camera.count24h || 0} events</span>
         `;
-        camDiv.appendChild(header);
-        
-        // Show all events for the camera (now we get all events for the day)
-        // Limit to the first 5 events per camera to avoid overwhelming the UI
-        const allEvents = camera.events || [];
-        const events = allEvents.slice(0, 5);
-        
-        events.forEach((event, index) => {
-            const evDiv = document.createElement('div');
-            evDiv.className = 'event-card';
-            if (index === 0) evDiv.classList.add('most-recent'); // Mark the first (most recent) event
-            
-            const trigger = (event.eventData && event.eventData.triggers && event.eventData.triggers[0]) || {};
-            const eventDate = new Date(event.eventData?.timestamp || 0);
-            
-            evDiv.innerHTML = `
+                camDiv.appendChild(header);
+
+                // Show only the latest event for the camera
+                const allEvents = camera.events || [];
+                const events = allEvents.slice(0, 1); // Only show the most recent event
+
+                events.forEach((event, index) => {
+                            const evDiv = document.createElement('div');
+                            evDiv.className = 'event-card';
+                            evDiv.classList.add('most-recent'); // This is always the most recent event since we only show one
+
+                            const trigger = (event.eventData && event.eventData.triggers && event.eventData.triggers[0]) || {};
+                            const eventDate = new Date(event.eventData?.timestamp || 0);
+
+                            evDiv.innerHTML = `
                 <div class="event-meta">
                     <span class="event-trigger">${triggerBadge(trigger.key)}</span>
                 </div>
@@ -126,8 +125,8 @@ function renderDashboard(data) {
                 // Use the base64 thumbnail data directly
                 imgEl.src = thumbnailData;
                 console.log(`Using stored thumbnail for event ${trigger.eventId}`);
-            } else if (event.videoUrl && index < 3) {
-                // Fallback to generating thumbnail from video (only for first 3 events)
+            } else if (event.videoUrl) {
+                // Fallback to generating thumbnail from video
                 imgEl.src = 'data:image/svg+xml,%3Csvg width="640" height="360" xmlns="http://www.w3.org/2000/svg"%3E%3Crect width="100%25" height="100%25" fill="%23222"/%3E%3Ctext x="50%25" y="50%25" fill="%23fff" font-size="16" text-anchor="middle" alignment-baseline="middle" dy=".3em"%3EGenerating...%3C/text%3E%3C/svg%3E';
                 
                 (async() => {
@@ -176,7 +175,7 @@ function renderDashboard(data) {
             } else if (!event.videoUrl) {
                 imgEl.src = 'data:image/svg+xml,%3Csvg width="640" height="360" xmlns="http://www.w3.org/2000/svg"%3E%3Crect width="100%25" height="100%25" fill="%23333"/%3E%3Ctext x="50%25" y="50%25" fill="%23fff" font-size="18" text-anchor="middle" alignment-baseline="middle" dy=".3em"%3ENo Video%3C/text%3E%3C/svg%3E';
             } else {
-                // For events beyond the first 3 without thumbnail data, show a simpler placeholder
+                // For events without thumbnail data, show a simpler placeholder
                 imgEl.src = 'data:image/svg+xml,%3Csvg width="640" height="360" xmlns="http://www.w3.org/2000/svg"%3E%3Crect width="100%25" height="100%25" fill="%23444"/%3E%3Ctext x="50%25" y="50%25" fill="%23fff" font-size="16" text-anchor="middle" alignment-baseline="middle" dy=".3em"%3EClick to Load%3C/text%3E%3C/svg%3E';
             }
 
@@ -203,14 +202,6 @@ function renderDashboard(data) {
             
             camDiv.appendChild(evDiv);
         });
-        
-        // Add a message if there are more events than displayed
-        if (allEvents.length > 5) {
-            const moreDiv = document.createElement('div');
-            moreDiv.className = 'more-events-indicator';
-            moreDiv.innerHTML = `<p style="text-align: center; color: #888; font-style: italic; margin: 10px 0;">... and ${allEvents.length - 5} more events for this camera</p>`;
-            camDiv.appendChild(moreDiv);
-        }
         
         container.appendChild(camDiv);
     });

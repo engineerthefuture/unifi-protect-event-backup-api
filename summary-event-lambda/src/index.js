@@ -226,7 +226,10 @@ exports.handler = async(event) => {
         console.log(`[INFO] Added event to summary:`, {
             EventId: summaryEvent.EventId,
             Device: summaryEvent.DeviceName || summaryEvent.Device,
-            EventType: summaryEvent.EventType || summaryEvent.Type
+            EventType: summaryEvent.EventType || summaryEvent.Type,
+            hasMetadata: !!summaryEvent.Metadata,
+            metadataKeys: summaryEvent.Metadata ? Object.keys(summaryEvent.Metadata) : [],
+            originalFileName: summaryEvent.Metadata?.originalFileName
         });
 
         // Extract event details

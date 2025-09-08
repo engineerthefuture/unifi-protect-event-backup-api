@@ -424,6 +424,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// <summary>
         /// Creates a camera event summary directly from summary event data without additional S3 calls.
         /// </summary>
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S1541:Methods should not be too complex", Justification = "Complex metadata extraction and alarm object creation requires this complexity")]
         private void ProcessSingleSummaryEventFromData(DailySummaryEvent summaryEvent,
             CameraSummaryMulti camera, List<CameraEventSummary> missingEvents)
         {
@@ -459,7 +460,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 {
                     eventData = alarm,
                     videoUrl = !string.IsNullOrEmpty(summaryEvent.PresignedVideoUrl) ? summaryEvent.PresignedVideoUrl : null,
-                    originalFileName = System.IO.Path.GetFileName(summaryEvent.VideoS3Key) ?? $"{summaryEvent.EventId}.mp4"
+                    originalFileName = alarm.triggers[0].originalFileName ?? System.IO.Path.GetFileName(summaryEvent.VideoS3Key) ?? $"{summaryEvent.EventId}.mp4"
                 };
 
                 // If there's a presigned URL, the video exists

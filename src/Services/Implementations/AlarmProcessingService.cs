@@ -283,6 +283,11 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             if (!string.IsNullOrEmpty(triggerForSummary?.originalFileName))
             {
                 summaryEvent.Metadata["originalFileName"] = triggerForSummary.originalFileName;
+                _logger.LogLine($"Added originalFileName to summary event metadata: {triggerForSummary.originalFileName}");
+            }
+            else
+            {
+                _logger.LogLine("No originalFileName available in trigger for summary event");
             }
             await _summaryEventQueueService.SendSummaryEventAsync(summaryEvent);
 
