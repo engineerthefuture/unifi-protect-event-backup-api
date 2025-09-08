@@ -460,5 +460,49 @@ namespace UnifiWebhookEventReceiverTests
             // Assert
             _mockLogger.Verify(x => x.LogLine(It.Is<string>(s => s.Contains("...") && s.Contains("Request body snippet:"))), Times.Once);
         }
+
+        [Fact]
+        public async Task GetDlqMessageCountAsync_WithNullDlqUrl_ReturnsZero()
+        {
+            // Arrange
+            var originalValue = Environment.GetEnvironmentVariable("AlarmProcessingDlqUrl");
+            Environment.SetEnvironmentVariable("AlarmProcessingDlqUrl", null);
+
+            try
+            {
+                // Act
+                var result = await _sqsService.GetDlqMessageCountAsync();
+
+                // Assert
+                Assert.Equal(0, result);
+                _mockLogger.Verify(x => x.LogLine("DLQ URL is not configured."), Times.Once);
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable("AlarmProcessingDlqUrl", originalValue);
+            }
+        }
+
+        [Fact]
+        public async Task GetDlqMessageCountAsync_WithEmptyDlqUrl_ReturnsZero()
+        {
+            // Arrange
+            var originalValue = Environment.GetEnvironmentVariable("AlarmProcessingDlqUrl");
+            Environment.SetEnvironmentVariable("AlarmProcessingDlqUrl", "");
+
+            try
+            {
+                // Act
+                var result = await _sqsService.GetDlqMessageCountAsync();
+
+                // Assert
+                Assert.Equal(0, result);
+                _mockLogger.Verify(x => x.LogLine("DLQ URL is not configured."), Times.Once);
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable("AlarmProcessingDlqUrl", originalValue);
+            }
+        }
     }
 }
