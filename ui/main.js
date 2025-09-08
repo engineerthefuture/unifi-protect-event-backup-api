@@ -62,7 +62,7 @@ function renderDashboard(data) {
     const now = new Date();
     const timeStr = now.toLocaleString(undefined, { hour12: false });
     const summaryDate = data.summaryDate || 'current day';
-    document.getElementById("summaryTile").innerText = `Total Events today ${timeStr} EDT): ${data.totalCount}`;
+    document.getElementById("summaryTile").innerText = `Total Events today (as of ${timeStr} EDT): ${data.totalCount}`;
 
     // Show summary message if present
     const summaryMsgDiv = document.getElementById('summaryMessage');
@@ -98,7 +98,7 @@ function renderDashboard(data) {
                             evDiv.classList.add('most-recent'); // This is always the most recent event since we only show one
 
                             const trigger = (event.eventData && event.eventData.triggers && event.eventData.triggers[0]) || {};
-                            const eventDate = new Date(event.eventData?.timestamp || 0);
+                            const eventDate = new Date(event.eventData ? .timestamp || 0);
 
                             evDiv.innerHTML = `
                 <div class="event-meta">
