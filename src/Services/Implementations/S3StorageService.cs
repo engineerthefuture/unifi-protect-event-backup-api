@@ -182,8 +182,6 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S134:Control flow statements should not be nested too deeply", Justification = "Enhanced logging requires nested conditions for comprehensive debugging information")]
         private async Task<SummaryDataResult> TryGetSummaryFromDailyFiles(string bucket, DateTime now)
         {
-            _logger.LogLine($"[TryGetSummaryFromDailyFiles] Starting summary data retrieval from bucket: {bucket}");
-            
             var cameras = new Dictionary<string, CameraSummaryMulti>();
             var missingEvents = new List<CameraEventSummary>();
             int totalCount = 0;
@@ -195,15 +193,11 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             string? summaryDate = null;
             bool summaryDataFound = false;
 
-            _logger.LogLine($"[TryGetSummaryFromDailyFiles] Searching for summary files for the last 2 days starting from: {now:yyyy-MM-dd HH:mm:ss} UTC");
-
             for (int i = 0; i < 2; i++)
             {
                 var date = now.AddDays(-i);
                 var dateFolder = $"{date:yyyy-MM-dd}";
                 var summaryKey = $"{dateFolder}/summary_{date:yyyy-MM-dd}.json";
-                
-                _logger.LogLine($"[TryGetSummaryFromDailyFiles] Day {i + 1}/2: Attempting to read summary file: {summaryKey}");
                 
                 try
                 {
@@ -212,42 +206,21 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                     {
                         summaryDataFound = true;
                         summaryDate = dailySummary.metadata.dateFormatted;
-                        _logger.LogLine($"[TryGetSummaryFromDailyFiles] ✓ Successfully loaded summary file: {summaryKey}");
-                        _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Summary date: {summaryDate}");
-                        _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Total events in file: {dailySummary.metadata.totalEvents}");
-                        _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Missing video count: {dailySummary.metadata.missingVideoCount}");
-                        _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - DLQ message count: {dailySummary.metadata.dlqMessageCount}");
-                        _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Event types in file: {dailySummary.eventCounts?.Count ?? 0}");
-                        _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Device counts in file: {dailySummary.deviceCounts?.Count ?? 0}");
-                        _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Individual events in file: {dailySummary.events?.Count ?? 0}");
                         
                         // Aggregate counts from summary
-                        var previousTotalCount = totalCount;
                         totalCount += dailySummary.metadata.totalEvents;
-                        _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Total count updated: {previousTotalCount} + {dailySummary.metadata.totalEvents} = {totalCount}");
                         
                         // Merge event type counts with trigger key counts for backward compatibility
-                        var previousObjectsCount = objectsCount;
-                        var previousActivityCount = activityCount;
                         if (dailySummary.eventCounts != null)
                         {
                             ProcessEventTypeCounts(dailySummary.eventCounts, triggerKeyCounts, ref objectsCount, ref activityCount);
-                            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Objects count updated: {previousObjectsCount} → {objectsCount}");
-                            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Activity count updated: {previousActivityCount} → {activityCount}");
-                            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Trigger key types now tracked: {triggerKeyCounts.Count}");
-                        }
-                        else
-                        {
-                            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - No event counts found in summary file");
                         }
                         
                         // Aggregate DLQ counts from summary
                         if (dailySummary.dlqCounts != null)
                         {
-                            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Processing {dailySummary.dlqCounts.Count} DLQ entries");
                             foreach (var dlqEntry in dailySummary.dlqCounts)
                             {
-                                var previousValue = dlqCounts.GetValueOrDefault(dlqEntry.Key, 0);
                                 if (dlqCounts.ContainsKey(dlqEntry.Key))
                                 {
                                     dlqCounts[dlqEntry.Key] += dlqEntry.Value;
@@ -256,18 +229,11 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                                 {
                                     dlqCounts[dlqEntry.Key] = dlqEntry.Value;
                                 }
-                                _logger.LogLine($"[TryGetSummaryFromDailyFiles]     - DLQ '{dlqEntry.Key}': {previousValue} + {dlqEntry.Value} = {dlqCounts[dlqEntry.Key]}");
                             }
-                        }
-                        else
-                        {
-                            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - No DLQ counts found in summary file");
                         }
                         
                         // Add DLQ message count from metadata for backward compatibility
-                        var previousDlqMessageCount = dlqMessageCount;
                         dlqMessageCount += dailySummary.metadata.dlqMessageCount;
-                        _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - DLQ message count updated: {previousDlqMessageCount} + {dailySummary.metadata.dlqMessageCount} = {dlqMessageCount}");
                         
                         // Process all events for each device
                         if (dailySummary.events != null && dailySummary.deviceCounts != null)
@@ -276,61 +242,17 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                                 .GroupBy(e => e.DeviceName)
                                 .ToDictionary(g => g.Key, g => g.OrderByDescending(e => e.Timestamp).ToList());
                             
-                            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Events grouped by device: {deviceLatestEvents.Count} devices");
-                            foreach (var deviceGroup in deviceLatestEvents)
-                            {
-                                _logger.LogLine($"[TryGetSummaryFromDailyFiles]     - Device '{deviceGroup.Key}': {deviceGroup.Value.Count} events");
-                            }
-                            
-                            var previousCameraCount = cameras.Count;
-                            var previousMissingEventCount = missingEvents.Count;
                             ProcessDeviceEventsFromSummary(deviceLatestEvents, dailySummary.deviceCounts, cameras, missingEvents);
-                            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Cameras after processing: {previousCameraCount} → {cameras.Count}");
-                            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Missing events after processing: {previousMissingEventCount} → {missingEvents.Count}");
                         }
-                        else
-                        {
-                            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - No events or device counts found in summary file");
-                        }
-                    }
-                    else
-                    {
-                        _logger.LogLine($"[TryGetSummaryFromDailyFiles] ⚠ Summary file exists but has no metadata: {summaryKey}");
                     }
                 }
                 catch (AmazonS3Exception e) when (e.ErrorCode == "NoSuchKey" || e.ErrorCode == "NotFound")
                 {
-                    _logger.LogLine($"[TryGetSummaryFromDailyFiles] ⚠ Summary file not found: {summaryKey}, will try next date or fallback method");
+                    // Summary file not found, continue to next date
                 }
-                catch (Exception ex)
+                catch (Exception)
                 {
-                    _logger.LogLine($"[TryGetSummaryFromDailyFiles] ✗ Error reading summary file {summaryKey}: {ex.Message}");
-                    _logger.LogLine($"[TryGetSummaryFromDailyFiles]   Exception type: {ex.GetType().Name}");
-                    if (ex.InnerException != null)
-                    {
-                        _logger.LogLine($"[TryGetSummaryFromDailyFiles]   Inner exception: {ex.InnerException.Message}");
-                    }
-                }
-            }
-
-            _logger.LogLine($"[TryGetSummaryFromDailyFiles] Summary data retrieval completed:");
-            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Success: {summaryDataFound}");
-            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Final camera count: {cameras.Count}");
-            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Final missing events count: {missingEvents.Count}");
-            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Final total event count: {totalCount}");
-            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Final objects count: {objectsCount}");
-            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Final activity count: {activityCount}");
-            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Final trigger key types: {triggerKeyCounts.Count}");
-            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Final DLQ message count: {dlqMessageCount}");
-            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Final DLQ counts: {dlqCounts.Count} queues");
-            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Summary date: {summaryDate ?? "None"}");
-
-            if (cameras.Count > 0)
-            {
-                _logger.LogLine($"[TryGetSummaryFromDailyFiles] Camera details:");
-                foreach (var camera in cameras.Values)
-                {
-                    _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - {camera.cameraName} ({camera.cameraId}): {camera.count24h} total events, {camera.events.Count} detailed events");
+                    // Error reading summary file, continue to next date
                 }
             }
 
@@ -449,9 +371,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                                 .ToString("yyyy-MM-dd HH:mm:ss UTC"),
                             originalFileName = summaryEvent.Metadata?.ContainsKey("originalFileName") == true ? 
                                 summaryEvent.Metadata["originalFileName"]?.ToString() : 
-                                System.IO.Path.GetFileName(summaryEvent.VideoS3Key),
-                            thumbnail = summaryEvent.Metadata?.ContainsKey("thumbnail") == true ? 
-                                summaryEvent.Metadata["thumbnail"]?.ToString() : null
+                                System.IO.Path.GetFileName(summaryEvent.VideoS3Key)
                         }
                     }
                 };
