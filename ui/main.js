@@ -98,7 +98,7 @@ function renderDashboard(data) {
                             evDiv.classList.add('most-recent'); // This is always the most recent event since we only show one
 
                             const trigger = (event.eventData && event.eventData.triggers && event.eventData.triggers[0]) || {};
-                            const eventDate = new Date(event.eventData ? .timestamp || 0);
+                            const eventDate = new Date(event.eventData?.timestamp || 0);
 
                             evDiv.innerHTML = `
                 <div class="event-meta">
