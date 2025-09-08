@@ -193,67 +193,57 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             string? summaryDate = null;
             bool summaryDataFound = false;
 
-            for (int i = 0; i < 2; i++)
+            // Convert UTC to Eastern time to match the summary lambda logic
+            var easternTime = ConvertUtcToEasternTime(now);
+            var dateFolder = $"{easternTime:yyyy-MM-dd}";
+            var summaryKey = $"{dateFolder}/summary_{easternTime:yyyy-MM-dd}.json";
+            
+            try
             {
-                var date = now.AddDays(-i);
-                var dateFolder = $"{date:yyyy-MM-dd}";
-                var summaryKey = $"{dateFolder}/summary_{date:yyyy-MM-dd}.json";
-                
-                try
+                var dailySummary = await ReadDailySummaryAsync(bucket, summaryKey);
+                if (dailySummary?.metadata != null)
                 {
-                    var dailySummary = await ReadDailySummaryAsync(bucket, summaryKey);
-                    if (dailySummary?.metadata != null)
+                    summaryDataFound = true;
+                    summaryDate = dailySummary.metadata.dateFormatted;
+                    
+                    // Use counts from summary
+                    totalCount = dailySummary.metadata.totalEvents;
+                    
+                    // Merge event type counts with trigger key counts for backward compatibility
+                    if (dailySummary.eventCounts != null)
                     {
-                        summaryDataFound = true;
-                        summaryDate = dailySummary.metadata.dateFormatted;
+                        ProcessEventTypeCounts(dailySummary.eventCounts, triggerKeyCounts, ref objectsCount, ref activityCount);
+                    }
+                    
+                    // Use DLQ counts from summary
+                    if (dailySummary.dlqCounts != null)
+                    {
+                        dlqCounts = new Dictionary<string, int>(dailySummary.dlqCounts);
+                    }
+                    
+                    // Use DLQ message count from metadata
+                    dlqMessageCount = dailySummary.metadata.dlqMessageCount;
+                    
+                    // Process all events for each device
+                    if (dailySummary.events != null && dailySummary.deviceCounts != null)
+                    {
+                        var deviceLatestEvents = dailySummary.events
+                            .GroupBy(e => e.DeviceName)
+                            .ToDictionary(g => g.Key, g => g.OrderByDescending(e => e.Timestamp).ToList());
                         
-                        // Aggregate counts from summary
-                        totalCount += dailySummary.metadata.totalEvents;
-                        
-                        // Merge event type counts with trigger key counts for backward compatibility
-                        if (dailySummary.eventCounts != null)
-                        {
-                            ProcessEventTypeCounts(dailySummary.eventCounts, triggerKeyCounts, ref objectsCount, ref activityCount);
-                        }
-                        
-                        // Aggregate DLQ counts from summary
-                        if (dailySummary.dlqCounts != null)
-                        {
-                            foreach (var dlqEntry in dailySummary.dlqCounts)
-                            {
-                                if (dlqCounts.ContainsKey(dlqEntry.Key))
-                                {
-                                    dlqCounts[dlqEntry.Key] += dlqEntry.Value;
-                                }
-                                else
-                                {
-                                    dlqCounts[dlqEntry.Key] = dlqEntry.Value;
-                                }
-                            }
-                        }
-                        
-                        // Add DLQ message count from metadata for backward compatibility
-                        dlqMessageCount += dailySummary.metadata.dlqMessageCount;
-                        
-                        // Process all events for each device
-                        if (dailySummary.events != null && dailySummary.deviceCounts != null)
-                        {
-                            var deviceLatestEvents = dailySummary.events
-                                .GroupBy(e => e.DeviceName)
-                                .ToDictionary(g => g.Key, g => g.OrderByDescending(e => e.Timestamp).ToList());
-                            
-                            ProcessDeviceEventsFromSummary(deviceLatestEvents, dailySummary.deviceCounts, cameras, missingEvents);
-                        }
+                        ProcessDeviceEventsFromSummary(deviceLatestEvents, dailySummary.deviceCounts, cameras, missingEvents);
                     }
                 }
-                catch (AmazonS3Exception e) when (e.ErrorCode == "NoSuchKey" || e.ErrorCode == "NotFound")
-                {
-                    // Summary file not found, continue to next date
-                }
-                catch (Exception)
-                {
-                    // Error reading summary file, continue to next date
-                }
+            }
+            catch (AmazonS3Exception e) when (e.ErrorCode == "NoSuchKey" || e.ErrorCode == "NotFound")
+            {
+                // Summary file not found for current day
+                _logger.LogLine($"No summary file found for current day: {summaryKey}");
+            }
+            catch (Exception ex)
+            {
+                // Error reading summary file
+                _logger.LogLine($"Error reading summary file {summaryKey}: {ex.Message}");
             }
 
             return new SummaryDataResult
@@ -1191,6 +1181,16 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 _logger.LogLine($"Error retrieving binary file from S3 {s3Key}: {e.Message}");
                 return null;
             }
+        }
+
+        /// <summary>
+        /// Converts UTC time to Eastern Time (UTC-5, ignoring DST for simplicity).
+        /// This matches the logic used in the summary lambda.
+        /// </summary>
+        private static DateTime ConvertUtcToEasternTime(DateTime utcTime)
+        {
+            // Convert to Eastern Time (UTC-5)
+            return utcTime.AddHours(-5);
         }
 
         #endregion
