@@ -635,7 +635,7 @@ namespace UnifiWebhookEventReceiverTests
             // Arrange
             SetValidAlarmBucketEnvironment();
             var alarm = CreateValidAlarm();
-            alarm.triggers[0].thumbnail = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/wAALCAABAAEBAREA/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwBVWX/2Q==";
+            alarm.thumbnail = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/wAALCAABAAEBAREA/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwBVWX/2Q==";
             
             var credentials = new UnifiCredentials { hostname = "unifi.local", username = "admin", password = "password", apikey = "test-key" };
             _mockCredentialsService.Setup(x => x.GetUnifiCredentialsAsync())
@@ -816,6 +816,7 @@ namespace UnifiWebhookEventReceiverTests
             var alarm = new UnifiWebhookEventReceiver.Alarm
             {
                 timestamp = 1672531200000,
+                thumbnail = thumbnailData,
                 triggers = new List<UnifiWebhookEventReceiver.Trigger>
                 {
                     new UnifiWebhookEventReceiver.Trigger
@@ -824,8 +825,7 @@ namespace UnifiWebhookEventReceiverTests
                         device = "AA:BB:CC:DD:EE:FF",
                         eventId = "test-event-123",
                         deviceName = "Test Camera",
-                        originalFileName = "test_video_motion_2025-01-01_12-00-00.mp4",
-                        thumbnail = thumbnailData
+                        originalFileName = "test_video_motion_2025-01-01_12-00-00.mp4"
                     }
                 }
             };

@@ -45,6 +45,9 @@ namespace UnifiWebhookEventReceiver
 
         /// <summary>Local network link to access the event data directly from the Unifi system</summary>
         public string? eventLocalLink { get; set; }
+
+        /// <summary>Base64-encoded thumbnail image data (e.g., "data:image/jpeg;base64,...")</summary>
+        public string? thumbnail { get; set; }
     }
 
     /// <summary>
