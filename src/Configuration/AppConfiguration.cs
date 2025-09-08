@@ -91,6 +91,9 @@ namespace UnifiWebhookEventReceiver.Configuration
     /// <summary>SQS queue URL for summary event processing</summary>
     public static string? SummaryEventQueueUrl => Environment.GetEnvironmentVariable("SummaryEventQueueUrl");
 
+        /// <summary>SQS dead letter queue URL for failed summary event processing</summary>
+        public static string? SummaryEventDlqUrl => Environment.GetEnvironmentVariable("SummaryEventDlqUrl");
+
         /// <summary>Delay in seconds before processing alarm events (defaults to 2 minutes)</summary>
         public static int ProcessingDelaySeconds => int.TryParse(Environment.GetEnvironmentVariable("ProcessingDelaySeconds"), out var delay) ? delay : 120;
 

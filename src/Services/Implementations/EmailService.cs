@@ -195,6 +195,9 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 string dateFolder = $"{dt.Year}-{dt.Month:D2}-{dt.Day:D2}";
                 string basePrefix = $"{trigger.eventId}_{trigger.device}_{alarm.timestamp}";
                 
+                // First, try to get the alarm trigger thumbnail
+                await TryRetrieveThumbnail(trigger, alarm.timestamp, screenshots);
+                
                 var screenshotTypes = new[] { "login-screenshot", "pageload-screenshot", "afterarchivebuttonclick-screenshot", "signout-screenshot", "signout-error-screenshot" };
                 
                 foreach (var screenshotType in screenshotTypes)
@@ -208,6 +211,37 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             }
             
             return screenshots;
+        }
+
+        /// <summary>
+        /// Attempts to retrieve the alarm trigger thumbnail from S3.
+        /// </summary>
+        private async Task TryRetrieveThumbnail(Trigger trigger, long timestamp, List<(string name, byte[] data)> screenshots)
+        {
+            try
+            {
+                // Convert to Eastern Time (UTC-5) to match file organization
+                DateTime dt = DateTimeOffset.FromUnixTimeMilliseconds(timestamp).UtcDateTime.AddHours(-5);
+                string dateFolder = $"{dt.Year}-{dt.Month:D2}-{dt.Day:D2}";
+                var thumbnailKey = $"{dateFolder}/{trigger.eventId}_{trigger.device}_{timestamp}.jpg";
+                
+                _logger.LogLine($"Attempting to retrieve alarm trigger thumbnail: {thumbnailKey}");
+                
+                var thumbnailData = await _s3StorageService.GetFileAsync(thumbnailKey);
+                if (thumbnailData != null && thumbnailData.Length > 0)
+                {
+                    screenshots.Add(("alarm-trigger-thumbnail.jpg", thumbnailData));
+                    _logger.LogLine($"Retrieved alarm trigger thumbnail: {thumbnailData.Length} bytes");
+                }
+                else
+                {
+                    _logger.LogLine("No alarm trigger thumbnail found in S3");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogLine($"Could not retrieve alarm trigger thumbnail: {ex.Message}");
+            }
         }
 
         /// <summary>
@@ -404,6 +438,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         {
             return filename.ToLower() switch
             {
+                var name when name.Contains("alarm-trigger-thumbnail") => "🚨 Alarm Trigger Thumbnail",
                 var name when name.Contains("login-screenshot") => "🔐 Login Page Screenshot",
                 var name when name.Contains("pageload-screenshot") => "📄 Page Load Screenshot", 
                 var name when name.Contains("afterarchivebuttonclick-screenshot") => "🖱️ After Archive Button Click Screenshot",

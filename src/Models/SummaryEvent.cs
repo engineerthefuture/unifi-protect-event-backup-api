@@ -17,6 +17,8 @@ namespace UnifiWebhookEventReceiver.Models
     public string? AlarmName { get; set; }
     public string? DeviceName { get; set; }
     public string? EventType { get; set; }
+    public string? EventPath { get; set; }
+    public string? EventLocalLink { get; set; }
     public Dictionary<string, string>? Metadata { get; set; }
     }
 }

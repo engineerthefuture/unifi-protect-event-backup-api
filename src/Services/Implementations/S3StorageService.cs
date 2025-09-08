@@ -19,6 +19,7 @@ using Amazon.S3.Model;
 using Newtonsoft.Json;
 using UnifiWebhookEventReceiver.Configuration;
 using UnifiWebhookEventReceiver.Services;
+using UnifiWebhookEventReceiver.Models;
 
 namespace UnifiWebhookEventReceiver.Services.Implementations
 {
@@ -27,9 +28,6 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
     /// </summary>
     public class S3StorageService : IS3StorageService
     {
-        /// <summary>Default duration (in hours) for presigned S3 URLs.</summary>
-        private const int DEFAULT_PRESIGNED_URL_HOURS = 1;
-
         /// <summary>
         /// Returns the latest video file and associated event data as a presigned download link.
         /// </summary>
@@ -131,7 +129,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         }
 
         /// <summary>
-        /// Returns a summary of the last event and event count per camera in the last 24 hours, with a presigned video link for each.
+        /// Returns a summary of the last event and event count per camera in the last calendar day from midnight, with a presigned video link for each.
         /// </summary>
     [System.Diagnostics.CodeAnalysis.SuppressMessage("SonarQube", "S3776:Refactor this method to reduce its Cognitive Complexity from 23 to the 15 allowed.", Justification = "Business logic requires this complexity.")]
     [System.Diagnostics.CodeAnalysis.SuppressMessage("SonarQube", "S1541:The Cyclomatic Complexity of this method is 13 which is greater than 10 authorized.", Justification = "Business logic requires this complexity.")]
@@ -142,147 +140,25 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             {
                 var now = DateTime.UtcNow;
                 var bucket = AppConfiguration.AlarmBucketName!;
-                var cameras = new Dictionary<string, CameraSummaryMulti>();
-                var missingEvents = new List<CameraEventSummary>();
-                int totalCount = 0;
-                int objectsCount = 0;
-                int activityCount = 0;
-                var triggerKeyCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
                 var headers = _responseHelper.GetStandardHeaders();
 
-                for (int i = 0; i < 2; i++)
+                // Try to use comprehensive summary files first
+                var summaryResult = await TryGetSummaryFromDailyFiles(bucket, now);
+                
+                if (summaryResult.success)
                 {
-                    var date = now.AddDays(-i);
-                    var prefix = $"{date:yyyy-MM-dd}/";
-                    var listReq = new ListObjectsV2Request { BucketName = bucket, Prefix = prefix };
-                    var listResp = await _s3Client.ListObjectsV2Async(listReq);
-                    foreach (var obj in listResp.S3Objects.Select(o => o.Key).Where(k => k.EndsWith(".json")))
-                    {
-                        try
-                        {
-                            var alarm = await ReadAlarmFromS3Async(bucket, obj);
-                            if (alarm == null || alarm.triggers == null || alarm.triggers.Count == 0)
-                                continue;
-                            var trigger = alarm.triggers[0];
-                            // Count trigger keys for all triggers in the event
-                            foreach (var key in alarm.triggers.Select(t => t.key).Where(k => !string.IsNullOrEmpty(k)))
-                            {
-                                if (!triggerKeyCounts.TryAdd(key!, 1))
-                                    triggerKeyCounts[key!]++;
-                            }
-                            var cameraId = trigger.device;
-                            var cameraName = trigger.deviceName ?? cameraId;
-                            var videoKey = obj.Replace(".json", ".mp4");
-                            var originalFileName = trigger.originalFileName ?? System.IO.Path.GetFileName(videoKey);
-                            if (string.IsNullOrEmpty(cameraId) || string.IsNullOrEmpty(videoKey))
-                                continue;
-
-                            // Check if video exists in S3
-                            bool videoExists = false;
-                            try
-                            {
-                                var headRequest = new GetObjectMetadataRequest
-                                {
-                                    BucketName = bucket,
-                                    Key = videoKey
-                                };
-                                await _s3Client.GetObjectMetadataAsync(headRequest);
-                                videoExists = true;
-                            }
-                            catch (AmazonS3Exception e) when (e.ErrorCode == "NoSuchKey" || e.ErrorCode == "NotFound")
-                            {
-                                // Treat as missing video, do not log as error
-                                videoExists = false;
-                            }
-                            catch (AmazonS3Exception e)
-                            {
-                                // Log and skip only for other S3 errors
-                                _logger.LogLine($"Error checking video existence for {videoKey}: {e.Message}");
-                                continue;
-                            }
-
-                            var sanitizedAlarm = CloneAlarmWithoutSourcesAndConditions(alarm);
-                            var eventObj = new CameraEventSummary {
-                                eventData = sanitizedAlarm,
-                                videoUrl = videoExists ? await GetPresignedUrlAsync(bucket, videoKey, now, DEFAULT_PRESIGNED_URL_HOURS) : null,
-                                originalFileName = originalFileName
-                            };
-
-                            if (videoExists)
-                            {
-                                if (!cameras.TryGetValue(cameraId, out var cam))
-                                {
-                                    cam = new CameraSummaryMulti {
-                                        cameraId = cameraId,
-                                        cameraName = cameraName,
-                                        events = new List<CameraEventSummary>(),
-                                        count24h = 0
-                                    };
-                                    cameras[cameraId] = cam;
-                                }
-                                cam.events.Add(eventObj);
-                                cam.count24h++;
-                                totalCount++;
-                            }
-                            else
-                            {
-                                missingEvents.Add(eventObj);
-                            }
-
-                            // Count event types
-                            if (alarm.name == "Backup Alarm Event: Objects")
-                                objectsCount++;
-                            else if (alarm.name == "Backup Alarm Event: Activity")
-                                activityCount++;
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogLine($"Error processing event file {obj}: {ex.Message}");
-                        }
-                    }
+                    return await BuildSummaryResponse(summaryResult.cameras, summaryResult.missingEvents, 
+                        summaryResult.totalCount, summaryResult.objectsCount, summaryResult.activityCount, 
+                        summaryResult.triggerKeyCounts, summaryResult.summaryDate, headers, 
+                        summaryResult.dlqMessageCount, summaryResult.dlqCounts);
                 }
 
-                // Limit to last 3 events per camera, sorted by timestamp descending
-                foreach (var cam in cameras.Values)
-                {
-                    cam.events = cam.events
-                        .OrderByDescending(e => e.eventData?.timestamp ?? 0)
-                        .Take(3)
-                        .ToList();
-                }
-                var perCameraCounts = string.Join(", ", cameras.Values.Select(c => $"{c.cameraName} ({c.cameraId}): {c.count24h}"));
-                var triggerKeySummary = string.Join(", ", triggerKeyCounts.Select(kvp => $"{kvp.Key}: {kvp.Value}"));
-
-                // Get DLQ message count if SQS service is available
-                int dlqMessageCount = 0;
-                if (_sqsService != null)
-                {
-                    try
-                    {
-                        dlqMessageCount = await _sqsService.GetDlqMessageCountAsync();
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogLine($"Error retrieving DLQ message count: {ex.Message}");
-                    }
-                }
-
-                var summaryMessage = $"In the past 24 hours, there were {totalCount} total events across all cameras: {objectsCount} 'Objects' events and {activityCount} 'Activity' events. Per camera: {perCameraCounts}. Trigger keys: {triggerKeySummary}. DLQ messages: {dlqMessageCount}.";
-                var response = new {
-                    cameras = cameras.Values,
-                    missing = missingEvents,
-                    totalCount,
-                    objectsCount,
-                    activityCount,
-                    triggerKeyCounts,
-                    dlqMessageCount,
-                    summaryMessage
-                };
-                return new APIGatewayProxyResponse {
-                    StatusCode = 200,
-                    Body = JsonConvert.SerializeObject(response, Formatting.Indented),
-                    Headers = headers
-                };
+                // Fallback to simple empty response if no summary files found
+                _logger.LogLine("No summary files found, returning empty summary response");
+                return await BuildSummaryResponse(new Dictionary<string, CameraSummaryMulti>(), 
+                    new List<CameraEventSummary>(), 0, 0, 0, 
+                    new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase), 
+                    "No summary data available", headers);
             }
             catch (Exception ex)
             {
@@ -297,12 +173,384 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             }
         }
 
-        private async Task<Alarm?> ReadAlarmFromS3Async(string bucket, string key)
+        /// <summary>
+        /// Attempts to retrieve summary data from daily summary files.
+        /// </summary>
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S3776:Cognitive Complexity of methods should not be too high", Justification = "Enhanced logging requires additional complexity for detailed debugging information")]
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S1541:Methods should not be too complex", Justification = "Enhanced logging requires additional complexity for detailed debugging information")]
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S138:Functions should not have too many lines of code", Justification = "Enhanced logging requires additional lines for comprehensive debugging information")]
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S134:Control flow statements should not be nested too deeply", Justification = "Enhanced logging requires nested conditions for comprehensive debugging information")]
+        private async Task<SummaryDataResult> TryGetSummaryFromDailyFiles(string bucket, DateTime now)
         {
-            using var getResp = await _s3Client.GetObjectAsync(bucket, key);
-            using var reader = new StreamReader(getResp.ResponseStream);
-            var json = await reader.ReadToEndAsync();
-            return JsonConvert.DeserializeObject<Alarm>(json);
+            _logger.LogLine($"[TryGetSummaryFromDailyFiles] Starting summary data retrieval from bucket: {bucket}");
+            
+            var cameras = new Dictionary<string, CameraSummaryMulti>();
+            var missingEvents = new List<CameraEventSummary>();
+            int totalCount = 0;
+            int objectsCount = 0;
+            int activityCount = 0;
+            var triggerKeyCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            var dlqCounts = new Dictionary<string, int>();
+            int dlqMessageCount = 0;
+            string? summaryDate = null;
+            bool summaryDataFound = false;
+
+            _logger.LogLine($"[TryGetSummaryFromDailyFiles] Searching for summary files for the last 2 days starting from: {now:yyyy-MM-dd HH:mm:ss} UTC");
+
+            for (int i = 0; i < 2; i++)
+            {
+                var date = now.AddDays(-i);
+                var dateFolder = $"{date:yyyy-MM-dd}";
+                var summaryKey = $"{dateFolder}/summary_{date:yyyy-MM-dd}.json";
+                
+                _logger.LogLine($"[TryGetSummaryFromDailyFiles] Day {i + 1}/2: Attempting to read summary file: {summaryKey}");
+                
+                try
+                {
+                    var dailySummary = await ReadDailySummaryAsync(bucket, summaryKey);
+                    if (dailySummary?.metadata != null)
+                    {
+                        summaryDataFound = true;
+                        summaryDate = dailySummary.metadata.dateFormatted;
+                        _logger.LogLine($"[TryGetSummaryFromDailyFiles] ✓ Successfully loaded summary file: {summaryKey}");
+                        _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Summary date: {summaryDate}");
+                        _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Total events in file: {dailySummary.metadata.totalEvents}");
+                        _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Missing video count: {dailySummary.metadata.missingVideoCount}");
+                        _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - DLQ message count: {dailySummary.metadata.dlqMessageCount}");
+                        _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Event types in file: {dailySummary.eventCounts?.Count ?? 0}");
+                        _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Device counts in file: {dailySummary.deviceCounts?.Count ?? 0}");
+                        _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Individual events in file: {dailySummary.events?.Count ?? 0}");
+                        
+                        // Aggregate counts from summary
+                        var previousTotalCount = totalCount;
+                        totalCount += dailySummary.metadata.totalEvents;
+                        _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Total count updated: {previousTotalCount} + {dailySummary.metadata.totalEvents} = {totalCount}");
+                        
+                        // Merge event type counts with trigger key counts for backward compatibility
+                        var previousObjectsCount = objectsCount;
+                        var previousActivityCount = activityCount;
+                        if (dailySummary.eventCounts != null)
+                        {
+                            ProcessEventTypeCounts(dailySummary.eventCounts, triggerKeyCounts, ref objectsCount, ref activityCount);
+                            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Objects count updated: {previousObjectsCount} → {objectsCount}");
+                            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Activity count updated: {previousActivityCount} → {activityCount}");
+                            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Trigger key types now tracked: {triggerKeyCounts.Count}");
+                        }
+                        else
+                        {
+                            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - No event counts found in summary file");
+                        }
+                        
+                        // Aggregate DLQ counts from summary
+                        if (dailySummary.dlqCounts != null)
+                        {
+                            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Processing {dailySummary.dlqCounts.Count} DLQ entries");
+                            foreach (var dlqEntry in dailySummary.dlqCounts)
+                            {
+                                var previousValue = dlqCounts.GetValueOrDefault(dlqEntry.Key, 0);
+                                if (dlqCounts.ContainsKey(dlqEntry.Key))
+                                {
+                                    dlqCounts[dlqEntry.Key] += dlqEntry.Value;
+                                }
+                                else
+                                {
+                                    dlqCounts[dlqEntry.Key] = dlqEntry.Value;
+                                }
+                                _logger.LogLine($"[TryGetSummaryFromDailyFiles]     - DLQ '{dlqEntry.Key}': {previousValue} + {dlqEntry.Value} = {dlqCounts[dlqEntry.Key]}");
+                            }
+                        }
+                        else
+                        {
+                            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - No DLQ counts found in summary file");
+                        }
+                        
+                        // Add DLQ message count from metadata for backward compatibility
+                        var previousDlqMessageCount = dlqMessageCount;
+                        dlqMessageCount += dailySummary.metadata.dlqMessageCount;
+                        _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - DLQ message count updated: {previousDlqMessageCount} + {dailySummary.metadata.dlqMessageCount} = {dlqMessageCount}");
+                        
+                        // Process all events for each device
+                        if (dailySummary.events != null && dailySummary.deviceCounts != null)
+                        {
+                            var deviceLatestEvents = dailySummary.events
+                                .GroupBy(e => e.DeviceName)
+                                .ToDictionary(g => g.Key, g => g.OrderByDescending(e => e.Timestamp).ToList());
+                            
+                            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Events grouped by device: {deviceLatestEvents.Count} devices");
+                            foreach (var deviceGroup in deviceLatestEvents)
+                            {
+                                _logger.LogLine($"[TryGetSummaryFromDailyFiles]     - Device '{deviceGroup.Key}': {deviceGroup.Value.Count} events");
+                            }
+                            
+                            var previousCameraCount = cameras.Count;
+                            var previousMissingEventCount = missingEvents.Count;
+                            ProcessDeviceEventsFromSummary(deviceLatestEvents, dailySummary.deviceCounts, cameras, missingEvents);
+                            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Cameras after processing: {previousCameraCount} → {cameras.Count}");
+                            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Missing events after processing: {previousMissingEventCount} → {missingEvents.Count}");
+                        }
+                        else
+                        {
+                            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - No events or device counts found in summary file");
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogLine($"[TryGetSummaryFromDailyFiles] ⚠ Summary file exists but has no metadata: {summaryKey}");
+                    }
+                }
+                catch (AmazonS3Exception e) when (e.ErrorCode == "NoSuchKey" || e.ErrorCode == "NotFound")
+                {
+                    _logger.LogLine($"[TryGetSummaryFromDailyFiles] ⚠ Summary file not found: {summaryKey}, will try next date or fallback method");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogLine($"[TryGetSummaryFromDailyFiles] ✗ Error reading summary file {summaryKey}: {ex.Message}");
+                    _logger.LogLine($"[TryGetSummaryFromDailyFiles]   Exception type: {ex.GetType().Name}");
+                    if (ex.InnerException != null)
+                    {
+                        _logger.LogLine($"[TryGetSummaryFromDailyFiles]   Inner exception: {ex.InnerException.Message}");
+                    }
+                }
+            }
+
+            _logger.LogLine($"[TryGetSummaryFromDailyFiles] Summary data retrieval completed:");
+            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Success: {summaryDataFound}");
+            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Final camera count: {cameras.Count}");
+            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Final missing events count: {missingEvents.Count}");
+            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Final total event count: {totalCount}");
+            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Final objects count: {objectsCount}");
+            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Final activity count: {activityCount}");
+            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Final trigger key types: {triggerKeyCounts.Count}");
+            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Final DLQ message count: {dlqMessageCount}");
+            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Final DLQ counts: {dlqCounts.Count} queues");
+            _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - Summary date: {summaryDate ?? "None"}");
+
+            if (cameras.Count > 0)
+            {
+                _logger.LogLine($"[TryGetSummaryFromDailyFiles] Camera details:");
+                foreach (var camera in cameras.Values)
+                {
+                    _logger.LogLine($"[TryGetSummaryFromDailyFiles]   - {camera.cameraName} ({camera.cameraId}): {camera.count24h} total events, {camera.events.Count} detailed events");
+                }
+            }
+
+            return new SummaryDataResult
+            {
+                success = summaryDataFound,
+                cameras = cameras,
+                missingEvents = missingEvents,
+                totalCount = totalCount,
+                objectsCount = objectsCount,
+                activityCount = activityCount,
+                triggerKeyCounts = triggerKeyCounts,
+                summaryDate = summaryDate,
+                dlqMessageCount = dlqMessageCount,
+                dlqCounts = dlqCounts
+            };
+        }
+
+        /// <summary>
+        /// Reads and deserializes a daily summary file from S3.
+        /// </summary>
+        private async Task<DailySummary?> ReadDailySummaryAsync(string bucket, string summaryKey)
+        {
+            var summaryRequest = new GetObjectRequest
+            {
+                BucketName = bucket,
+                Key = summaryKey
+            };
+            
+            var summaryResponse = await _s3Client.GetObjectAsync(summaryRequest);
+            using var reader = new StreamReader(summaryResponse.ResponseStream);
+            var summaryJson = await reader.ReadToEndAsync();
+            return JsonConvert.DeserializeObject<DailySummary>(summaryJson);
+        }
+
+        /// <summary>
+        /// Processes event type counts and maps them to legacy count categories.
+        /// </summary>
+        private static void ProcessEventTypeCounts(Dictionary<string, int> eventCounts, 
+            Dictionary<string, int> triggerKeyCounts, ref int objectsCount, ref int activityCount)
+        {
+            foreach (var eventType in eventCounts)
+            {
+                if (!triggerKeyCounts.TryAdd(eventType.Key, eventType.Value))
+                    triggerKeyCounts[eventType.Key] += eventType.Value;
+                
+                // Map event types to legacy counts
+                if (eventType.Key.Contains("motion", StringComparison.OrdinalIgnoreCase) || 
+                    eventType.Key.Contains("activity", StringComparison.OrdinalIgnoreCase))
+                    activityCount += eventType.Value;
+                else if (eventType.Key.Contains("person", StringComparison.OrdinalIgnoreCase) || 
+                         eventType.Key.Contains("vehicle", StringComparison.OrdinalIgnoreCase))
+                    objectsCount += eventType.Value;
+            }
+        }
+
+        /// <summary>
+        /// Processes device events directly from summary data without additional S3 calls.
+        /// </summary>
+        private void ProcessDeviceEventsFromSummary(Dictionary<string, List<DailySummaryEvent>> deviceLatestEvents,
+            Dictionary<string, int> deviceCounts, Dictionary<string, CameraSummaryMulti> cameras,
+            List<CameraEventSummary> missingEvents)
+        {
+            foreach (var deviceGroup in deviceLatestEvents)
+            {
+                var deviceName = deviceGroup.Key;
+                var deviceEvents = deviceGroup.Value;
+                var deviceEventCount = deviceCounts.GetValueOrDefault(deviceName, 0);
+                
+                if (!cameras.TryGetValue(deviceName, out var existingCamera))
+                {
+                    cameras[deviceName] = new CameraSummaryMulti
+                    {
+                        cameraId = deviceName,
+                        cameraName = deviceName,
+                        events = new List<CameraEventSummary>(),
+                        count24h = deviceEventCount
+                    };
+                }
+                
+                var camera = cameras[deviceName];
+                
+                // Process events directly from summary data
+                foreach (var summaryEvent in deviceEvents)
+                {
+                    ProcessSingleSummaryEventFromData(summaryEvent, camera, missingEvents);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Creates a camera event summary directly from summary event data without additional S3 calls.
+        /// </summary>
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S1541:Methods should not be too complex", Justification = "Complex metadata extraction and alarm object creation requires this complexity")]
+        private void ProcessSingleSummaryEventFromData(DailySummaryEvent summaryEvent,
+            CameraSummaryMulti camera, List<CameraEventSummary> missingEvents)
+        {
+            try
+            {
+                // Create a minimal alarm object from summary data
+                var alarm = new Alarm
+                {
+                    timestamp = summaryEvent.Timestamp,
+                    name = summaryEvent.AlarmName ?? $"Event {summaryEvent.EventId}",
+                    triggers = new List<Trigger>
+                    {
+                        new Trigger
+                        {
+                            eventId = summaryEvent.EventId,
+                            device = summaryEvent.Device,
+                            deviceName = summaryEvent.DeviceName,
+                            key = summaryEvent.EventType ?? "motion",
+                            eventKey = summaryEvent.AlarmS3Key,
+                            videoKey = summaryEvent.VideoS3Key,
+                            date = DateTimeOffset.FromUnixTimeMilliseconds(summaryEvent.Timestamp)
+                                .ToString("yyyy-MM-dd HH:mm:ss UTC"),
+                            originalFileName = summaryEvent.Metadata?.ContainsKey("originalFileName") == true ? 
+                                summaryEvent.Metadata["originalFileName"]?.ToString() : 
+                                System.IO.Path.GetFileName(summaryEvent.VideoS3Key),
+                            thumbnail = summaryEvent.Metadata?.ContainsKey("thumbnail") == true ? 
+                                summaryEvent.Metadata["thumbnail"]?.ToString() : null
+                        }
+                    }
+                };
+
+                var eventObj = new CameraEventSummary
+                {
+                    eventData = alarm,
+                    videoUrl = !string.IsNullOrEmpty(summaryEvent.PresignedVideoUrl) ? summaryEvent.PresignedVideoUrl : null,
+                    originalFileName = alarm.triggers[0].originalFileName ?? System.IO.Path.GetFileName(summaryEvent.VideoS3Key) ?? $"{summaryEvent.EventId}.mp4"
+                };
+
+                // If there's a presigned URL, the video exists
+                if (!string.IsNullOrEmpty(summaryEvent.PresignedVideoUrl))
+                {
+                    camera.events.Add(eventObj);
+                }
+                else
+                {
+                    missingEvents.Add(eventObj);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogLine($"Error processing summary event {summaryEvent.EventId}: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Builds the final summary response with DLQ counts and formatted message.
+        /// </summary>
+        private async Task<APIGatewayProxyResponse> BuildSummaryResponse(Dictionary<string, CameraSummaryMulti> cameras,
+            List<CameraEventSummary> missingEvents, int totalCount, int objectsCount, int activityCount,
+            Dictionary<string, int> triggerKeyCounts, string? summaryDate, Dictionary<string, string> headers,
+            int dlqMessageCount = 0, Dictionary<string, int>? dlqCounts = null)
+        {
+            var perCameraCounts = string.Join(", ", cameras.Values.Select(c => $"{c.cameraName} ({c.cameraId}): {c.count24h}"));
+            var triggerKeySummary = string.Join(", ", triggerKeyCounts.Select(kvp => $"{kvp.Key}: {kvp.Value}"));
+
+            // Use provided DLQ data or fallback to SQS query if not available
+            if (dlqCounts == null || dlqCounts.Count == 0)
+            {
+                dlqCounts = new Dictionary<string, int>();
+                if (_sqsService != null)
+                {
+                    try
+                    {
+                        dlqCounts = await _sqsService.GetAllDlqMessageCountsAsync();
+                        dlqMessageCount = dlqCounts.Values.Sum(); // Total across all DLQs for backward compatibility
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogLine($"Error retrieving DLQ message counts: {ex.Message}");
+                    }
+                }
+            }
+
+            var dlqSummary = dlqCounts.Count > 0 
+                ? string.Join(", ", dlqCounts.Select(kvp => $"{kvp.Key}: {kvp.Value}"))
+                : $"Total: {dlqMessageCount}";
+
+            var summaryMessage = totalCount == 0 
+                ? $"No events have been recorded since midnight. DLQ messages: {dlqSummary}. Summary date: {summaryDate}."
+                : $"Since midnight, there were {totalCount} total events across all cameras: {objectsCount} 'Objects' events and {activityCount} 'Activity' events. Per camera: {perCameraCounts}. Trigger keys: {triggerKeySummary}. DLQ messages: {dlqSummary}. Summary date: {summaryDate}.";
+            
+            var response = new {
+                cameras = cameras.Values,
+                missing = missingEvents,
+                totalCount,
+                objectsCount,
+                activityCount,
+                triggerKeyCounts,
+                dlqMessageCount,
+                dlqCounts,
+                summaryMessage,
+                summaryDate
+            };
+            
+            return new APIGatewayProxyResponse {
+                StatusCode = 200,
+                Body = JsonConvert.SerializeObject(response, Formatting.Indented),
+                Headers = headers
+            };
+        }
+
+        /// <summary>
+        /// Data structure to hold summary processing results.
+        /// </summary>
+        private sealed class SummaryDataResult
+        {
+            public bool success { get; set; }
+            public Dictionary<string, CameraSummaryMulti> cameras { get; set; } = new();
+            public List<CameraEventSummary> missingEvents { get; set; } = new();
+            public int totalCount { get; set; }
+            public int objectsCount { get; set; }
+            public int activityCount { get; set; }
+            public Dictionary<string, int> triggerKeyCounts { get; set; } = new();
+            public string? summaryDate { get; set; }
+            public int dlqMessageCount { get; set; }
+            public Dictionary<string, int> dlqCounts { get; set; } = new();
         }
 
     public async Task<string> GetPresignedUrlAsync(string bucket, string videoKey, DateTime now, int durationHours)
@@ -406,6 +654,69 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             _logger.LogLine($"Using content type: {contentType}");
             _logger.LogLine("About to upload screenshot data to S3...");
             await UploadBinaryContentAsync(AppConfiguration.AlarmBucketName, s3Key, screenshotData, contentType);
+        }
+
+        /// <summary>
+        /// Stores a base64-encoded thumbnail image to S3.
+        /// </summary>
+        /// <param name="base64Thumbnail">Base64-encoded thumbnail data (e.g., "data:image/jpeg;base64,...")</param>
+        /// <param name="s3Key">S3 key for the thumbnail</param>
+        public async Task StoreThumbnailAsync(string base64Thumbnail, string s3Key)
+        {
+            if (string.IsNullOrEmpty(base64Thumbnail))
+            {
+                _logger.LogLine("No thumbnail data provided, skipping thumbnail storage");
+                return;
+            }
+
+            try
+            {
+                // Parse the base64 data URL format: "data:image/jpeg;base64,..."
+                if (!base64Thumbnail.StartsWith("data:"))
+                {
+                    _logger.LogLine("Invalid thumbnail format - expected data URL format");
+                    return;
+                }
+
+                var parts = base64Thumbnail.Split(',', 2);
+                if (parts.Length != 2)
+                {
+                    _logger.LogLine("Invalid thumbnail format - could not split data URL");
+                    return;
+                }
+
+                var header = parts[0]; // "data:image/jpeg;base64"
+                var base64Data = parts[1]; // actual base64 encoded data
+
+                // Extract content type from header
+                var contentType = "image/jpeg"; // default
+                if (header.Contains("data:image/"))
+                {
+                    var imageTypePart = header.Substring(header.IndexOf("data:image/") + 11);
+                    var imageType = imageTypePart.Split(';')[0];
+                    contentType = $"image/{imageType}";
+                }
+
+                // Convert base64 to byte array
+                var thumbnailData = Convert.FromBase64String(base64Data);
+                _logger.LogLine($"Decoded thumbnail data: {thumbnailData.Length} bytes, Content-Type: {contentType}");
+
+                // Upload to S3
+                var bucketName = AppConfiguration.AlarmBucketName;
+                if (string.IsNullOrEmpty(bucketName))
+                {
+                    _logger.LogLine("ERROR: Bucket name is not configured, cannot store thumbnail");
+                    return;
+                }
+
+                await UploadBinaryContentAsync(bucketName, s3Key, thumbnailData, contentType);
+                _logger.LogLine($"Thumbnail successfully stored to S3: {s3Key}");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogLine($"Error storing thumbnail to S3: {ex.Message}");
+                // Don't throw - thumbnail storage should not fail the entire alarm processing
+            }
         }
 
         #region Private Helper Methods

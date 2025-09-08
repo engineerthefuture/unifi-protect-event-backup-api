@@ -138,6 +138,11 @@ namespace UnifiWebhookEventReceiverTests
             mockResponseHelper.Setup(x => x.GetStandardHeaders())
                 .Returns(new Dictionary<string, string> { { "Content-Type", "application/json" } });
             mockSqsService.Setup(x => x.GetDlqMessageCountAsync()).ReturnsAsync(42);
+            mockSqsService.Setup(x => x.GetAllDlqMessageCountsAsync()).ReturnsAsync(new Dictionary<string, int>
+            {
+                { "AlarmProcessingDLQ", 25 },
+                { "SummaryEventDLQ", 17 }
+            });
 
             var s3StorageService = new S3StorageService(mockS3Client.Object, mockResponseHelper.Object, mockLogger.Object, mockSqsService.Object);
 
@@ -149,10 +154,11 @@ namespace UnifiWebhookEventReceiverTests
             Assert.NotNull(result.Body);
             var body = Newtonsoft.Json.Linq.JObject.Parse(result.Body);
             Assert.True(body["dlqMessageCount"] != null);
+            Assert.True(body["dlqCounts"] != null);
             var dlqCountToken = body["dlqMessageCount"];
             Assert.NotNull(dlqCountToken);
             Assert.Equal(42, dlqCountToken!.ToObject<int>());
-            Assert.Contains("DLQ messages: 42", (string)body["summaryMessage"]!);
+            Assert.Contains("DLQ messages: AlarmProcessingDLQ: 25, SummaryEventDLQ: 17", (string)body["summaryMessage"]!);
         }
 
         [Fact]

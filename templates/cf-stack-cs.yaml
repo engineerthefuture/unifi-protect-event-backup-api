@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: Creates a Cloudformation stack for the Unfi Protect Event Backup API.
+Description: Creates a Cloudformation stack for the Unifi Protect Event Backup API.
 
 # Stack-level tags
 Metadata:

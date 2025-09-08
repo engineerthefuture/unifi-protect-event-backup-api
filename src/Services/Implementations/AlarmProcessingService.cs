@@ -163,6 +163,18 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             var eventKey = await _s3StorageService.StoreAlarmEventAsync(alarm, trigger);
             _logger.LogLine($"Alarm event stored in S3 with key: {eventKey}");
 
+            // Store thumbnail if provided
+            if (!string.IsNullOrEmpty(trigger.thumbnail))
+            {
+                var thumbnailKey = GenerateThumbnailKey(trigger, alarm.timestamp);
+                _logger.LogLine($"Thumbnail data found, storing to S3 with key: {thumbnailKey}");
+                await _s3StorageService.StoreThumbnailAsync(trigger.thumbnail, thumbnailKey);
+            }
+            else
+            {
+                _logger.LogLine("No thumbnail data provided in trigger");
+            }
+
             // Download and store video if event path is available
             if (!string.IsNullOrEmpty(alarm.eventPath))
             {
@@ -185,6 +197,8 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// <param name="credentials">Unifi credentials for video download</param>
         /// <returns>Task that completes when processing is done</returns>
         /// <exception cref="InvalidOperationException">Thrown when video download fails or configuration is invalid</exception>
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S3776:Cognitive Complexity of methods should not be too high", Justification = "Complex alarm processing logic with comprehensive error handling")]
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S1541:Methods should not be too complex", Justification = "Complex alarm processing logic with comprehensive error handling")]
         private async Task ProcessValidAlarmForSqs(Alarm alarm, UnifiCredentials credentials)
         {
             // Extract and enhance trigger information
@@ -200,6 +214,21 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             // Store alarm data in S3
             var eventKey = await _s3StorageService.StoreAlarmEventAsync(alarm, trigger);
             _logger.LogLine($"Alarm event stored in S3 with key: {eventKey}");
+
+            // Store thumbnail if available
+            if (!string.IsNullOrEmpty(trigger.thumbnail))
+            {
+                try
+                {
+                    var thumbnailKey = GenerateThumbnailKey(trigger, alarm.timestamp);
+                    await _s3StorageService.StoreThumbnailAsync(trigger.thumbnail, thumbnailKey);
+                    _logger.LogLine($"Thumbnail stored in S3 with key: {thumbnailKey}");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogLine($"Failed to store thumbnail (non-critical): {ex.Message}");
+                }
+            }
 
             // Download and store video if event path is available
             if (!string.IsNullOrEmpty(alarm.eventPath))
@@ -241,10 +270,30 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 AlarmName = alarm.name,
                 DeviceName = triggerForSummary?.deviceName,
                 EventType = triggerForSummary?.key,
+                EventPath = alarm.eventPath,
+                EventLocalLink = alarm.eventLocalLink,
                 Metadata = new System.Collections.Generic.Dictionary<string, string>()
             };
+            
+            // Include thumbnail data in metadata if available
+            if (!string.IsNullOrEmpty(triggerForSummary?.thumbnail))
+            {
+                summaryEvent.Metadata["thumbnail"] = triggerForSummary.thumbnail;
+            }
+            
+            // Include original filename in metadata if available
+            if (!string.IsNullOrEmpty(triggerForSummary?.originalFileName))
+            {
+                summaryEvent.Metadata["originalFileName"] = triggerForSummary.originalFileName;
+                _logger.LogLine($"Added originalFileName to summary event metadata: {triggerForSummary.originalFileName}");
+            }
+            else
+            {
+                _logger.LogLine("No originalFileName available in trigger for summary event");
+            }
             await _summaryEventQueueService.SendSummaryEventAsync(summaryEvent);
 
+            _logger.LogLine($"Sent summary event with AlarmName: {alarm.name}, EventPath: {alarm.eventPath}, EventLocalLink: {alarm.eventLocalLink}");
             _logger.LogLine("SQS alarm processing completed successfully");
         }
 
@@ -297,6 +346,15 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// <param name="alarm">The alarm object containing event path</param>
         /// <param name="credentials">Unifi credentials for video download</param>
         /// <param name="trigger">The enhanced trigger information</param>
+        /// <summary>
+        /// Downloads video file from Unifi Protect and stores it in S3.
+        /// Handles error scenarios gracefully and cleans up temporary files.
+        /// </summary>
+        /// <param name="alarm">The alarm containing video metadata</param>
+        /// <param name="credentials">Unifi credentials for authentication</param>
+        /// <param name="trigger">Trigger information for file naming</param>
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S3776:Cognitive Complexity of methods should not be too high", Justification = "Complex video download logic with comprehensive error handling")]
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S1541:Methods should not be too complex", Justification = "Complex video download logic with comprehensive error handling")]
         private async Task DownloadAndStoreVideo(Alarm alarm, UnifiCredentials credentials, Trigger trigger)
         {
             try
@@ -377,6 +435,19 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 // Don't fail the entire alarm processing if video download fails
                 // The event data is still valuable without the video
             }
+        }
+
+        /// <summary>
+        /// Generates an S3 key for storing thumbnail images.
+        /// </summary>
+        /// <param name="trigger">The trigger information</param>
+        /// <param name="timestamp">The event timestamp</param>
+        /// <returns>S3 key for the thumbnail file</returns>
+        private static string GenerateThumbnailKey(Trigger trigger, long timestamp)
+        {
+            DateTime dt = DateTimeOffset.FromUnixTimeMilliseconds(timestamp).LocalDateTime;
+            string dateFolder = $"{dt.Year}-{dt.Month:D2}-{dt.Day:D2}";
+            return $"{dateFolder}/{trigger.eventId}_{trigger.device}_{timestamp}.jpg";
         }
 
         #endregion

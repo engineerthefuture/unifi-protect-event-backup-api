@@ -10,6 +10,7 @@
  ***********************/
 
 using System.Diagnostics.CodeAnalysis;
+using System.Collections.Generic;
 using Amazon.Lambda.APIGatewayEvents;
 using Amazon.Lambda.Core;
 using Amazon.Lambda.SQSEvents;
@@ -58,6 +59,76 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 _logger.LogLine($"Error fetching DLQ message count: {ex.Message}");
                 return 0;
             }
+        }
+
+        /// <summary>
+        /// Gets the message counts for all DLQ queues.
+        /// </summary>
+        /// <returns>Dictionary containing DLQ names and their message counts</returns>
+        public async Task<Dictionary<string, int>> GetAllDlqMessageCountsAsync()
+        {
+            var dlqCounts = new Dictionary<string, int>();
+            
+            // Get Alarm Processing DLQ count
+            var alarmDlqUrl = AppConfiguration.AlarmProcessingDlqUrl;
+            if (!string.IsNullOrEmpty(alarmDlqUrl))
+            {
+                try
+                {
+                    var count = await GetDlqMessageCountForQueue(alarmDlqUrl);
+                    dlqCounts["AlarmProcessingDLQ"] = count;
+                    _logger.LogLine($"Alarm Processing DLQ message count: {count}");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogLine($"Error fetching Alarm Processing DLQ count: {ex.Message}");
+                    dlqCounts["AlarmProcessingDLQ"] = 0;
+                }
+            }
+            else
+            {
+                _logger.LogLine("Alarm Processing DLQ URL is not configured.");
+                dlqCounts["AlarmProcessingDLQ"] = 0;
+            }
+
+            // Get Summary Event DLQ count
+            var summaryDlqUrl = AppConfiguration.SummaryEventDlqUrl;
+            if (!string.IsNullOrEmpty(summaryDlqUrl))
+            {
+                try
+                {
+                    var count = await GetDlqMessageCountForQueue(summaryDlqUrl);
+                    dlqCounts["SummaryEventDLQ"] = count;
+                    _logger.LogLine($"Summary Event DLQ message count: {count}");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogLine($"Error fetching Summary Event DLQ count: {ex.Message}");
+                    dlqCounts["SummaryEventDLQ"] = 0;
+                }
+            }
+            else
+            {
+                _logger.LogLine("Summary Event DLQ URL is not configured.");
+                dlqCounts["SummaryEventDLQ"] = 0;
+            }
+
+            return dlqCounts;
+        }
+
+        /// <summary>
+        /// Helper method to get message count for a specific queue.
+        /// </summary>
+        /// <param name="queueUrl">The SQS queue URL</param>
+        /// <returns>Approximate number of messages in the queue</returns>
+        private async Task<int> GetDlqMessageCountForQueue(string queueUrl)
+        {
+            var attrs = await _sqsClient.GetQueueAttributesAsync(queueUrl, new List<string> { "ApproximateNumberOfMessages" });
+            if (attrs.Attributes.TryGetValue("ApproximateNumberOfMessages", out var countStr) && int.TryParse(countStr, out var count))
+            {
+                return count;
+            }
+            return 0;
         }
 
         /// <summary>

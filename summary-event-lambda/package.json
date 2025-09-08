@@ -3,8 +3,15 @@
     "version": "1.0.0",
     "description": "Lambda to process summary events and update daily summary files in S3.",
     "main": "index.js",
+    "scripts": {
+        "test": "jest"
+    },
+    "devDependencies": {
+        "jest": "^29.7.0",
+        "jest-junit": "^16.0.0"
+    },
     "dependencies": {
         "@aws-sdk/client-s3": "^3.883.0",
-        "jest-junit": "^16.0.0"
+        "@aws-sdk/client-sqs": "^3.883.0"
     }
 }

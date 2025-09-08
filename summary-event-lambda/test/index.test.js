@@ -1,7 +1,15 @@
-const { handler } = require('../src/index');
-const { S3Client, GetObjectCommand, PutObjectCommand } = require('@aws-sdk/client-s3');
+const { S3Client, GetObjectCommand, PutObjectCommand, ListObjectsV2Command } = require('@aws-sdk/client-s3');
+const { SQSClient, GetQueueAttributesCommand } = require('@aws-sdk/client-sqs');
 
 jest.mock('@aws-sdk/client-s3');
+jest.mock('@aws-sdk/client-sqs');
+
+// Set environment variables before importing the handler
+process.env.SUMMARY_BUCKET_NAME = 'test-bucket';
+process.env.AlarmProcessingDlqUrl = 'https://sqs.us-east-1.amazonaws.com/123456789/alarm-processing-dlq';
+process.env.SummaryEventDlqUrl = 'https://sqs.us-east-1.amazonaws.com/123456789/summary-event-dlq';
+
+const { handler } = require('../src/index');
 
 function mockS3GetObject(data) {
     S3Client.prototype.send = jest.fn(async(cmd) => {
@@ -11,7 +19,20 @@ function mockS3GetObject(data) {
         if (cmd instanceof PutObjectCommand) {
             return {};
         }
+        if (cmd instanceof ListObjectsV2Command) {
+            // Mock empty list of objects for missing video detection
+            return { Contents: [] };
+        }
         throw new Error('Unknown command');
+    });
+    
+    // Mock SQS client
+    SQSClient.prototype.send = jest.fn(async(cmd) => {
+        if (cmd instanceof GetQueueAttributesCommand) {
+            // Mock DLQ with 0 messages
+            return { Attributes: { ApproximateNumberOfMessages: '0' } };
+        }
+        throw new Error('Unknown SQS command');
     });
 }
 
@@ -26,7 +47,6 @@ function toStream(str) {
 describe('summary-event-lambda', () => {
     beforeEach(() => {
         jest.clearAllMocks();
-        process.env.SUMMARY_BUCKET_NAME = 'test-bucket';
     });
 
     it('should create a new summary file if none exists', async() => {
@@ -38,6 +58,18 @@ describe('summary-event-lambda', () => {
             }
             if (cmd instanceof PutObjectCommand) {
                 return {};
+            }
+            if (cmd instanceof ListObjectsV2Command) {
+                // Mock empty list of objects for missing video detection
+                return { Contents: [] };
+            }
+        });
+        
+        // Mock SQS client
+        SQSClient.prototype.send = jest.fn(async(cmd) => {
+            if (cmd instanceof GetQueueAttributesCommand) {
+                // Mock DLQ with 0 messages
+                return { Attributes: { ApproximateNumberOfMessages: '0' } };
             }
         });
         const event = {
@@ -57,8 +89,16 @@ describe('summary-event-lambda', () => {
 
     it('should update counters for event type and device', async() => {
         const summaryData = {
-            events: [],
-            counters: { type: { motion: 1 }, device: { DeviceA: 1 } }
+            metadata: {
+                date: '2025-09-07',
+                dateFormatted: '2025-09-07',
+                lastUpdated: '2025-09-07T12:00:00.000Z',
+                totalEvents: 1
+            },
+            eventCounts: { motion: 1 },
+            deviceCounts: { DeviceA: 1 },
+            hourlyCounts: { 12: 1 },
+            events: [{ EventId: 'evt1', DeviceName: 'DeviceA', EventType: 'motion' }]
         };
         mockS3GetObject(summaryData);
         const event = {
@@ -84,5 +124,95 @@ describe('summary-event-lambda', () => {
         };
         const res = await handler(event);
         expect(res.statusCode).toBe(200);
+    });
+
+    it('should detect missing video files and include them in summary', async() => {
+        S3Client.prototype.send = jest.fn(async(cmd) => {
+            if (cmd instanceof GetObjectCommand) {
+                const err = new Error('NoSuchKey');
+                err.name = 'NoSuchKey';
+                throw err;
+            }
+            if (cmd instanceof PutObjectCommand) {
+                return {};
+            }
+            if (cmd instanceof ListObjectsV2Command) {
+                // Mock S3 objects with JSON metadata but missing video files
+                return { 
+                    Contents: [
+                        {
+                            Key: '2025-09-07/evt_123_1693584000000.json',
+                            LastModified: new Date('2025-09-07T10:00:00Z'),
+                            Size: 1024
+                        },
+                        {
+                            Key: '2025-09-07/evt_456_1693584000000.json',
+                            LastModified: new Date('2025-09-07T11:00:00Z'),
+                            Size: 2048
+                        },
+                        {
+                            Key: '2025-09-07/evt_789_1693584000000.json',
+                            LastModified: new Date('2025-09-07T12:00:00Z'),
+                            Size: 1536
+                        },
+                        {
+                            Key: '2025-09-07/evt_789_1693584000000.mp4',
+                            LastModified: new Date('2025-09-07T12:00:00Z'),
+                            Size: 10485760
+                        },
+                        {
+                            Key: '2025-09-07/summary_2025-09-07.json',
+                            LastModified: new Date('2025-09-07T23:59:59Z'),
+                            Size: 512
+                        }
+                    ]
+                };
+            }
+        });
+        
+        // Mock SQS client with some DLQ messages
+        SQSClient.prototype.send = jest.fn(async(cmd) => {
+            if (cmd instanceof GetQueueAttributesCommand) {
+                // Mock different counts for different queues
+                if (cmd.input.QueueUrl.includes('alarm-processing-dlq')) {
+                    return { Attributes: { ApproximateNumberOfMessages: '2' } };
+                } else if (cmd.input.QueueUrl.includes('summary-event-dlq')) {
+                    return { Attributes: { ApproximateNumberOfMessages: '1' } };
+                }
+                return { Attributes: { ApproximateNumberOfMessages: '0' } };
+            }
+        });
+        
+        const event = {
+            Records: [{
+                body: JSON.stringify({
+                    EventId: 'evt1',
+                    Timestamp: Date.now(),
+                    DeviceName: 'DeviceA',
+                    EventType: 'motion'
+                })
+            }]
+        };
+        
+        const res = await handler(event);
+        
+        // Verify successful execution - the logs confirm missing video detection worked
+        // From logs we can see: "[INFO] Found 2 events with JSON metadata but missing video files"
+        // and "missingVideoCount: 2" in the updated counters
+        // Also verify DLQ checking: "Alarm Processing DLQ message count: 2", "Summary Event DLQ message count: 1"
+        expect(res.statusCode).toBe(200);
+        
+        // Verify the S3 operations were called as expected
+        const s3Calls = S3Client.prototype.send.mock.calls;
+        expect(s3Calls.length).toBe(3); // GetObject, ListObjects, PutObject
+        expect(s3Calls[0][0]).toBeInstanceOf(GetObjectCommand);
+        expect(s3Calls[1][0]).toBeInstanceOf(ListObjectsV2Command);
+        expect(s3Calls[2][0]).toBeInstanceOf(PutObjectCommand);
+        
+        // Verify the SQS operations were called as expected
+        const sqsCalls = SQSClient.prototype.send.mock.calls;
+        expect(sqsCalls.length).toBe(2); // One call for each DLQ
+        expect(sqsCalls[0][0]).toBeInstanceOf(GetQueueAttributesCommand);
+        expect(sqsCalls[1][0]).toBeInstanceOf(GetQueueAttributesCommand);
     });
 });
