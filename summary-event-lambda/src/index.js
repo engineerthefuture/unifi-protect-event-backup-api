@@ -227,6 +227,9 @@ exports.handler = async(event) => {
             EventId: summaryEvent.EventId,
             Device: summaryEvent.DeviceName || summaryEvent.Device,
             EventType: summaryEvent.EventType || summaryEvent.Type,
+            AlarmName: summaryEvent.AlarmName,
+            EventPath: summaryEvent.EventPath,
+            EventLocalLink: summaryEvent.EventLocalLink,
             hasMetadata: !!summaryEvent.Metadata,
             metadataKeys: summaryEvent.Metadata ? Object.keys(summaryEvent.Metadata) : [],
             originalFileName: summaryEvent.Metadata?.originalFileName
@@ -236,9 +239,20 @@ exports.handler = async(event) => {
         const eventType = summaryEvent.EventType || summaryEvent.Type || 'Unknown';
         const deviceName = summaryEvent.DeviceName || summaryEvent.Device || 'Unknown';
         const eventHour = new Date(summaryEvent.Timestamp).getHours();
+        const alarmName = summaryEvent.AlarmName || '';
 
         // Update event type counters
         summaryData.eventCounts[eventType] = (summaryData.eventCounts[eventType] || 0) + 1;
+
+        // Update object and activity counters based on alarm name
+        if (alarmName.includes('Object')) {
+            summaryData.eventCounts['Object'] = (summaryData.eventCounts['Object'] || 0) + 1;
+            console.log(`[INFO] Object detection event detected in alarm: ${alarmName}`);
+        }
+        if (alarmName.includes('Activity')) {
+            summaryData.eventCounts['Activity'] = (summaryData.eventCounts['Activity'] || 0) + 1;
+            console.log(`[INFO] Activity detection event detected in alarm: ${alarmName}`);
+        }
 
         // Update device counters
         summaryData.deviceCounts[deviceName] = (summaryData.deviceCounts[deviceName] || 0) + 1;
@@ -265,6 +279,9 @@ exports.handler = async(event) => {
             eventTypeCount: summaryData.eventCounts[eventType],
             deviceName,
             deviceCount: summaryData.deviceCounts[deviceName],
+            alarmName,
+            objectCount: summaryData.eventCounts['Object'] || 0,
+            activityCount: summaryData.eventCounts['Activity'] || 0,
             totalEvents: summaryData.metadata.totalEvents,
             missingVideoCount: summaryData.metadata.missingVideoCount,
             dlqMessageCount: summaryData.metadata.dlqMessageCount

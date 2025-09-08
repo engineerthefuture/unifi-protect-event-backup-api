@@ -270,6 +270,8 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 AlarmName = alarm.name,
                 DeviceName = triggerForSummary?.deviceName,
                 EventType = triggerForSummary?.key,
+                EventPath = alarm.eventPath,
+                EventLocalLink = alarm.eventLocalLink,
                 Metadata = new System.Collections.Generic.Dictionary<string, string>()
             };
             
@@ -291,6 +293,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             }
             await _summaryEventQueueService.SendSummaryEventAsync(summaryEvent);
 
+            _logger.LogLine($"Sent summary event with AlarmName: {alarm.name}, EventPath: {alarm.eventPath}, EventLocalLink: {alarm.eventLocalLink}");
             _logger.LogLine("SQS alarm processing completed successfully");
         }
 

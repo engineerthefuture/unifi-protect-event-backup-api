@@ -512,7 +512,9 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 ? string.Join(", ", dlqCounts.Select(kvp => $"{kvp.Key}: {kvp.Value}"))
                 : $"Total: {dlqMessageCount}";
 
-            var summaryMessage = $"In the past 24 hours, there were {totalCount} total events across all cameras: {objectsCount} 'Objects' events and {activityCount} 'Activity' events. Per camera: {perCameraCounts}. Trigger keys: {triggerKeySummary}. DLQ messages: {dlqSummary}. Summary date: {summaryDate}.";
+            var summaryMessage = totalCount == 0 
+                ? $"No events have been recorded since midnight. DLQ messages: {dlqSummary}. Summary date: {summaryDate}."
+                : $"Since midnight, there were {totalCount} total events across all cameras: {objectsCount} 'Objects' events and {activityCount} 'Activity' events. Per camera: {perCameraCounts}. Trigger keys: {triggerKeySummary}. DLQ messages: {dlqSummary}. Summary date: {summaryDate}.";
             
             var response = new {
                 cameras = cameras.Values,

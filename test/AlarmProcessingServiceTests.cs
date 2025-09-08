@@ -698,6 +698,340 @@ namespace UnifiWebhookEventReceiverTests
 
         #endregion
 
+        [Fact]
+        public async Task ProcessAlarmForSqsAsync_WithOriginalFileName_AddsToSummaryEventMetadata()
+        {
+            // Arrange
+            Environment.SetEnvironmentVariable("StorageBucket", "test-bucket");
+            
+            var mockUnifiCredentials = new UnifiCredentials
+            {
+                hostname = "https://test.unifi.com",
+                username = "testuser",
+                password = "testpass"
+            };
+
+            var alarm = new UnifiWebhookEventReceiver.Alarm
+            {
+                timestamp = 1672531200000,
+                triggers = new List<UnifiWebhookEventReceiver.Trigger>
+                {
+                    new UnifiWebhookEventReceiver.Trigger
+                    {
+                        key = "motion",
+                        device = "AA:BB:CC:DD:EE:FF",
+                        eventId = "test-event-123",
+                        deviceName = "Test Camera",
+                        originalFileName = "test_video_motion_2025-01-01_12-00-00.mp4"
+                    }
+                }
+            };
+
+            _mockCredentialsService.Setup(x => x.GetUnifiCredentialsAsync())
+                .ReturnsAsync(mockUnifiCredentials);
+
+            _mockS3StorageService.Setup(x => x.StoreAlarmEventAsync(It.IsAny<UnifiWebhookEventReceiver.Alarm>(), It.IsAny<UnifiWebhookEventReceiver.Trigger>()))
+                .ReturnsAsync("test-event-key");
+                
+            _mockSummaryEventQueueService.Setup(x => x.SendSummaryEventAsync(It.IsAny<UnifiWebhookEventReceiver.Models.SummaryEvent>()))
+                .ReturnsAsync("test-message-id");
+
+            // Act
+            await _alarmProcessingService.ProcessAlarmForSqsAsync(alarm);
+
+            // Assert            
+            // Verify that the summary event was sent with originalFileName metadata
+            _mockSummaryEventQueueService.Verify(x => x.SendSummaryEventAsync(
+                It.Is<UnifiWebhookEventReceiver.Models.SummaryEvent>(se => 
+                    se.Metadata != null && 
+                    se.Metadata.ContainsKey("originalFileName") &&
+                    se.Metadata["originalFileName"] == "test_video_motion_2025-01-01_12-00-00.mp4")), 
+                Times.Once);
+        }
+
+        [Fact]
+        public async Task ProcessAlarmForSqsAsync_WithoutOriginalFileName_DoesNotAddToSummaryEventMetadata()
+        {
+            // Arrange
+            Environment.SetEnvironmentVariable("StorageBucket", "test-bucket");
+            
+            var mockUnifiCredentials = new UnifiCredentials
+            {
+                hostname = "https://test.unifi.com",
+                username = "testuser",
+                password = "testpass"
+            };
+
+            var alarm = new UnifiWebhookEventReceiver.Alarm
+            {
+                timestamp = 1672531200000,
+                triggers = new List<UnifiWebhookEventReceiver.Trigger>
+                {
+                    new UnifiWebhookEventReceiver.Trigger
+                    {
+                        key = "motion",
+                        device = "AA:BB:CC:DD:EE:FF",
+                        eventId = "test-event-123",
+                        deviceName = "Test Camera"
+                        // No originalFileName set
+                    }
+                }
+            };
+
+            _mockCredentialsService.Setup(x => x.GetUnifiCredentialsAsync())
+                .ReturnsAsync(mockUnifiCredentials);
+
+            _mockS3StorageService.Setup(x => x.StoreAlarmEventAsync(It.IsAny<UnifiWebhookEventReceiver.Alarm>(), It.IsAny<UnifiWebhookEventReceiver.Trigger>()))
+                .ReturnsAsync("test-event-key");
+                
+            _mockSummaryEventQueueService.Setup(x => x.SendSummaryEventAsync(It.IsAny<UnifiWebhookEventReceiver.Models.SummaryEvent>()))
+                .ReturnsAsync("test-message-id");
+
+            // Act
+            await _alarmProcessingService.ProcessAlarmForSqsAsync(alarm);
+
+            // Assert            
+            // Verify that the summary event was sent without originalFileName metadata
+            _mockSummaryEventQueueService.Verify(x => x.SendSummaryEventAsync(
+                It.Is<UnifiWebhookEventReceiver.Models.SummaryEvent>(se => 
+                    se.Metadata != null && 
+                    !se.Metadata.ContainsKey("originalFileName"))), 
+                Times.Once);
+        }
+
+        [Fact]
+        public async Task ProcessAlarmForSqsAsync_WithThumbnailAndOriginalFileName_AddsBothToSummaryEventMetadata()
+        {
+            // Arrange
+            Environment.SetEnvironmentVariable("StorageBucket", "test-bucket");
+            
+            var mockUnifiCredentials = new UnifiCredentials
+            {
+                hostname = "https://test.unifi.com",
+                username = "testuser",
+                password = "testpass"
+            };
+
+            var thumbnailData = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD...";
+            var alarm = new UnifiWebhookEventReceiver.Alarm
+            {
+                timestamp = 1672531200000,
+                triggers = new List<UnifiWebhookEventReceiver.Trigger>
+                {
+                    new UnifiWebhookEventReceiver.Trigger
+                    {
+                        key = "motion",
+                        device = "AA:BB:CC:DD:EE:FF",
+                        eventId = "test-event-123",
+                        deviceName = "Test Camera",
+                        originalFileName = "test_video_motion_2025-01-01_12-00-00.mp4",
+                        thumbnail = thumbnailData
+                    }
+                }
+            };
+
+            _mockCredentialsService.Setup(x => x.GetUnifiCredentialsAsync())
+                .ReturnsAsync(mockUnifiCredentials);
+
+            _mockS3StorageService.Setup(x => x.StoreAlarmEventAsync(It.IsAny<UnifiWebhookEventReceiver.Alarm>(), It.IsAny<UnifiWebhookEventReceiver.Trigger>()))
+                .ReturnsAsync("test-event-key");
+                
+            _mockSummaryEventQueueService.Setup(x => x.SendSummaryEventAsync(It.IsAny<UnifiWebhookEventReceiver.Models.SummaryEvent>()))
+                .ReturnsAsync("test-message-id");
+
+            // Act
+            await _alarmProcessingService.ProcessAlarmForSqsAsync(alarm);
+
+            // Assert            
+            // Verify that the summary event was sent with both thumbnail and originalFileName metadata
+            _mockSummaryEventQueueService.Verify(x => x.SendSummaryEventAsync(
+                It.Is<UnifiWebhookEventReceiver.Models.SummaryEvent>(se => 
+                    se.Metadata != null && 
+                    se.Metadata.ContainsKey("originalFileName") &&
+                    se.Metadata["originalFileName"] == "test_video_motion_2025-01-01_12-00-00.mp4" &&
+                    se.Metadata.ContainsKey("thumbnail") &&
+                    se.Metadata["thumbnail"] == thumbnailData)), 
+                Times.Once);
+        }
+
+        [Fact]
+        public async Task ProcessAlarmForSqsAsync_WithEmptyOriginalFileName_DoesNotAddToMetadata()
+        {
+            // Arrange
+            Environment.SetEnvironmentVariable("StorageBucket", "test-bucket");
+            
+            var mockUnifiCredentials = new UnifiCredentials
+            {
+                hostname = "https://test.unifi.com",
+                username = "testuser",
+                password = "testpass"
+            };
+
+            var alarm = new UnifiWebhookEventReceiver.Alarm
+            {
+                timestamp = 1672531200000,
+                triggers = new List<UnifiWebhookEventReceiver.Trigger>
+                {
+                    new UnifiWebhookEventReceiver.Trigger
+                    {
+                        key = "motion",
+                        device = "AA:BB:CC:DD:EE:FF",
+                        eventId = "test-event-123",
+                        deviceName = "Test Camera",
+                        originalFileName = "" // Empty string
+                    }
+                }
+            };
+
+            _mockCredentialsService.Setup(x => x.GetUnifiCredentialsAsync())
+                .ReturnsAsync(mockUnifiCredentials);
+
+            _mockS3StorageService.Setup(x => x.StoreAlarmEventAsync(It.IsAny<UnifiWebhookEventReceiver.Alarm>(), It.IsAny<UnifiWebhookEventReceiver.Trigger>()))
+                .ReturnsAsync("test-event-key");
+                
+            _mockSummaryEventQueueService.Setup(x => x.SendSummaryEventAsync(It.IsAny<UnifiWebhookEventReceiver.Models.SummaryEvent>()))
+                .ReturnsAsync("test-message-id");
+
+            // Act
+            await _alarmProcessingService.ProcessAlarmForSqsAsync(alarm);
+
+            // Assert            
+            // Verify that the summary event was sent without originalFileName metadata
+            _mockSummaryEventQueueService.Verify(x => x.SendSummaryEventAsync(
+                It.Is<UnifiWebhookEventReceiver.Models.SummaryEvent>(se => 
+                    se.Metadata != null && 
+                    !se.Metadata.ContainsKey("originalFileName"))), 
+                Times.Once);
+        }
+
+        [Fact]
+        public async Task ProcessAlarmForSqsAsync_WithEmptyTriggers_ThrowsArgumentException()
+        {
+            // Arrange
+            var mockUnifiCredentials = new UnifiCredentials
+            {
+                hostname = "https://test.unifi.com",
+                username = "testuser",
+                password = "testpass"
+            };
+
+            var alarm = new UnifiWebhookEventReceiver.Alarm
+            {
+                timestamp = 1672531200000,
+                name = "TestAlarm",
+                triggers = new List<UnifiWebhookEventReceiver.Trigger>() // Empty triggers
+            };
+
+            _mockCredentialsService.Setup(x => x.GetUnifiCredentialsAsync())
+                .ReturnsAsync(mockUnifiCredentials);
+
+            // Act & Assert
+            await Assert.ThrowsAsync<ArgumentException>(() => 
+                _alarmProcessingService.ProcessAlarmForSqsAsync(alarm));
+        }
+
+        [Fact]
+        public async Task ProcessAlarmForSqsAsync_WithEventPathAndEventLocalLink_PopulatesFields()
+        {
+            // Arrange
+            Environment.SetEnvironmentVariable("StorageBucket", "test-bucket");
+            
+            var mockUnifiCredentials = new UnifiCredentials
+            {
+                hostname = "https://test.unifi.com",
+                username = "testuser",
+                password = "testpass"
+            };
+
+            var alarm = new UnifiWebhookEventReceiver.Alarm
+            {
+                timestamp = 1672531200000,
+                name = "TestAlarm",
+                eventPath = "/test/event/path",
+                eventLocalLink = "https://unifi.local/event/123",
+                triggers = new List<UnifiWebhookEventReceiver.Trigger>
+                {
+                    new UnifiWebhookEventReceiver.Trigger
+                    {
+                        key = "motion",
+                        device = "AA:BB:CC:DD:EE:FF",
+                        eventId = "test-event-123",
+                        deviceName = "Test Camera"
+                    }
+                }
+            };
+
+            _mockCredentialsService.Setup(x => x.GetUnifiCredentialsAsync())
+                .ReturnsAsync(mockUnifiCredentials);
+
+            _mockS3StorageService.Setup(x => x.StoreAlarmEventAsync(It.IsAny<UnifiWebhookEventReceiver.Alarm>(), It.IsAny<UnifiWebhookEventReceiver.Trigger>()))
+                .ReturnsAsync("test-event-key");
+                
+            _mockSummaryEventQueueService.Setup(x => x.SendSummaryEventAsync(It.IsAny<UnifiWebhookEventReceiver.Models.SummaryEvent>()))
+                .ReturnsAsync("test-message-id");
+
+            // Act
+            await _alarmProcessingService.ProcessAlarmForSqsAsync(alarm);
+
+            // Assert            
+            // Verify that the summary event was sent with EventPath and EventLocalLink
+            _mockSummaryEventQueueService.Verify(x => x.SendSummaryEventAsync(
+                It.Is<UnifiWebhookEventReceiver.Models.SummaryEvent>(se => 
+                    se.EventPath == "/test/event/path" &&
+                    se.EventLocalLink == "https://unifi.local/event/123" &&
+                    se.AlarmName == "TestAlarm")), 
+                Times.Once);
+        }
+
+        [Fact]
+        public async Task ProcessAlarmForSqsAsync_WithObjectAlarmName_IncludesObjectInName()
+        {
+            // Arrange
+            Environment.SetEnvironmentVariable("StorageBucket", "test-bucket");
+            
+            var mockUnifiCredentials = new UnifiCredentials
+            {
+                hostname = "https://test.unifi.com",
+                username = "testuser",
+                password = "testpass"
+            };
+
+            var alarm = new UnifiWebhookEventReceiver.Alarm
+            {
+                timestamp = 1672531200000,
+                name = "Object Detection Alert",
+                triggers = new List<UnifiWebhookEventReceiver.Trigger>
+                {
+                    new UnifiWebhookEventReceiver.Trigger
+                    {
+                        key = "motion",
+                        device = "AA:BB:CC:DD:EE:FF",
+                        eventId = "test-event-123",
+                        deviceName = "Test Camera"
+                    }
+                }
+            };
+
+            _mockCredentialsService.Setup(x => x.GetUnifiCredentialsAsync())
+                .ReturnsAsync(mockUnifiCredentials);
+
+            _mockS3StorageService.Setup(x => x.StoreAlarmEventAsync(It.IsAny<UnifiWebhookEventReceiver.Alarm>(), It.IsAny<UnifiWebhookEventReceiver.Trigger>()))
+                .ReturnsAsync("test-event-key");
+                
+            _mockSummaryEventQueueService.Setup(x => x.SendSummaryEventAsync(It.IsAny<UnifiWebhookEventReceiver.Models.SummaryEvent>()))
+                .ReturnsAsync("test-message-id");
+
+            // Act
+            await _alarmProcessingService.ProcessAlarmForSqsAsync(alarm);
+
+            // Assert            
+            // Verify that the summary event was sent with AlarmName containing "Object"
+            _mockSummaryEventQueueService.Verify(x => x.SendSummaryEventAsync(
+                It.Is<UnifiWebhookEventReceiver.Models.SummaryEvent>(se => 
+                    se.AlarmName == "Object Detection Alert")), 
+                Times.Once);
+        }
+
         public void Dispose()
         {
             // Restore original environment variables

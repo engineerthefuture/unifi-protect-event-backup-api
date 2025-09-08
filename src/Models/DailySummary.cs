@@ -51,6 +51,8 @@ namespace UnifiWebhookEventReceiver.Models
         public string AlarmName { get; set; } = string.Empty;
         public string DeviceName { get; set; } = string.Empty;
         public string EventType { get; set; } = string.Empty;
+        public string EventPath { get; set; } = string.Empty;
+        public string EventLocalLink { get; set; } = string.Empty;
         public Dictionary<string, object> Metadata { get; set; } = new();
     }
 
