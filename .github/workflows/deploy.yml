@@ -14,7 +14,7 @@ on:
     paths:
       - 'src/**'
       - 'test/**'
-      - 'templates/cf-stack-cs.yaml'
+      - 'templates/api-cf-stack.yaml'
       - '.github/workflows/deploy.yml'
       - 'UnifiWebhookEventReceiver.csproj'
       - 'UnifiWebhookEventReceiver.sln'
@@ -608,7 +608,7 @@ jobs:
       - name: Deploy CloudFormation stack
         run: |
           aws cloudformation deploy \
-            --template-file templates/cf-stack-cs.yaml \
+            --template-file templates/api-cf-stack.yaml \
             --stack-name ${{ steps.env.outputs.STACK_NAME }} \
             --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
             --parameter-overrides \

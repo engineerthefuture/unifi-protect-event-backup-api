@@ -137,7 +137,7 @@ The CloudFormation template automatically creates:
 
 ```bash
 aws cloudformation deploy \
-  --template-file templates/cf-stack-cs.yaml \
+  --template-file templates/api-cf-stack.yaml \
   --stack-name my-api-stack \
   --parameter-overrides \
    DomainName=api.example.com \

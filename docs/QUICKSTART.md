@@ -232,7 +232,7 @@ dotnet build --configuration Release
 
 # Deploy CloudFormation stack
 aws cloudformation deploy \
-  --template-file templates/cf-stack-cs.yaml \
+  --template-file templates/api-cf-stack.yaml \
   --stack-name bf-prod-unifi-protect-event-backup-api \
   --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
   --parameter-overrides \
@@ -356,7 +356,7 @@ Check CloudWatch logs or S3 files to find your camera MAC addresses (format: `28
 
 ### 7.2 Update CloudFormation Template
 
-Edit `templates/cf-stack-cs.yaml` and modify the device mappings around line 450:
+Edit `templates/api-cf-stack.yaml` and modify the device mappings around line 450:
 
 ```yaml
 Environment:
@@ -374,7 +374,7 @@ Environment:
 Commit and push changes to update the device mappings:
 
 ```bash
-git add templates/cf-stack-cs.yaml
+git add templates/api-cf-stack.yaml
 git commit -m "Update device name mappings"
 git push origin main
 ```
