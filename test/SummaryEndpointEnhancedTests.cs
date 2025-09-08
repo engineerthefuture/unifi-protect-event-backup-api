@@ -64,18 +64,18 @@ namespace UnifiWebhookEventReceiverTests
             
             // Since no summary files exist in test environment, should be empty or fallback message
             var summaryMessage = body["summaryMessage"]?.ToString();
-            Assert.Contains("No events were recorded", summaryMessage);
+            Assert.Contains("No events have been recorded since midnight", summaryMessage);
         }
 
         [Fact]
         public void SummaryMessage_WithZeroEvents_ReturnsNoEventsMessage()
         {
             // This test verifies that when totalCount is 0, the summary message
-            // reflects that no events were recorded instead of saying "0 total events"
+            // reflects that no events have been recorded since midnight instead of saying "0 total events"
             
             // The behavior is tested indirectly through the GetSummaryAsync_NoSummaryFiles_ReturnsEmptyResponse test
             // which calls the actual summary endpoint with no data, resulting in totalCount = 0
-            // and expecting the "No events were recorded" message format.
+            // and expecting the "No events have been recorded since midnight" message format.
             
             // This test exists as documentation of the expected behavior
             Assert.True(true, "This test documents the expected zero events message behavior");
