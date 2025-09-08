@@ -1,3 +1,12 @@
+/************************
+ * Unifi Webhook Event Receiver
+ * SummaryEventQueueService.cs
+ * 
+ * Service for queuing summary events to SQS.
+ * Author: Brent Foster
+ * Created: 09-08-2025
+ ***********************/
+
 using System.Threading.Tasks;
 using Amazon.SQS;
 using Amazon.SQS.Model;

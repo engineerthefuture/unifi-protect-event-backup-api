@@ -1,3 +1,13 @@
+/************************
+ * Unifi Webhook Event Receiver
+ * SummaryEvent.cs
+ * 
+ * Model for summary events to be queued after alarm processing.
+ * 
+ * Author: Brent Foster
+ * Created: 09-08-2025
+ ***********************/
+
 using System;
 using System.Collections.Generic;
 

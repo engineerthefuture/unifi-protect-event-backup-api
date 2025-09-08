@@ -256,7 +256,5 @@ namespace UnifiWebhookEventReceiver.Configuration
         }
 
         #endregion
-
-    // Deprecated members removed. Use DeviceMetadata and GetDeviceCoordinates instead.
 }
 }
