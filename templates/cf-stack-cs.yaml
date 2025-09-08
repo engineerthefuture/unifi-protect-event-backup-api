@@ -153,6 +153,8 @@ Resources:
       Environment:
         Variables:
           SUMMARY_BUCKET_NAME: !Ref BucketName
+          AlarmProcessingDlqUrl: !Ref AlarmProcessingDeadLetterQueue
+          SummaryEventDlqUrl: !Ref SummaryEventDeadLetterQueue
   
   # SQS Queue for summary event processing
   SummaryEventQueue:

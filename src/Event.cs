@@ -112,8 +112,5 @@ namespace UnifiWebhookEventReceiver
 
         /// <summary>Original filename of the downloaded video file from browser</summary>
         public string? originalFileName { get; set; }
-
-        /// <summary>Base64-encoded thumbnail image data (e.g., "data:image/jpeg;base64,...")</summary>
-        public string? thumbnail { get; set; }
     }
 }
