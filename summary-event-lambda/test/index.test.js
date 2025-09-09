@@ -204,10 +204,12 @@ describe('summary-event-lambda', () => {
         
         // Verify the S3 operations were called as expected
         const s3Calls = S3Client.prototype.send.mock.calls;
-        expect(s3Calls.length).toBe(3); // GetObject, ListObjects, PutObject
+        expect(s3Calls.length).toBe(5); // GetObject, ListObjects (missing videos), ListObjects (UTC folder 1), ListObjects (UTC folder 2), PutObject
         expect(s3Calls[0][0]).toBeInstanceOf(GetObjectCommand);
         expect(s3Calls[1][0]).toBeInstanceOf(ListObjectsV2Command);
-        expect(s3Calls[2][0]).toBeInstanceOf(PutObjectCommand);
+        expect(s3Calls[2][0]).toBeInstanceOf(ListObjectsV2Command);
+        expect(s3Calls[3][0]).toBeInstanceOf(ListObjectsV2Command);
+        expect(s3Calls[4][0]).toBeInstanceOf(PutObjectCommand);
         
         // Verify the SQS operations were called as expected
         const sqsCalls = SQSClient.prototype.send.mock.calls;
