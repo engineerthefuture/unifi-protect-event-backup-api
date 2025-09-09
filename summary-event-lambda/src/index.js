@@ -21,6 +21,166 @@ function getEasternDateString(timestamp) {
     return { year, month, day, folder: `${year}-${month}-${day}` };
 }
 
+// Helper to convert UTC timestamp to Eastern Time date folder
+function getUtcDateFolders(easternDateFolder) {
+    // For a given Eastern date (e.g., "2025-09-09"), we need to check UTC dates
+    // that could contain videos for that Eastern day
+    
+    const [year, month, day] = easternDateFolder.split('-').map(Number);
+    
+    // Eastern midnight corresponds to UTC 5:00 AM the same day
+    // Eastern 11:59 PM corresponds to UTC 4:59 AM the next day
+    // So for Eastern date 2025-09-09, we need to check:
+    // - UTC 2025-09-09 (from 5:00 AM onwards)
+    // - UTC 2025-09-10 (from 12:00 AM to 4:59 AM)
+    
+    const utcFolders = [];
+    
+    // Same day UTC folder 
+    utcFolders.push(`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`);
+    
+    // Next day UTC folder
+    const nextDay = new Date(year, month - 1, day + 1);
+    const nextYear = nextDay.getFullYear();
+    const nextMonth = String(nextDay.getMonth() + 1).padStart(2, '0');
+    const nextDayStr = String(nextDay.getDate()).padStart(2, '0');
+    utcFolders.push(`${nextYear}-${nextMonth}-${nextDayStr}`);
+    
+    return utcFolders;
+}
+
+// Helper to check if a UTC timestamp falls within an Eastern date
+function isUtcTimestampInEasternDate(utcTimestamp, easternDateFolder) {
+    const [year, month, day] = easternDateFolder.split('-').map(Number);
+    
+    // Eastern date boundaries in UTC
+    const easternMidnightUtc = new Date(year, month - 1, day, 5, 0, 0); // 5 AM UTC = Midnight ET
+    const easternEndOfDayUtc = new Date(year, month - 1, day + 1, 4, 59, 59); // 4:59 AM UTC next day = 11:59 PM ET
+    
+    const fileDate = new Date(utcTimestamp);
+    const isInRange = fileDate >= easternMidnightUtc && fileDate <= easternEndOfDayUtc;
+    
+    return isInRange;
+}
+
+// Helper to find additional missing video events by checking UTC folders for JSON files without videos
+async function findAdditionalMissingVideoEvents(easternDateFolder, existingMissingEvents) {
+    const additionalMissingEvents = [];
+    
+    try {
+        // Get all UTC folders that could contain files for this Eastern date
+        const utcFolders = getUtcDateFolders(easternDateFolder);
+        console.log(`[INFO] Checking UTC folders ${utcFolders.join(', ')} for JSON metadata files without videos for Eastern date ${easternDateFolder}`);
+        
+        // Track all events across all UTC folders
+        const allEventFiles = {};
+        
+        // Check each UTC folder for JSON and video files
+        for (const utcFolder of utcFolders) {
+            console.log(`[INFO] Scanning UTC folder: ${utcFolder} for missing videos`);
+            
+            const listParams = {
+                Bucket: BUCKET_NAME,
+                Prefix: `${utcFolder}/`,
+                MaxKeys: 1000
+            };
+            
+            const response = await s3.send(new ListObjectsV2Command(listParams));
+            const objects = response.Contents || [];
+            
+            console.log(`[INFO] Found ${objects.length} objects in UTC folder ${utcFolder}`);
+            
+            for (const obj of objects) {
+                const key = obj.Key;
+                const fileName = key.split('/').pop();
+                
+                // Skip summary files and other non-event files
+                if (fileName.startsWith('summary_') || !fileName.includes('_')) {
+                    continue;
+                }
+                
+                // Extract timestamp and check if it belongs to our Eastern date
+                const timestampMatch = fileName.match(/_(\d{13})\./);
+                if (!timestampMatch) continue;
+                
+                const utcTimestamp = parseInt(timestampMatch[1]);
+                
+                // Only process files that belong to our target Eastern date
+                if (!isUtcTimestampInEasternDate(utcTimestamp, easternDateFolder)) {
+                    continue;
+                }
+                
+                // Extract prefix key from filename (eventId_device_timestamp)
+                const prefixMatch = fileName.match(/^(.+_\d+)\./);
+                if (!prefixMatch) continue;
+                
+                const prefixKey = prefixMatch[1];
+                
+                if (!allEventFiles[prefixKey]) {
+                    allEventFiles[prefixKey] = { 
+                        json: false, 
+                        video: false, 
+                        jsonFile: null, 
+                        videoFile: null,
+                        utcFolder: utcFolder
+                    };
+                }
+                
+                if (fileName.endsWith('.json')) {
+                    allEventFiles[prefixKey].json = true;
+                    allEventFiles[prefixKey].jsonFile = obj;
+                } else if (fileName.endsWith('.mp4') || fileName.endsWith('.mov')) {
+                    allEventFiles[prefixKey].video = true;
+                    allEventFiles[prefixKey].videoFile = obj;
+                }
+            }
+        }
+        
+        console.log(`[INFO] Found ${Object.keys(allEventFiles).length} total events across UTC folders for Eastern date ${easternDateFolder}`);
+        
+        // Find JSON files that don't have corresponding video files
+        for (const [prefixKey, files] of Object.entries(allEventFiles)) {
+            if (files.json && !files.video && files.jsonFile) {
+                // Check if this event is already in the existing missing events list
+                const alreadyListed = existingMissingEvents.some(event => 
+                    event.jsonFile === files.jsonFile.Key
+                );
+                
+                if (!alreadyListed) {
+                    console.log(`[INFO] Found JSON metadata without video: ${files.jsonFile.Key}`);
+                    
+                    // Extract event details from the prefix key
+                    const parts = prefixKey.split('_');
+                    if (parts.length >= 3) {
+                        const eventId = parts[0];
+                        const device = parts[1];
+                        const timestamp = parts[2];
+                        
+                        additionalMissingEvents.push({
+                            eventId: eventId,
+                            device: device,
+                            timestamp: parseInt(timestamp),
+                            prefixKey: prefixKey,
+                            jsonFile: files.jsonFile.Key,
+                            lastModified: files.jsonFile.LastModified,
+                            size: files.jsonFile.Size,
+                            utcFolder: files.utcFolder,
+                            note: 'JSON metadata exists but video file is missing'
+                        });
+                    }
+                }
+            }
+        }
+        
+        console.log(`[INFO] Found ${additionalMissingEvents.length} additional JSON files without videos in Eastern date ${easternDateFolder}`);
+        
+    } catch (error) {
+        console.error(`[ERROR] Failed to find additional missing video events for Eastern date ${easternDateFolder}:`, error);
+    }
+    
+    return additionalMissingEvents;
+}
+
 // Helper to find events with JSON metadata but missing video files
 async function findMissingVideoFiles(folder) {
     const missingVideoEvents = [];
@@ -262,7 +422,12 @@ exports.handler = async(event) => {
 
         // Check for missing video files in the date folder
         const missingVideoEvents = await findMissingVideoFiles(folder);
-        summaryData.missingVideoEvents = missingVideoEvents;
+        
+        // Check for additional missing video events from UTC folders
+        const additionalMissingEvents = await findAdditionalMissingVideoEvents(folder, missingVideoEvents);
+        
+        // Combine both missing video events lists
+        summaryData.missingVideoEvents = [...missingVideoEvents, ...additionalMissingEvents];
 
         // Check DLQ message counts
         const { dlqCounts, totalDlqCount } = await getDlqMessageCounts();
@@ -270,7 +435,7 @@ exports.handler = async(event) => {
 
         // Update metadata
         summaryData.metadata.totalEvents = summaryData.events.length;
-        summaryData.metadata.missingVideoCount = missingVideoEvents.length;
+        summaryData.metadata.missingVideoCount = summaryData.missingVideoEvents.length;
         summaryData.metadata.dlqMessageCount = totalDlqCount;
         summaryData.metadata.lastUpdated = new Date().toISOString();
 
