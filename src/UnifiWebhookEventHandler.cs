@@ -13,14 +13,10 @@ using System.Net;
 using System.Reflection;
 using Amazon.Lambda.APIGatewayEvents;
 using Amazon.Lambda.Core;
-using Amazon.S3;
-using Amazon.SecretsManager;
-using Amazon.SQS;
 using Newtonsoft.Json;
 using UnifiWebhookEventReceiver.Configuration;
 using UnifiWebhookEventReceiver.Infrastructure;
 using UnifiWebhookEventReceiver.Services;
-using UnifiWebhookEventReceiver.Services.Implementations;
 
 // Assembly attributes
 [assembly: AssemblyVersion("1.0.0.0")]
