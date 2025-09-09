@@ -397,6 +397,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// <summary>
         /// Builds the final summary response with DLQ counts and formatted message.
         /// </summary>
+        [SuppressMessage("SonarLint", "S1541:Cognitive Complexity of methods should not be too high", Justification = "Complex formatting logic for summary response building")]
         private async Task<APIGatewayProxyResponse> BuildSummaryResponse(Dictionary<string, CameraSummaryMulti> cameras,
             int totalCount, int objectsCount, int activityCount,
             Dictionary<string, int> triggerKeyCounts, string? summaryDate, Dictionary<string, string> headers,
