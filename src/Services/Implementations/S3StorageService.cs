@@ -147,16 +147,16 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 
                 if (summaryResult.success)
                 {
-                    return await BuildSummaryResponse(summaryResult.cameras, summaryResult.missingEvents, 
+                    return await BuildSummaryResponse(summaryResult.cameras, 
                         summaryResult.totalCount, summaryResult.objectsCount, summaryResult.activityCount, 
                         summaryResult.triggerKeyCounts, summaryResult.summaryDate, headers, 
-                        summaryResult.dlqMessageCount, summaryResult.dlqCounts);
+                        summaryResult.dlqMessageCount, summaryResult.dlqCounts, summaryResult.missingVideoEvents);
                 }
 
                 // Fallback to simple empty response if no summary files found
                 _logger.LogLine("No summary files found, returning empty summary response");
                 return await BuildSummaryResponse(new Dictionary<string, CameraSummaryMulti>(), 
-                    new List<CameraEventSummary>(), 0, 0, 0, 
+                    0, 0, 0, 
                     new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase), 
                     "No summary data available", headers);
             }
@@ -183,7 +183,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         private async Task<SummaryDataResult> TryGetSummaryFromDailyFiles(string bucket, DateTime now)
         {
             var cameras = new Dictionary<string, CameraSummaryMulti>();
-            var missingEvents = new List<CameraEventSummary>();
+            var missingVideoEvents = new List<MissingVideoEvent>();
             int totalCount = 0;
             int objectsCount = 0;
             int activityCount = 0;
@@ -209,6 +209,12 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                     // Use counts from summary
                     totalCount = dailySummary.metadata.totalEvents;
                     
+                    // Include missing video events from summary
+                    if (dailySummary.missingVideoEvents != null)
+                    {
+                        missingVideoEvents = new List<MissingVideoEvent>(dailySummary.missingVideoEvents);
+                    }
+                    
                     // Merge event type counts with trigger key counts for backward compatibility
                     if (dailySummary.eventCounts != null)
                     {
@@ -231,7 +237,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                             .GroupBy(e => e.DeviceName)
                             .ToDictionary(g => g.Key, g => g.OrderByDescending(e => e.Timestamp).ToList());
                         
-                        ProcessDeviceEventsFromSummary(deviceLatestEvents, dailySummary.deviceCounts, cameras, missingEvents);
+                        ProcessDeviceEventsFromSummary(deviceLatestEvents, dailySummary.deviceCounts, cameras);
                     }
                 }
             }
@@ -250,7 +256,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             {
                 success = summaryDataFound,
                 cameras = cameras,
-                missingEvents = missingEvents,
+                missingVideoEvents = missingVideoEvents,
                 totalCount = totalCount,
                 objectsCount = objectsCount,
                 activityCount = activityCount,
@@ -302,9 +308,8 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// <summary>
         /// Processes device events directly from summary data without additional S3 calls.
         /// </summary>
-        private void ProcessDeviceEventsFromSummary(Dictionary<string, List<DailySummaryEvent>> deviceLatestEvents,
-            Dictionary<string, int> deviceCounts, Dictionary<string, CameraSummaryMulti> cameras,
-            List<CameraEventSummary> missingEvents)
+        private static void ProcessDeviceEventsFromSummary(Dictionary<string, List<DailySummaryEvent>> deviceLatestEvents,
+            Dictionary<string, int> deviceCounts, Dictionary<string, CameraSummaryMulti> cameras)
         {
             foreach (var deviceGroup in deviceLatestEvents)
             {
@@ -328,7 +333,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 // Process events directly from summary data
                 foreach (var summaryEvent in deviceEvents)
                 {
-                    ProcessSingleSummaryEventFromData(summaryEvent, camera, missingEvents);
+                    ProcessSingleSummaryEventFromData(summaryEvent, camera);
                 }
             }
         }
@@ -337,8 +342,8 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// Creates a camera event summary directly from summary event data without additional S3 calls.
         /// </summary>
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S1541:Methods should not be too complex", Justification = "Complex metadata extraction and alarm object creation requires this complexity")]
-        private void ProcessSingleSummaryEventFromData(DailySummaryEvent summaryEvent,
-            CameraSummaryMulti camera, List<CameraEventSummary> missingEvents)
+        private static void ProcessSingleSummaryEventFromData(DailySummaryEvent summaryEvent,
+            CameraSummaryMulti camera)
         {
             try
             {
@@ -377,19 +382,15 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                     originalFileName = alarm.triggers[0].originalFileName ?? System.IO.Path.GetFileName(summaryEvent.VideoS3Key) ?? $"{summaryEvent.EventId}.mp4"
                 };
 
-                // If there's a presigned URL, the video exists
+                // Only add events that have a presigned URL (video exists)
                 if (!string.IsNullOrEmpty(summaryEvent.PresignedVideoUrl))
                 {
                     camera.events.Add(eventObj);
                 }
-                else
-                {
-                    missingEvents.Add(eventObj);
-                }
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                _logger.LogLine($"Error processing summary event {summaryEvent.EventId}: {ex.Message}");
+                // Error processing summary event - silently continue
             }
         }
 
@@ -397,9 +398,9 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// Builds the final summary response with DLQ counts and formatted message.
         /// </summary>
         private async Task<APIGatewayProxyResponse> BuildSummaryResponse(Dictionary<string, CameraSummaryMulti> cameras,
-            List<CameraEventSummary> missingEvents, int totalCount, int objectsCount, int activityCount,
+            int totalCount, int objectsCount, int activityCount,
             Dictionary<string, int> triggerKeyCounts, string? summaryDate, Dictionary<string, string> headers,
-            int dlqMessageCount = 0, Dictionary<string, int>? dlqCounts = null)
+            int dlqMessageCount = 0, Dictionary<string, int>? dlqCounts = null, List<MissingVideoEvent>? missingVideoEvents = null)
         {
             var perCameraCounts = string.Join(", ", cameras.Values.Select(c => $"{c.cameraName} ({c.cameraId}): {c.count24h}"));
             var triggerKeySummary = string.Join(", ", triggerKeyCounts.Select(kvp => $"{kvp.Key}: {kvp.Value}"));
@@ -426,13 +427,17 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 ? string.Join(", ", dlqCounts.Select(kvp => $"{kvp.Key}: {kvp.Value}"))
                 : $"Total: {dlqMessageCount}";
 
+            var missingVideoCount = missingVideoEvents?.Count ?? 0;
+            var missingVideoSummary = missingVideoCount > 0 
+                ? $"Missing videos: {missingVideoCount}. " 
+                : "";
+
             var summaryMessage = totalCount == 0 
-                ? $"No events have been recorded since midnight. DLQ messages: {dlqSummary}. Summary date: {summaryDate}."
-                : $"Since midnight, there were {totalCount} total events across all cameras: {objectsCount} 'Objects' events and {activityCount} 'Activity' events. Per camera: {perCameraCounts}. Trigger keys: {triggerKeySummary}. DLQ messages: {dlqSummary}. Summary date: {summaryDate}.";
+                ? $"No events have been recorded since midnight. {missingVideoSummary}DLQ messages: {dlqSummary}. Summary date: {summaryDate}."
+                : $"Since midnight, there were {totalCount} total events across all cameras: {objectsCount} 'Objects' events and {activityCount} 'Activity' events. Per camera: {perCameraCounts}. Trigger keys: {triggerKeySummary}. {missingVideoSummary}DLQ messages: {dlqSummary}. Summary date: {summaryDate}.";
             
             var response = new {
                 cameras = cameras.Values,
-                missing = missingEvents,
                 totalCount,
                 objectsCount,
                 activityCount,
@@ -440,7 +445,9 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 dlqMessageCount,
                 dlqCounts,
                 summaryMessage,
-                summaryDate
+                summaryDate,
+                missingVideoEvents = missingVideoEvents ?? new List<MissingVideoEvent>(),
+                missingVideoCount = missingVideoEvents?.Count ?? 0
             };
             
             return new APIGatewayProxyResponse {
@@ -457,7 +464,6 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         {
             public bool success { get; set; }
             public Dictionary<string, CameraSummaryMulti> cameras { get; set; } = new();
-            public List<CameraEventSummary> missingEvents { get; set; } = new();
             public int totalCount { get; set; }
             public int objectsCount { get; set; }
             public int activityCount { get; set; }
@@ -465,6 +471,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             public string? summaryDate { get; set; }
             public int dlqMessageCount { get; set; }
             public Dictionary<string, int> dlqCounts { get; set; } = new();
+            public List<MissingVideoEvent> missingVideoEvents { get; set; } = new();
         }
 
     public async Task<string> GetPresignedUrlAsync(string bucket, string videoKey, DateTime now, int durationHours)

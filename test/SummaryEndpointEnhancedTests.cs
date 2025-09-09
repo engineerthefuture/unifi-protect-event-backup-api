@@ -113,5 +113,86 @@ namespace UnifiWebhookEventReceiverTests
             Assert.Equal(thumbnailData, summaryEvent.Metadata["thumbnail"]);
             Assert.Equal(originalFileName, summaryEvent.Metadata["originalFileName"]);
         }
+
+        [Fact]
+        public async Task GetSummaryAsync_ResponseIncludesMissingVideoFields()
+        {
+            // Arrange
+            SetTestEnvironment();
+            var context = new TestLambdaContext();
+            var handler = new UnifiWebhookEventHandler();
+            var apiRequest = new Amazon.Lambda.APIGatewayEvents.APIGatewayProxyRequest
+            {
+                HttpMethod = "GET",
+                Path = "/summary",
+                Headers = new System.Collections.Generic.Dictionary<string, string> { { "X-API-Key", "test-key" } }
+            };
+            var requestBody = JsonConvert.SerializeObject(apiRequest);
+            using var stream = new MemoryStream(Encoding.UTF8.GetBytes(requestBody));
+
+            // Act
+            var response = await handler.FunctionHandler(stream, context);
+
+            // Assert
+            Assert.NotNull(response);
+            Assert.Equal(200, response.StatusCode);
+            Assert.NotNull(response.Body);
+            
+            var body = Newtonsoft.Json.Linq.JObject.Parse(response.Body);
+            
+            // Verify the new missing video events fields are present in the response
+            Assert.True(body["missingVideoEvents"] != null, "Response should include missingVideoEvents field");
+            Assert.True(body["missingVideoCount"] != null, "Response should include missingVideoCount field");
+            
+            // Verify the legacy 'missing' field is no longer present
+            Assert.True(body["missing"] == null, "Response should not include the legacy 'missing' field");
+            
+            // Verify these are arrays/numbers as expected
+            Assert.True(body["missingVideoEvents"] is Newtonsoft.Json.Linq.JArray, "missingVideoEvents should be an array");
+            Assert.True(body["missingVideoCount"] is Newtonsoft.Json.Linq.JValue, "missingVideoCount should be a number");
+        }
+
+        [Fact]
+        public async Task GetSummaryAsync_SummaryMessageIncludesMissingVideoCount()
+        {
+            // Arrange
+            SetTestEnvironment();
+            var context = new TestLambdaContext();
+            var handler = new UnifiWebhookEventHandler();
+            var apiRequest = new Amazon.Lambda.APIGatewayEvents.APIGatewayProxyRequest
+            {
+                HttpMethod = "GET",
+                Path = "/summary",
+                Headers = new System.Collections.Generic.Dictionary<string, string> { { "X-API-Key", "test-key" } }
+            };
+            var requestBody = JsonConvert.SerializeObject(apiRequest);
+            using var stream = new MemoryStream(Encoding.UTF8.GetBytes(requestBody));
+
+            // Act
+            var response = await handler.FunctionHandler(stream, context);
+
+            // Assert
+            Assert.NotNull(response);
+            Assert.Equal(200, response.StatusCode);
+            Assert.NotNull(response.Body);
+            
+            var body = Newtonsoft.Json.Linq.JObject.Parse(response.Body);
+            
+            // Verify the summary message is present
+            Assert.True(body["summaryMessage"] != null, "Response should include summaryMessage field");
+            
+            var summaryMessage = body["summaryMessage"]?.ToString();
+            Assert.NotNull(summaryMessage);
+            
+            // Since there are no missing videos in the test environment, verify the message format
+            // The message should either contain "Missing videos: 0" or no missing videos mention if count is 0
+            // For empty summary, it should contain "No events have been recorded since midnight"
+            Assert.True(
+                summaryMessage.Contains("No events have been recorded since midnight") ||
+                summaryMessage.Contains("Since midnight, there were") ||
+                summaryMessage.Contains("Missing videos:"),
+                "Summary message should be in expected format with missing video information"
+            );
+        }
     }
 }
