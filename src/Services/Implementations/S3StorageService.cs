@@ -437,28 +437,17 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 ? $"No events have been recorded since midnight. {missingVideoSummary}DLQ messages: {dlqSummary}. Summary date: {summaryDate}."
                 : $"Since midnight, there were {totalCount} total events across all cameras: {objectsCount} 'Objects' events and {activityCount} 'Activity' events. Per camera: {perCameraCounts}. Trigger keys: {triggerKeySummary}. {missingVideoSummary}DLQ messages: {dlqSummary}. Summary date: {summaryDate}.";
             
-            // Create a lightweight camera summary without detailed event data to prevent payload size issues
-            var lightweightCameras = cameras.Values.Select(c => new {
+            // Limit events per camera to prevent payload size issues while keeping original structure
+            var limitedCameras = cameras.Values.Select(c => new CameraSummaryMulti
+            {
                 cameraId = c.cameraId,
                 cameraName = c.cameraName,
                 count24h = c.count24h,
-                eventCount = c.events.Count,
-                // Only include the first 5 events to limit payload size
-                recentEvents = c.events.Take(5).Select(e => new {
-                    originalFileName = e.originalFileName,
-                    videoUrl = e.videoUrl,
-                    // Include only essential alarm data, not the full eventData object
-                    timestamp = e.eventData?.timestamp,
-                    eventType = e.eventData?.triggers?.FirstOrDefault()?.key
-                }).ToList()
+                events = c.events.Take(3).ToList() // Limit to 3 events per camera
             }).ToList();
-
-            // Limit missing video events to prevent payload overflow
-            var limitedMissingVideoEvents = missingVideoEvents?.Take(100).ToList() ?? new List<MissingVideoEvent>();
-            var totalMissingVideoCount = missingVideoEvents?.Count ?? 0;
             
             var response = new {
-                cameras = lightweightCameras,
+                cameras = limitedCameras,
                 totalCount,
                 objectsCount,
                 activityCount,
@@ -467,15 +456,8 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 dlqCounts,
                 summaryMessage,
                 summaryDate,
-                missingVideoEvents = limitedMissingVideoEvents,
-                missingVideoCount = totalMissingVideoCount,
-                // Add metadata about data limits
-                dataLimits = new {
-                    eventsPerCamera = 5,
-                    missingVideoEventsShown = limitedMissingVideoEvents.Count,
-                    totalMissingVideoEvents = totalMissingVideoCount,
-                    note = "Response limited to prevent payload size issues. Use specific endpoints for detailed event data."
-                }
+                missingVideoEvents = missingVideoEvents ?? new List<MissingVideoEvent>(),
+                missingVideoCount = missingVideoEvents?.Count ?? 0
             };
             
             return new APIGatewayProxyResponse {
