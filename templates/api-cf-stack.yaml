@@ -178,7 +178,7 @@ Resources:
     Type: AWS::SQS::Queue
     Properties:
       QueueName: !Sub "${FunctionName}-summary-event-dlq"
-      MessageRetentionPeriod: 1209600
+      MessageRetentionPeriod: 86400  # 1 day
       Tags:
         - Key: "Name"
           Value: !Sub "${FunctionName}-summary-event-dlq"
@@ -447,9 +447,9 @@ Resources:
         Rules:
           - Id: TransitionToOneZoneIA
             Status: Enabled
-            # Transition to One Zone-IA after 1 day for immediate cost savings
+            # Transition to One Zone-IA after 30 days (minimum required by AWS)
             Transitions:
-              - TransitionInDays: 1
+              - TransitionInDays: 30
                 StorageClass: ONEZONE_IA
           - Id: DeleteAfter30Days
             Status: Enabled
@@ -482,7 +482,7 @@ Resources:
     Type: AWS::SQS::Queue
     Properties:
       QueueName: !Sub "${FunctionName}-alarm-processing-dlq"
-      MessageRetentionPeriod: 1209600  # 14 days
+      MessageRetentionPeriod: 86400  # 1 day
       Tags:
         - Key: "Name"
           Value: !Sub "${FunctionName}-alarm-processing-dlq"
