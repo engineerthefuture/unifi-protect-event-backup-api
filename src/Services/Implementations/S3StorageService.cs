@@ -524,7 +524,8 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 BucketName = AppConfiguration.AlarmBucketName!,
                 Key = s3Key,
                 InputStream = stream,
-                ContentType = "application/json"
+                ContentType = "application/json",
+                StorageClass = S3StorageClass.OneZoneInfrequentAccess
             };
             await _s3Client.PutObjectAsync(putRequest);
         }
@@ -666,7 +667,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                     Key = keyName,
                     ContentBody = content,
                     ContentType = contentType,
-                    StorageClass = S3StorageClass.StandardInfrequentAccess
+                    StorageClass = S3StorageClass.OneZoneInfrequentAccess
                 };
 
                 await _s3Client.PutObjectAsync(putObjectRequest);
@@ -700,7 +701,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                     Key = keyName,
                     InputStream = stream,
                     ContentType = contentType,
-                    StorageClass = S3StorageClass.StandardInfrequentAccess
+                    StorageClass = S3StorageClass.OneZoneInfrequentAccess
                 };
 
                 await _s3Client.PutObjectAsync(putObjectRequest);

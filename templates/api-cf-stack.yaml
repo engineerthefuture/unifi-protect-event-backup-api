@@ -25,7 +25,7 @@ Parameters:
   RetentionDays:
     Type: Number
     Description: Number of days to retain event data in S3 and for API search.
-    Default: 30
+    Default: 21
     MinValue: 1
   AppName:
     Default: unifi-protect-event-backup-api
@@ -199,8 +199,11 @@ Resources:
                 - lambda.amazonaws.com
             Action: 'sts:AssumeRole'
       ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
-        - arn:aws:iam::aws:policy/CloudWatchLogsReadOnlyAccess
+        - arn:aws:iam::aws:policy/AWSLambdaExecute
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/AmazonSESFullAccess
+        - arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
+        - arn:aws:iam::aws:policy/AmazonSQSFullAccess
       Policies:
         - PolicyName: SQSSummaryEventPolicy
           PolicyDocument:
@@ -442,6 +445,12 @@ Resources:
             MaxAge: '3600'
       LifecycleConfiguration:
         Rules:
+          - Id: TransitionToOneZoneIA
+            Status: Enabled
+            # Transition to One Zone-IA after 1 day for immediate cost savings
+            Transitions:
+              - TransitionInDays: 1
+                StorageClass: ONEZONE_IA
           - Id: DeleteAfter30Days
             Status: Enabled
             ExpirationInDays: !Ref RetentionDays

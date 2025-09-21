@@ -279,7 +279,7 @@ namespace UnifiWebhookEventReceiverTests
                 _mockS3Client.Setup(x => x.PutObjectAsync(It.Is<PutObjectRequest>(req => 
                     req.BucketName == "test-bucket" &&
                     req.ContentType == "application/json" &&
-                    req.StorageClass == S3StorageClass.StandardInfrequentAccess), default))
+                    req.StorageClass == S3StorageClass.OneZoneInfrequentAccess), default))
                     .ThrowsAsync(new Exception("S3 error"));
 
                 // Act & Assert
@@ -339,7 +339,7 @@ namespace UnifiWebhookEventReceiverTests
                         req.BucketName == "test-bucket" &&
                         req.Key == s3Key &&
                         req.ContentType == "image/png" &&
-                        req.StorageClass == S3StorageClass.StandardInfrequentAccess &&
+                        req.StorageClass == S3StorageClass.OneZoneInfrequentAccess &&
                         req.InputStream != null), 
                     default), Times.Once);
             }
