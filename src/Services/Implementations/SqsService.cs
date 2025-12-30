@@ -32,6 +32,10 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         private readonly IEmailService _emailService;
         private readonly IResponseHelper _responseHelper;
         private readonly ILambdaLogger _logger;
+        
+        // Track last event processing time across invocations within the same Lambda container
+        private static DateTime _lastEventProcessedTime = DateTime.MinValue;
+        private static readonly object _throttleLock = new object();
 
         /// <summary>
         /// Gets the number of messages currently in the DLQ.
@@ -326,12 +330,16 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
 
         /// <summary>
         /// Processes a single SQS record containing alarm data.
+        /// Implements throttling to minimize concurrent logins by waiting if an event was recently processed.
         /// </summary>
         /// <param name="record">The SQS record to process</param>
         private async Task ProcessSingleSqsRecord(SQSEvent.SQSMessage record)
         {
             try
             {
+                // Implement throttling to minimize concurrent logins
+                await ThrottleEventProcessingAsync();
+                
                 _logger.LogLine($"Processing SQS message: {record.MessageId}");
 
                 // Parse the alarm data from the message body
@@ -342,6 +350,14 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 {
                     _logger.LogLine($"Processing delayed alarm for device: {alarm.triggers?.FirstOrDefault()?.device}");
                     await _alarmProcessingService.ProcessAlarmForSqsAsync(alarm);
+                    
+                    // Update last processing time after successful processing
+                    lock (_throttleLock)
+                    {
+                        _lastEventProcessedTime = DateTime.UtcNow;
+                        _logger.LogLine($"Updated last event processing time to {_lastEventProcessedTime:yyyy-MM-dd HH:mm:ss.fff UTC}");
+                    }
+                    
                     _logger.LogLine($"Successfully processed delayed alarm: {record.MessageId}");
                 }
                 else
@@ -451,6 +467,49 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             {
                 _logger.LogLine($"Error sending alarm to DLQ: {ex.Message}");
                 throw;
+            }
+        }
+
+        /// <summary>
+        /// Implements throttling logic to minimize concurrent logins to Unifi Protect.
+        /// Waits if an event was processed within the configured throttle window.
+        /// </summary>
+        private async Task ThrottleEventProcessingAsync()
+        {
+            var throttleSeconds = AppConfiguration.EventProcessingThrottleSeconds;
+            
+            if (throttleSeconds <= 0)
+            {
+                _logger.LogLine("Event processing throttling is disabled (throttle seconds <= 0)");
+                return;
+            }
+
+            DateTime lastProcessed;
+            lock (_throttleLock)
+            {
+                lastProcessed = _lastEventProcessedTime;
+            }
+
+            // If this is the first event or last event was long ago, no need to throttle
+            if (lastProcessed == DateTime.MinValue)
+            {
+                _logger.LogLine("First event processing in this Lambda container, no throttling needed");
+                return;
+            }
+
+            var timeSinceLastProcessed = DateTime.UtcNow - lastProcessed;
+            var requiredDelay = TimeSpan.FromSeconds(throttleSeconds);
+
+            if (timeSinceLastProcessed < requiredDelay)
+            {
+                var waitTime = requiredDelay - timeSinceLastProcessed;
+                _logger.LogLine($"Throttling: Last event processed {timeSinceLastProcessed.TotalSeconds:F1}s ago, waiting {waitTime.TotalSeconds:F1}s before processing next event (throttle window: {throttleSeconds}s)");
+                await Task.Delay(waitTime);
+                _logger.LogLine("Throttle delay complete, proceeding with event processing");
+            }
+            else
+            {
+                _logger.LogLine($"No throttling needed: Last event processed {timeSinceLastProcessed.TotalSeconds:F1}s ago (throttle window: {throttleSeconds}s)");
             }
         }
     }

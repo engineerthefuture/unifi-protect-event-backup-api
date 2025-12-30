@@ -97,6 +97,12 @@ Parameters:
     Default: 120
     MinValue: 0
     MaxValue: 900
+  EventProcessingThrottleSeconds:
+    Type: Number
+    Description: Minimum seconds to wait between processing queued events to minimize concurrent logins (default 60 seconds)
+    Default: 60
+    MinValue: 0
+    MaxValue: 300
   SupportEmail:
     Type: String
     Description: Email address for support notifications
@@ -726,6 +732,7 @@ Resources:
           AlarmProcessingQueueUrl: !Ref AlarmProcessingQueue
           AlarmProcessingDlqUrl: !Ref AlarmProcessingDeadLetterQueue
           ProcessingDelaySeconds: !Ref ProcessingDelaySeconds
+          EventProcessingThrottleSeconds: !Ref EventProcessingThrottleSeconds
           SupportEmail: !Ref SupportEmail
           BuildSha: !Ref BuildSha
           BuildTimestamp: !Ref BuildTimestamp

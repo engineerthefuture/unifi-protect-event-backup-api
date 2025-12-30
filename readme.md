@@ -94,6 +94,7 @@ The system includes asynchronous browser automation to download video content di
 - **Better Performance**: Immediate webhook response prevents timeouts and client retries
 - **Enhanced Reliability**: Reduces failed downloads due to video availability timing
 - **Scalable Processing**: SQS handles traffic spikes and provides automatic retries
+- **Login Throttling**: Configurable delay between processing queued events (default 60s) minimizes concurrent logins to Unifi Protect
 
 ### 🏗️ Technical Implementation
 
@@ -102,6 +103,7 @@ The system includes asynchronous browser automation to download video content di
 - **Enhanced Download Configuration**: Chrome DevTools Protocol (CDP) integration for reliable download handling
 - **Comprehensive Error Handling**: Detailed logging and retry mechanisms for browser automation
 - **Performance Monitoring**: Three diagnostic screenshots captured at key stages (login, page load, archive click) for debugging
+- **Event Processing Throttle**: Configurable throttle delay (default 60 seconds) waits between processing queued events if an event was recently processed, reducing concurrent login load on Unifi Protect
 
 ### 📁 Storage Organization
 
