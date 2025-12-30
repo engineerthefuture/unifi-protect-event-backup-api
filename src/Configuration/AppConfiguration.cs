@@ -97,6 +97,9 @@ namespace UnifiWebhookEventReceiver.Configuration
         /// <summary>Delay in seconds before processing alarm events (defaults to 2 minutes)</summary>
         public static int ProcessingDelaySeconds => int.TryParse(Environment.GetEnvironmentVariable("ProcessingDelaySeconds"), out var delay) ? delay : 120;
 
+        /// <summary>Minimum seconds to wait between processing queued events to minimize concurrent logins (defaults to 60 seconds)</summary>
+        public static int EventProcessingThrottleSeconds => int.TryParse(Environment.GetEnvironmentVariable("EventProcessingThrottleSeconds"), out var throttle) ? throttle : 60;
+
         /// <summary>Support email address for failure notifications</summary>
         public static string? SupportEmail => Environment.GetEnvironmentVariable("SupportEmail");
 
