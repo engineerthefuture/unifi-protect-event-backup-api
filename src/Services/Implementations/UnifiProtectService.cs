@@ -579,6 +579,11 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 _logger.LogLine($"Timeout waiting for page ready state: {ex.Message}, but continuing");
             }
 
+            // Additional configurable wait for video player and dynamic content to fully load
+            var additionalDelay = AppConfiguration.VideoPageLoadDelaySeconds * 1000;
+            _logger.LogLine($"Waiting additional {AppConfiguration.VideoPageLoadDelaySeconds} seconds for video page content to load...");
+            await Task.Delay(additionalDelay);
+
             bool downloadStarted = false;
             string? downloadGuid = null;
 
@@ -597,7 +602,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             page.Client.MessageReceived += downloadEventHandler;
 
             // Take a screenshot and upload to S3
-            await Task.Delay(3000);
+            await Task.Delay(1000);
             var screenshotPath = Path.Combine(downloadDirectory, "pageload-screenshot.png");
             await page.ScreenshotAsync(screenshotPath);
             _logger.LogLine($"Screenshot taken of the loaded page: {screenshotPath}");

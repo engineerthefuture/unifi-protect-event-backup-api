@@ -103,6 +103,12 @@ Parameters:
     Default: 60
     MinValue: 0
     MaxValue: 300
+  VideoPageLoadDelaySeconds:
+    Type: Number
+    Description: Additional seconds to wait for video page to fully load before attempting download (default 5 seconds)
+    Default: 5
+    MinValue: 0
+    MaxValue: 30
   SupportEmail:
     Type: String
     Description: Email address for support notifications
@@ -733,6 +739,7 @@ Resources:
           AlarmProcessingDlqUrl: !Ref AlarmProcessingDeadLetterQueue
           ProcessingDelaySeconds: !Ref ProcessingDelaySeconds
           EventProcessingThrottleSeconds: !Ref EventProcessingThrottleSeconds
+          VideoPageLoadDelaySeconds: !Ref VideoPageLoadDelaySeconds
           SupportEmail: !Ref SupportEmail
           BuildSha: !Ref BuildSha
           BuildTimestamp: !Ref BuildTimestamp

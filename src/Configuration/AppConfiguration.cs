@@ -100,6 +100,9 @@ namespace UnifiWebhookEventReceiver.Configuration
         /// <summary>Minimum seconds to wait between processing queued events to minimize concurrent logins (defaults to 60 seconds)</summary>
         public static int EventProcessingThrottleSeconds => int.TryParse(Environment.GetEnvironmentVariable("EventProcessingThrottleSeconds"), out var throttle) ? throttle : 60;
 
+        /// <summary>Additional seconds to wait for video page to fully load before attempting download (defaults to 5 seconds)</summary>
+        public static int VideoPageLoadDelaySeconds => int.TryParse(Environment.GetEnvironmentVariable("VideoPageLoadDelaySeconds"), out var delay) ? delay : 5;
+
         /// <summary>Support email address for failure notifications</summary>
         public static string? SupportEmail => Environment.GetEnvironmentVariable("SupportEmail");
 
