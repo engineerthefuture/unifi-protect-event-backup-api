@@ -106,7 +106,7 @@ Parameters:
   VideoPageLoadDelaySeconds:
     Type: Number
     Description: Additional seconds to wait for video page to fully load before attempting download (default 5 seconds)
-    Default: 5
+    Default: 6
     MinValue: 0
     MaxValue: 30
   SupportEmail:
