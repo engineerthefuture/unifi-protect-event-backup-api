@@ -684,6 +684,13 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             
                 // Upload screenshot to S3
                 await UploadScreenshotToS3(screenshotPath, "signout-screenshot.png", trigger, timestamp);
+                
+                // Clean up local screenshot file
+                if (File.Exists(screenshotPath))
+                {
+                    File.Delete(screenshotPath);
+                    _logger.LogLine($"Local screenshot file deleted: {screenshotPath}");
+                }
             }
             catch (Exception ex)
             {
