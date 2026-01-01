@@ -198,7 +198,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 // First, try to get the alarm trigger thumbnail
                 await TryRetrieveThumbnail(trigger, alarm.timestamp, screenshots);
                 
-                var screenshotTypes = new[] { "login-screenshot", "pageload-screenshot", "afterarchivebuttonclick-screenshot", "signout-screenshot", "signout-error-screenshot" };
+                var screenshotTypes = new[] { "login-screenshot", "pageload-screenshot", "afterarchivebuttonclick-screenshot", "signout-screenshot" };
                 
                 foreach (var screenshotType in screenshotTypes)
                 {
@@ -443,7 +443,6 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 var name when name.Contains("pageload-screenshot") => "📄 Page Load Screenshot", 
                 var name when name.Contains("afterarchivebuttonclick-screenshot") => "🖱️ After Archive Button Click Screenshot",
                 var name when name.Contains("signout-screenshot") => "🚪 Signout Page Screenshot",
-                var name when name.Contains("signout-error-screenshot") => "❌ Signout Error Screenshot",
                 _ => "📸 Process Screenshot"
             };
         }
