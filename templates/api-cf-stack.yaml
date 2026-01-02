@@ -106,7 +106,7 @@ Parameters:
   VideoPageLoadDelaySeconds:
     Type: Number
     Description: Additional seconds to wait for video page to fully load before attempting download (default 9 seconds)
-    Default: 9
+    Default: 10
     MinValue: 0
     MaxValue: 30
   SupportEmail:
@@ -722,7 +722,7 @@ Resources:
               #AssemblyName::NameSpace.ClassName::FunctionHandlerName
       Handler: UnifiWebhookEventReceiver::UnifiWebhookEventReceiver.UnifiWebhookEventHandler::FunctionHandler
       MemorySize: 1536
-      Timeout: 150
+      Timeout: 180
       Runtime: dotnet8
       Role: !GetAtt LambdaRole.Arn
       Environment:

@@ -101,7 +101,8 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 
                 // Save to temporary file
                 await File.WriteAllBytesAsync(tempVideoFile, videoData);
-                _logger.LogLine($"Video saved to temporary file: {tempVideoFile}");
+                _logger.LogLine($"Video saved to temporary file: {tempVideoFile} ({videoData.Length} bytes written)");
+                _logger.LogLine("DownloadVideoAsync completed successfully - returning temp file path to caller for S3 upload");
 
                 return tempVideoFile;
             }
@@ -296,6 +297,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                     // Perform sign out and capture screenshot (screenshot will be saved to S3)
                     await PerformSignOutAndCapture(page, downloadDirectory, trigger, timestamp);
 
+                    _logger.LogLine($"Returning from DownloadVideoFromUnifiProtect with {videoData.Length} bytes, filename: {actualFileName}");
                     return (videoData, actualFileName);
                 }
                 finally
@@ -691,10 +693,13 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                     File.Delete(screenshotPath);
                     _logger.LogLine($"Local screenshot file deleted: {screenshotPath}");
                 }
+                
+                _logger.LogLine("Sign out and screenshot capture completed successfully");
             }
             catch (Exception ex)
             {
                 _logger.LogLine($"Error during sign out process: {ex.Message}");
+                _logger.LogLine($"Exception type: {ex.GetType().Name}");
                 // Don't throw - sign out failure shouldn't break the main process
             }
         }
@@ -833,10 +838,11 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         {
             _logger.LogLine("Clicking sign out button...");
             await signOutElement.ClickAsync();
+            _logger.LogLine("Sign out button clicked successfully");
             
             // Wait for sign out to complete
             await Task.Delay(2000);
-            _logger.LogLine("Sign out completed");
+            _logger.LogLine("Sign out completed after 2 second delay");
         }
 
         /// <summary>
