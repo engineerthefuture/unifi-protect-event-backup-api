@@ -16,6 +16,10 @@ using HeadlessChromium.Puppeteer.Lambda.Dotnet;
 using UnifiWebhookEventReceiver.Configuration;
 using UnifiWebhookEventReceiver.Services;
 using System.Text.Json;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Processing;
+using SixLabors.ImageSharp.Drawing.Processing;
+using SixLabors.ImageSharp.PixelFormats;
 
 namespace UnifiWebhookEventReceiver.Services.Implementations
 {
@@ -644,6 +648,10 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             await page.ScreenshotAsync(screenshotPath);
             _logger.LogLine($"Screenshot taken of the clicked archive button: {screenshotPath}");
             
+            // Draw red X marker at the archive button click location
+            DrawRedXMarker(screenshotPath, archiveButton.x, archiveButton.y);
+            _logger.LogLine($"Drew red X marker at coordinates ({archiveButton.x}, {archiveButton.y})");
+            
             // Upload screenshot to S3
             await UploadScreenshotToS3(screenshotPath, "afterarchivebuttonclick-screenshot.png", trigger, timestamp);
             
@@ -978,6 +986,45 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             return errorMessage.Contains("cannot access a disposed object") || 
                    errorMessage.Contains("disposed") ||
                    ex is ObjectDisposedException;
+        }
+
+        /// <summary>
+        /// Draws a red X marker on an image at the specified coordinates.
+        /// </summary>
+        /// <param name="imagePath">Path to the image file</param>
+        /// <param name="x">X coordinate for the center of the X marker</param>
+        /// <param name="y">Y coordinate for the center of the Y marker</param>
+        private void DrawRedXMarker(string imagePath, int x, int y)
+        {
+            try
+            {
+                using var image = Image.Load<Rgba32>(imagePath);
+                
+                // Draw a red X with lines extending 20 pixels in each direction from the center point
+                int markerSize = 20;
+                var redColor = Color.Red;
+                float thickness = 3f;
+                
+                image.Mutate(ctx =>
+                {
+                    // Draw diagonal line from top-left to bottom-right
+                    ctx.DrawLine(redColor, thickness, 
+                        new PointF(x - markerSize, y - markerSize), 
+                        new PointF(x + markerSize, y + markerSize));
+                    
+                    // Draw diagonal line from top-right to bottom-left
+                    ctx.DrawLine(redColor, thickness, 
+                        new PointF(x + markerSize, y - markerSize), 
+                        new PointF(x - markerSize, y + markerSize));
+                });
+                
+                image.Save(imagePath);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogLine($"Warning: Could not draw red X marker on image: {ex.Message}");
+                // Don't throw - marker drawing failure shouldn't break the main process
+            }
         }
 
         /// <summary>
