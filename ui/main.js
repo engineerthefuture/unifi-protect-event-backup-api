@@ -118,8 +118,8 @@ function renderDashboard(data) {
             const thumbDiv = evDiv.querySelector('.thumbnail');
             const imgEl = thumbDiv.querySelector('img');
             
-            // Check if thumbnail data is available in the trigger
-            const thumbnailData = trigger.thumbnail;
+            // Check if thumbnail data is available in the event data
+            const thumbnailData = event.eventData?.thumbnail;
             
             if (thumbnailData && thumbnailData.startsWith('data:image/')) {
                 // Use the base64 thumbnail data directly
