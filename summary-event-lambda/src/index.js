@@ -63,6 +63,39 @@ function isUtcTimestampInEasternDate(utcTimestamp, easternDateFolder) {
     return isInRange;
 }
 
+// Helper to check if an event is a package trigger (which doesn't have videos)
+async function isPackageEvent(jsonKey) {
+    try {
+        const s3Obj = await s3.send(new GetObjectCommand({ Bucket: BUCKET_NAME, Key: jsonKey }));
+        const bodyContents = await streamToString(s3Obj.Body);
+        const alarmData = JSON.parse(bodyContents);
+        
+        // Check if any trigger has key "package"
+        const isPackage = alarmData.triggers?.some(trigger => 
+            trigger.key?.toLowerCase() === 'package'
+        );
+        
+        if (isPackage) {
+            console.log(`[INFO] Event ${jsonKey} is a package trigger, excluding from missing video count`);
+        }
+        
+        return isPackage;
+    } catch (error) {
+        console.error(`[ERROR] Failed to check if event is package type for ${jsonKey}:`, error);
+        return false; // If we can't read it, don't exclude it
+    }
+}
+
+// Helper to convert stream to string (for AWS SDK v3 GetObjectCommand)
+function streamToString(stream) {
+    return new Promise((resolve, reject) => {
+        const chunks = [];
+        stream.on('data', (chunk) => chunks.push(chunk));
+        stream.on('error', reject);
+        stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
+    });
+}
+
 // Helper to find additional missing video events by checking UTC folders for JSON files without videos
 async function findAdditionalMissingVideoEvents(easternDateFolder, existingMissingEvents) {
     const additionalMissingEvents = [];
@@ -149,6 +182,13 @@ async function findAdditionalMissingVideoEvents(easternDateFolder, existingMissi
                 if (!alreadyListed) {
                     console.log(`[INFO] Found JSON metadata without video: ${files.jsonFile.Key}`);
                     
+                    // Check if this is a package event (which doesn't require a video)
+                    const isPackage = await isPackageEvent(files.jsonFile.Key);
+                    if (isPackage) {
+                        console.log(`[INFO] Skipping package event from missing video count: ${files.jsonFile.Key}`);
+                        continue;
+                    }
+                    
                     // Extract event details from the prefix key
                     const parts = prefixKey.split('_');
                     if (parts.length >= 3) {
@@ -229,6 +269,13 @@ async function findMissingVideoFiles(folder) {
         // Find events with JSON but no video
         for (const [eventId, files] of Object.entries(eventFiles)) {
             if (files.json && !files.video && files.metadata) {
+                // Check if this is a package event (which doesn't require a video)
+                const isPackage = await isPackageEvent(files.metadata.Key);
+                if (isPackage) {
+                    console.log(`[INFO] Skipping package event from missing video count: ${files.metadata.Key}`);
+                    continue;
+                }
+                
                 missingVideoEvents.push({
                     eventId: eventId,
                     jsonFile: files.metadata.Key,
@@ -463,16 +510,6 @@ exports.handler = async(event) => {
             console.log(`[SUCCESS] Updated summary file: ${key}`);
         } catch (err) {
             console.error('[ERROR] Failed to write summary file to S3:', err, { key });
-        }
-
-        // Helper to convert stream to string (for AWS SDK v3 GetObjectCommand)
-        function streamToString(stream) {
-            return new Promise((resolve, reject) => {
-                const chunks = [];
-                stream.on('data', (chunk) => chunks.push(chunk));
-                stream.on('error', reject);
-                stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
-            });
         }
     }
     return { statusCode: 200 };
