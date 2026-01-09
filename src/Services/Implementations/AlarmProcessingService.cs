@@ -175,11 +175,15 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 _logger.LogLine("No thumbnail data provided in alarm");
             }
 
-            // Download and store video if event path is available
-            if (!string.IsNullOrEmpty(alarm.eventPath))
+            // Download and store video if event path is available and trigger type supports video
+            if (!string.IsNullOrEmpty(alarm.eventPath) && !IsPackageTrigger(trigger))
             {
                 _logger.LogLine($"Event path found: {alarm.eventPath}, initiating video download");
                 await DownloadAndStoreVideo(alarm, credentials, trigger);
+            }
+            else if (IsPackageTrigger(trigger))
+            {
+                _logger.LogLine($"Package trigger detected (key: {trigger.key}), skipping video download as package events do not have associated videos");
             }
             else
             {
@@ -230,11 +234,15 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 }
             }
 
-            // Download and store video if event path is available
-            if (!string.IsNullOrEmpty(alarm.eventPath))
+            // Download and store video if event path is available and trigger type supports video
+            if (!string.IsNullOrEmpty(alarm.eventPath) && !IsPackageTrigger(trigger))
             {
                 _logger.LogLine($"Event path found: {alarm.eventPath}, initiating video download");
                 await DownloadAndStoreVideo(alarm, credentials, trigger);
+            }
+            else if (IsPackageTrigger(trigger))
+            {
+                _logger.LogLine($"Package trigger detected (key: {trigger.key}), skipping video download as package events do not have associated videos");
             }
             else
             {
@@ -341,11 +349,16 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         }
 
         /// <summary>
-        /// Downloads video from Unifi Protect and stores it in S3.
+        /// Determines if the trigger is a package detection event.
+        /// Package triggers do not have associated video content.
         /// </summary>
-        /// <param name="alarm">The alarm object containing event path</param>
-        /// <param name="credentials">Unifi credentials for video download</param>
-        /// <param name="trigger">The enhanced trigger information</param>
+        /// <param name="trigger">The trigger to check</param>
+        /// <returns>True if this is a package trigger, false otherwise</returns>
+        private bool IsPackageTrigger(Trigger trigger)
+        {
+            return trigger?.key?.Equals("package", StringComparison.OrdinalIgnoreCase) == true;
+        }
+
         /// <summary>
         /// Downloads video file from Unifi Protect and stores it in S3.
         /// Handles error scenarios gracefully and cleans up temporary files.
