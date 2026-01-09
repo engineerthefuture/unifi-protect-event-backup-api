@@ -333,6 +333,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// Implements throttling to minimize concurrent logins by waiting if an event was recently processed.
         /// </summary>
         /// <param name="record">The SQS record to process</param>
+        [SuppressMessage("Usage", "CA2696:Consider making static fields non-static or static methods instance methods", Justification = "Static field is intentionally used to track state across Lambda invocations within the same container")]
         private async Task ProcessSingleSqsRecord(SQSEvent.SQSMessage record)
         {
             try
@@ -354,7 +355,9 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                     // Update last processing time after successful processing
                     lock (_throttleLock)
                     {
+#pragma warning disable S2696 // Static fields should not be updated in instance methods - Intentionally used for Lambda container state
                         _lastEventProcessedTime = DateTime.UtcNow;
+#pragma warning restore S2696
                         _logger.LogLine($"Updated last event processing time to {_lastEventProcessedTime:yyyy-MM-dd HH:mm:ss.fff UTC}");
                     }
                     

@@ -250,6 +250,22 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             }
 
             // Queue the alarm results for summary event processing
+            var summaryEvent = await CreateSummaryEventAsync(alarm, eventKey);
+            await _summaryEventQueueService.SendSummaryEventAsync(summaryEvent);
+
+            _logger.LogLine($"Sent summary event with AlarmName: {alarm.name}, EventPath: {alarm.eventPath}, EventLocalLink: {alarm.eventLocalLink}");
+            _logger.LogLine("SQS alarm processing completed successfully");
+        }
+
+        /// <summary>
+        /// Creates a summary event from the alarm data, including presigned video URL if available.
+        /// </summary>
+        /// <param name="alarm">The alarm to create a summary event for</param>
+        /// <param name="eventKey">The S3 key where the alarm was stored</param>
+        /// <returns>A configured SummaryEvent object</returns>
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S1541:Methods should not be too complex", Justification = "Complex logic required for comprehensive summary event creation with error handling")]
+        private async Task<SummaryEvent> CreateSummaryEventAsync(Alarm alarm, string eventKey)
+        {
             var triggerForSummary = alarm.triggers?.FirstOrDefault();
             string? presignedVideoUrl = null;
             if (!string.IsNullOrEmpty(triggerForSummary?.videoKey) && !string.IsNullOrEmpty(AppConfiguration.AlarmBucketName))
@@ -267,6 +283,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                     _logger.LogLine($"Failed to generate presigned video URL: {ex.Message}");
                 }
             }
+            
             var summaryEvent = new SummaryEvent
             {
                 EventId = triggerForSummary?.eventId,
@@ -299,10 +316,8 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
             {
                 _logger.LogLine("No originalFileName available in trigger for summary event");
             }
-            await _summaryEventQueueService.SendSummaryEventAsync(summaryEvent);
-
-            _logger.LogLine($"Sent summary event with AlarmName: {alarm.name}, EventPath: {alarm.eventPath}, EventLocalLink: {alarm.eventLocalLink}");
-            _logger.LogLine("SQS alarm processing completed successfully");
+            
+            return summaryEvent;
         }
 
         /// <summary>
@@ -354,7 +369,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// </summary>
         /// <param name="trigger">The trigger to check</param>
         /// <returns>True if this is a package trigger, false otherwise</returns>
-        private bool IsPackageTrigger(Trigger trigger)
+        private static bool IsPackageTrigger(Trigger trigger)
         {
             return trigger?.key?.Equals("package", StringComparison.OrdinalIgnoreCase) == true;
         }
