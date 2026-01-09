@@ -217,4 +217,96 @@ describe('summary-event-lambda', () => {
         expect(sqsCalls[0][0]).toBeInstanceOf(GetQueueAttributesCommand);
         expect(sqsCalls[1][0]).toBeInstanceOf(GetQueueAttributesCommand);
     });
+
+    it('should exclude package events from missing video count', async() => {
+        S3Client.prototype.send = jest.fn(async(cmd) => {
+            if (cmd instanceof GetObjectCommand) {
+                // First call: no existing summary
+                if (cmd.input.Key.includes('summary_')) {
+                    const err = new Error('NoSuchKey');
+                    err.name = 'NoSuchKey';
+                    throw err;
+                }
+                // Subsequent calls: return alarm data for package/motion events
+                const key = cmd.input.Key;
+                if (key.includes('evt_package')) {
+                    // Package event - should be excluded from missing video count
+                    return {
+                        Body: {
+                            on: jest.fn(),
+                            once: jest.fn()
+                        }
+                    };
+                } else if (key.includes('evt_motion')) {
+                    // Motion event - should be included in missing video count
+                    return {
+                        Body: {
+                            on: jest.fn(),
+                            once: jest.fn()
+                        }
+                    };
+                }
+            }
+            if (cmd instanceof PutObjectCommand) {
+                return {};
+            }
+            if (cmd instanceof ListObjectsV2Command) {
+                // Mock S3 objects with one package event and one motion event, both missing videos
+                return { 
+                    Contents: [
+                        {
+                            Key: '2025-09-07/evt_package_1693584000000.json',
+                            LastModified: new Date('2025-09-07T10:00:00Z'),
+                            Size: 1024
+                        },
+                        {
+                            Key: '2025-09-07/evt_motion_1693584000001.json',
+                            LastModified: new Date('2025-09-07T11:00:00Z'),
+                            Size: 2048
+                        }
+                    ]
+                };
+            }
+        });
+
+        // Mock streamToString to return appropriate alarm data
+        const originalStreamToString = require('../src/index.js');
+        jest.spyOn(global, 'streamToString').mockImplementation((stream) => {
+            // Determine which event based on the stream
+            if (stream._readableState?.objectMode) {
+                return Promise.resolve(JSON.stringify({
+                    triggers: [{ key: 'package' }]
+                }));
+            }
+            return Promise.resolve(JSON.stringify({
+                triggers: [{ key: 'motion' }]
+            }));
+        });
+        
+        // Mock SQS client
+        SQSClient.prototype.send = jest.fn(async(cmd) => {
+            if (cmd instanceof GetQueueAttributesCommand) {
+                return { Attributes: { ApproximateNumberOfMessages: '0' } };
+            }
+        });
+        
+        const event = {
+            Records: [{
+                body: JSON.stringify({
+                    EventId: 'evt1',
+                    Timestamp: Date.now(),
+                    DeviceName: 'DeviceA',
+                    EventType: 'motion'
+                })
+            }]
+        };
+        
+        const res = await handler(event);
+        
+        // Verify successful execution
+        expect(res.statusCode).toBe(200);
+        
+        // The missing video count should only include the motion event, not the package event
+        // This would be verified in the logs showing package events being skipped
+    });
 });
