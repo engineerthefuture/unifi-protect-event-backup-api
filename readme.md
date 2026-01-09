@@ -1,7 +1,7 @@
 # Unifi Protect Event Backup API
 
 
-[![.NET](https://img.shields.io/badge/.NET-8.0-512BD4?style=flat-square&logo=dotnet)](https://dotnet.microsoft.com/)
+[![.NET](https://img.shields.io/badge/.NET-10.0-512BD4?style=flat-square&logo=dotnet)](https://dotnet.microsoft.com/)
 [![Node.js](https://img.shields.io/badge/Node.js-22.x-339933?style=flat-square&logo=nodedotjs)](https://nodejs.org/)
 [![Shell](https://img.shields.io/badge/Shell-Bash-4EAA25?style=flat-square&logo=gnubash)](https://www.gnu.org/software/bash/)
 [![AWS Lambda](https://img.shields.io/badge/AWS-Lambda-FF9900?style=flat-square&logo=amazon-aws)](https://aws.amazon.com/lambda/)
@@ -39,7 +39,7 @@ An enterprise-grade AWS Lambda function that receives and processes webhook even
 
 ## 📋 Overview
 
-This serverless application provides a comprehensive backup, summary, and retrieval system for Unifi Protect alarm events and associated video content. When motion detection, intrusion alerts, or other configured events occur in your Unifi Protect system, webhooks are sent to this Lambda function which processes and stores both the event data and downloads the corresponding video files to Amazon S3. In addition, a dedicated summary event Lambda processes events from a summary SQS queue to maintain daily event counters and generate summary files for each camera, enabling fast summary queries and analytics.
+This serverless application provides a comprehensive backup, summary, and retrieval system for Unifi Protect alarm events and associated video content. When motion detection, intrusion alerts, package deliveries, or other configured events occur in your Unifi Protect system, webhooks are sent to this Lambda function which processes and stores the event data. For events with associated video content (motion, person, vehicle detection), the system downloads the corresponding video files to Amazon S3. Package delivery events are intelligently handled without video download attempts since they don't include video content. In addition, a dedicated summary event Lambda processes events from a summary SQS queue to maintain daily event counters and generate summary files for each camera, enabling fast summary queries and analytics.
 
 ### ⚡ Key Benefits
 - **Zero Infrastructure Management**: Fully serverless AWS architecture
@@ -55,6 +55,7 @@ This serverless application provides a comprehensive backup, summary, and retrie
 - **Webhook Processing**: Receives real-time alarm events from Unifi Dream Machine
 - **Asynchronous Processing**: SQS-based delayed processing for improved reliability
 - **Summary Event Processing**: Dedicated summary event Lambda processes events from a summary SQS queue, updating daily summary files and event counters for each camera
+- **Smart Event Handling**: Intelligent processing that recognizes package delivery events and skips unnecessary video download attempts
 - **Dead Letter Queue**: Automatic retry mechanism for failed video downloads with rich failure metadata
 - **Automated Video Download**: Browser automation for video retrieval using HeadlessChromium optimized for AWS Lambda
 - **Data Storage**: Stores event data, summary files, and videos in S3 with organized folder structure
@@ -70,6 +71,7 @@ This serverless application provides a comprehensive backup, summary, and retrie
 - **Configurable UI Automation**: Environment variable-based coordinate configuration for browser interactions
 - **Enterprise Test Coverage**: 78 unit tests with line, branch, and method coverage analysis plus complexity metrics
 - **Summary File Generation**: Automated daily summary files and event counters for each camera, updated by the summary event Lambda
+- **Event Type Filtering**: Package delivery events are automatically excluded from missing video counts as they don't include video content
 
 ## 🎥 Video Download Capabilities
 
@@ -104,6 +106,24 @@ The system includes asynchronous browser automation to download video content di
 - **Comprehensive Error Handling**: Detailed logging and retry mechanisms for browser automation
 - **Performance Monitoring**: Three diagnostic screenshots captured at key stages (login, page load, archive click) for debugging
 - **Event Processing Throttle**: Configurable throttle delay (default 60 seconds) waits between processing queued events if an event was recently processed, reducing concurrent login load on Unifi Protect
+- **Smart Event Type Detection**: Automatically detects package delivery events and skips video download attempts
+
+### 📦 Package Event Handling
+
+The system intelligently handles package delivery events from Unifi Protect:
+
+- **Automatic Detection**: Identifies package events by checking trigger types in the event payload
+- **Optimized Processing**: Package events skip video download attempts since they don't include video content
+- **Complete Data Capture**: Event metadata, thumbnails, and trigger information are still stored in S3
+- **Summary Exclusion**: Package events are excluded from "missing video" counts in daily summaries
+- **Error Prevention**: Eliminates unnecessary failures and DLQ messages for events without videos
+
+**Supported Event Types:**
+- ✅ **Motion Detection** - Downloads video
+- ✅ **Person Detection** - Downloads video
+- ✅ **Vehicle Detection** - Downloads video
+- ✅ **Package Delivery** - Skips video (event data only)
+- ✅ **Other Smart Detections** - Downloads video when available
 
 ### 📁 Storage Organization
 
@@ -414,7 +434,7 @@ graph TB
 
 | Step | Process | Component |
 |------|---------|-----------|
-| 1 | **Event Detection** | Unifi cameras detect motion/intrusion events |
+| 1 | **Event Detection** | Unifi cameras detect motion/intrusion/package delivery events |
 | 2 | **Webhook Trigger** | Unifi Dream Machine sends webhook to API Gateway |
 | 3 | **Authentication** | API Gateway validates API key |
 | 4 | **Event Queueing** | Lambda function validates JSON and queues event in SQS with delay |
@@ -560,7 +580,7 @@ Fetches and stores current camera metadata from the Unifi Protect API
 The full OpenAPI 3.0 specification is available in the [`docs/openapi.yaml`](docs/openapi.yaml) file and includes:
 
 - 📝 **Complete endpoint documentation** with detailed request/response schemas
-- 🎯 **Interactive examples** for all supported event types (motion, person, vehicle detection)
+- 🎯 **Interactive examples** for all supported event types (motion, person, vehicle, package detection)
 - ⚠️ **Comprehensive error handling** documentation with specific error codes
 - 🔐 **Authentication and security** requirements
 - ✅ **Validation patterns** for MAC addresses, timestamps, and event keys
