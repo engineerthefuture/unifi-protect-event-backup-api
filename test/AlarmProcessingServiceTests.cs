@@ -363,6 +363,33 @@ namespace UnifiWebhookEventReceiverTests
             _mockUnifiProtectService.Verify(x => x.DownloadVideoAsync(It.IsAny<Trigger>(), It.IsAny<string>(), It.IsAny<long>()), Times.Never);
         }
 
+        [Fact]
+        public async Task ProcessAlarmAsync_WithPackageTrigger_SkipsVideoDownload()
+        {
+            // Arrange
+            var alarm = CreateValidAlarm();
+            alarm.eventPath = "/protect/api/events/test-event-id/video"; // Event path exists
+            alarm.triggers[0].key = "package"; // Package trigger type
+            
+            _mockCredentialsService.Setup(x => x.GetUnifiCredentialsAsync())
+                .ReturnsAsync(CreateValidCredentials());
+            _mockS3StorageService.Setup(x => x.GenerateS3Keys(It.IsAny<Trigger>(), It.IsAny<long>()))
+                .Returns(("test-event-key", "test-video-key"));
+            _mockS3StorageService.Setup(x => x.StoreAlarmEventAsync(It.IsAny<Alarm>(), It.IsAny<Trigger>()))
+                .ReturnsAsync("test-event-key");
+            
+            var expectedResponse = new APIGatewayProxyResponse { StatusCode = 200 };
+            _mockResponseHelper.Setup(x => x.CreateSuccessResponse(It.IsAny<Trigger>(), It.IsAny<long>()))
+                .Returns(expectedResponse);
+
+            // Act
+            var result = await _alarmProcessingService.ProcessAlarmAsync(alarm);
+
+            // Assert
+            Assert.Equal(200, result.StatusCode);
+            _mockUnifiProtectService.Verify(x => x.DownloadVideoAsync(It.IsAny<Trigger>(), It.IsAny<string>(), It.IsAny<long>()), Times.Never);
+        }
+
         [Theory]
         [InlineData("28704E113C44")] // Test device MAC mapping
         [InlineData("UNKNOWN_DEVICE")] // Test unknown device
@@ -981,6 +1008,56 @@ namespace UnifiWebhookEventReceiverTests
                     se.EventLocalLink == "https://unifi.local/event/123" &&
                     se.AlarmName == "TestAlarm")), 
                 Times.Once);
+        }
+
+        [Fact]
+        public async Task ProcessAlarmForSqsAsync_WithPackageTrigger_SkipsVideoDownload()
+        {
+            // Arrange
+            Environment.SetEnvironmentVariable("StorageBucket", "test-bucket");
+            
+            var mockUnifiCredentials = new UnifiCredentials
+            {
+                hostname = "https://test.unifi.com",
+                username = "testuser",
+                password = "testpass"
+            };
+
+            var alarm = new UnifiWebhookEventReceiver.Alarm
+            {
+                timestamp = 1672531200000,
+                name = "Package Detection",
+                eventPath = "/test/event/path", // Event path exists
+                triggers = new List<UnifiWebhookEventReceiver.Trigger>
+                {
+                    new UnifiWebhookEventReceiver.Trigger
+                    {
+                        key = "package", // Package trigger type
+                        device = "AA:BB:CC:DD:EE:FF",
+                        eventId = "test-event-123",
+                        deviceName = "Test Camera"
+                    }
+                }
+            };
+
+            _mockCredentialsService.Setup(x => x.GetUnifiCredentialsAsync())
+                .ReturnsAsync(mockUnifiCredentials);
+
+            _mockS3StorageService.Setup(x => x.StoreAlarmEventAsync(It.IsAny<UnifiWebhookEventReceiver.Alarm>(), It.IsAny<UnifiWebhookEventReceiver.Trigger>()))
+                .ReturnsAsync("test-event-key");
+                
+            _mockSummaryEventQueueService.Setup(x => x.SendSummaryEventAsync(It.IsAny<UnifiWebhookEventReceiver.Models.SummaryEvent>()))
+                .ReturnsAsync("test-message-id");
+
+            // Act
+            await _alarmProcessingService.ProcessAlarmForSqsAsync(alarm);
+
+            // Assert
+            // Verify video download was NOT attempted for package trigger
+            _mockUnifiProtectService.Verify(x => x.DownloadVideoAsync(It.IsAny<Trigger>(), It.IsAny<string>(), It.IsAny<long>()), Times.Never);
+            
+            // Verify summary event was still sent
+            _mockSummaryEventQueueService.Verify(x => x.SendSummaryEventAsync(It.IsAny<UnifiWebhookEventReceiver.Models.SummaryEvent>()), Times.Once);
         }
 
         [Fact]
