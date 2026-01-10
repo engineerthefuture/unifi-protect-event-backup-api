@@ -10,6 +10,6 @@
     "configuration": "Release",
     "function-runtime": "dotnet8",
     "function-memory-size": 128,
-    "function-timeout": 30,
+    "function-timeout": 240,
     "function-handler": "Code::Code.Function::FunctionHandler"
 }

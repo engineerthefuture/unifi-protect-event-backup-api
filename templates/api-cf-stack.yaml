@@ -722,7 +722,7 @@ Resources:
               #AssemblyName::NameSpace.ClassName::FunctionHandlerName
       Handler: UnifiWebhookEventReceiver::UnifiWebhookEventReceiver.UnifiWebhookEventHandler::FunctionHandler
       MemorySize: 1536
-      Timeout: 180
+      Timeout: 240
       Runtime: dotnet10
       Role: !GetAtt LambdaRole.Arn
       Environment:
