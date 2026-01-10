@@ -267,8 +267,12 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         private async Task<SummaryEvent> CreateSummaryEventAsync(Alarm alarm, string eventKey)
         {
             var triggerForSummary = alarm.triggers?.FirstOrDefault();
+            
+            // Package events don't have videos, so check this first
+            var isPackage = triggerForSummary != null && IsPackageTrigger(triggerForSummary);
+            
             string? presignedVideoUrl = null;
-            if (!string.IsNullOrEmpty(triggerForSummary?.videoKey) && !string.IsNullOrEmpty(AppConfiguration.AlarmBucketName))
+            if (!isPackage && !string.IsNullOrEmpty(triggerForSummary?.videoKey) && !string.IsNullOrEmpty(AppConfiguration.AlarmBucketName))
             {
                 try
                 {
@@ -283,9 +287,6 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                     _logger.LogLine($"Failed to generate presigned video URL: {ex.Message}");
                 }
             }
-            
-            // Package events don't have videos, so only set VideoS3Key for non-package events
-            var isPackage = triggerForSummary != null && IsPackageTrigger(triggerForSummary);
             
             var summaryEvent = new SummaryEvent
             {
