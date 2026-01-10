@@ -412,18 +412,30 @@ namespace UnifiWebhookEventReceiverTests
         [Fact]
         public void AppConfiguration_WithMissingEnvironmentVariables_HandlesGracefully()
         {
-            // Test various AppConfiguration property accesses with missing env vars
-            Environment.SetEnvironmentVariable("StorageBucket", null);
-            Environment.SetEnvironmentVariable("DeployedEnv", null);
-            Environment.SetEnvironmentVariable("FunctionName", null);
+            // Preserve original environment variable values
+            var originalStorageBucket = Environment.GetEnvironmentVariable("StorageBucket");
+            var originalDeployedEnv = Environment.GetEnvironmentVariable("DeployedEnv");
+            var originalFunctionName = Environment.GetEnvironmentVariable("FunctionName");
 
-            // These should not throw, just return null or empty
-            var alarmBucket = AppConfiguration.AlarmBucketName;
-            var deployedEnv = AppConfiguration.DeployedEnv;
-            var functionName = AppConfiguration.FunctionName;
+            try
+            {
+                // Test various AppConfiguration property accesses with missing env vars
+                Environment.SetEnvironmentVariable("StorageBucket", null);
+                Environment.SetEnvironmentVariable("DeployedEnv", null);
+                Environment.SetEnvironmentVariable("FunctionName", null);
 
-            // Set them back for other tests
-            Environment.SetEnvironmentVariable("StorageBucket", "test-bucket");
+                // These should not throw, just return null or empty
+                var alarmBucket = AppConfiguration.AlarmBucketName;
+                var deployedEnv = AppConfiguration.DeployedEnv;
+                var functionName = AppConfiguration.FunctionName;
+            }
+            finally
+            {
+                // Restore original values for other tests
+                Environment.SetEnvironmentVariable("StorageBucket", originalStorageBucket);
+                Environment.SetEnvironmentVariable("DeployedEnv", originalDeployedEnv);
+                Environment.SetEnvironmentVariable("FunctionName", originalFunctionName);
+            }
         }
 
         [Fact]
@@ -529,7 +541,6 @@ namespace UnifiWebhookEventReceiverTests
         }
 
         [Fact]
-
         public void Alarm_EmptyCollections_Coverage()
         {
             // Test alarm with empty/null collections
