@@ -1056,8 +1056,72 @@ namespace UnifiWebhookEventReceiverTests
             // Verify video download was NOT attempted for package trigger
             _mockUnifiProtectService.Verify(x => x.DownloadVideoAsync(It.IsAny<Trigger>(), It.IsAny<string>(), It.IsAny<long>()), Times.Never);
             
-            // Verify summary event was still sent
-            _mockSummaryEventQueueService.Verify(x => x.SendSummaryEventAsync(It.IsAny<UnifiWebhookEventReceiver.Models.SummaryEvent>()), Times.Once);
+            // Verify summary event was sent with null VideoS3Key
+            _mockSummaryEventQueueService.Verify(x => x.SendSummaryEventAsync(
+                It.Is<UnifiWebhookEventReceiver.Models.SummaryEvent>(
+                    se => se.VideoS3Key == null && se.EventType == "package"
+                )
+            ), Times.Once);
+        }
+
+        [Fact]
+        public async Task ProcessAlarmForSqsAsync_WithNonPackageTrigger_IncludesVideoS3Key()
+        {
+            // Arrange
+            Environment.SetEnvironmentVariable("StorageBucket", "test-bucket");
+            
+            var mockUnifiCredentials = new UnifiCredentials
+            {
+                hostname = "https://test.unifi.com",
+                username = "testuser",
+                password = "testpass"
+            };
+
+            var alarm = new UnifiWebhookEventReceiver.Alarm
+            {
+                timestamp = 1672531200000,
+                name = "Motion Detection",
+                eventPath = "/test/event/path",
+                triggers = new List<UnifiWebhookEventReceiver.Trigger>
+                {
+                    new UnifiWebhookEventReceiver.Trigger
+                    {
+                        key = "line_crossed", // Non-package trigger type
+                        device = "AA:BB:CC:DD:EE:FF",
+                        eventId = "test-event-123",
+                        deviceName = "Test Camera"
+                    }
+                }
+            };
+
+            _mockCredentialsService.Setup(x => x.GetUnifiCredentialsAsync())
+                .ReturnsAsync(mockUnifiCredentials);
+
+            _mockS3StorageService.Setup(x => x.GenerateS3Keys(It.IsAny<Trigger>(), It.IsAny<long>()))
+                .Returns(("test-event-key", "test-video-key"));
+                
+            _mockS3StorageService.Setup(x => x.StoreAlarmEventAsync(It.IsAny<UnifiWebhookEventReceiver.Alarm>(), It.IsAny<UnifiWebhookEventReceiver.Trigger>()))
+                .ReturnsAsync("test-event-key");
+                
+            _mockS3StorageService.Setup(x => x.StoreVideoFileAsync(It.IsAny<string>(), It.IsAny<string>()))
+                .Returns(Task.CompletedTask);
+                
+            _mockSummaryEventQueueService.Setup(x => x.SendSummaryEventAsync(It.IsAny<UnifiWebhookEventReceiver.Models.SummaryEvent>()))
+                .ReturnsAsync("test-message-id");
+                
+            _mockUnifiProtectService.Setup(x => x.DownloadVideoAsync(It.IsAny<Trigger>(), It.IsAny<string>(), It.IsAny<long>()))
+                .ReturnsAsync("/tmp/test-video.mp4");
+
+            // Act
+            await _alarmProcessingService.ProcessAlarmForSqsAsync(alarm);
+
+            // Assert
+            // Verify summary event was sent with VideoS3Key populated
+            _mockSummaryEventQueueService.Verify(x => x.SendSummaryEventAsync(
+                It.Is<UnifiWebhookEventReceiver.Models.SummaryEvent>(
+                    se => se.VideoS3Key == "test-video-key" && se.EventType == "line_crossed"
+                )
+            ), Times.Once);
         }
 
         [Fact]

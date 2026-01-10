@@ -284,13 +284,16 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                 }
             }
             
+            // Package events don't have videos, so only set VideoS3Key for non-package events
+            var isPackage = triggerForSummary != null && IsPackageTrigger(triggerForSummary);
+            
             var summaryEvent = new SummaryEvent
             {
                 EventId = triggerForSummary?.eventId,
                 Device = triggerForSummary?.device,
                 Timestamp = alarm.timestamp,
                 AlarmS3Key = eventKey,
-                VideoS3Key = triggerForSummary?.videoKey,
+                VideoS3Key = isPackage ? null : triggerForSummary?.videoKey,
                 PresignedVideoUrl = presignedVideoUrl,
                 AlarmName = alarm.name,
                 DeviceName = triggerForSummary?.deviceName,
