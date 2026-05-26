@@ -35,7 +35,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// <summary>
         /// Maximum time in seconds to wait for video download to complete
         /// </summary>
-        private const int MaxVideoDownloadWaitTimeSeconds = 118;
+        private const int MaxVideoDownloadWaitTimeSeconds = 180;
 
         /// <summary>
         /// Initializes a new instance of the UnifiProtectService.
