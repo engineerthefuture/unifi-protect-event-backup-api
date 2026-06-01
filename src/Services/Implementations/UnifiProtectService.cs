@@ -33,9 +33,15 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         private readonly ICredentialsService _credentialsService;
 
         /// <summary>
-        /// Maximum time in seconds to wait for video download to complete
+        /// Maximum time in seconds to wait for the download to START (any file activity in the download directory).
+        /// UniFi Protect must prepare/encode the clip on the server before the download begins, which can take several minutes.
         /// </summary>
-        private const int MaxVideoDownloadWaitTimeSeconds = 180;
+        private const int MaxWaitForDownloadStartSeconds = 300;
+
+        /// <summary>
+        /// Maximum time in seconds to wait for the download to COMPLETE once it has started (.mp4 appears).
+        /// </summary>
+        private const int MaxWaitForDownloadCompleteSeconds = 180;
 
         /// <summary>
         /// Initializes a new instance of the UnifiProtectService.
@@ -296,7 +302,7 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
                     await PerformVideoDownloadActions(page, deviceName, downloadDirectory, trigger, timestamp);
 
                     // Wait for download to complete and get video data
-                    var (videoData, actualFileName) = await WaitForDownloadAndGetVideoData(downloadDirectory);
+                    var (videoData, actualFileName) = await WaitForDownloadAndGetVideoData(page, downloadDirectory, trigger, timestamp);
 
                     // Perform sign out and capture screenshot (screenshot will be saved to S3)
                     await PerformSignOutAndCapture(page, downloadDirectory, trigger, timestamp);
@@ -858,33 +864,88 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
         /// </summary>
         /// <param name="downloadDirectory">The download directory to monitor</param>
         /// <returns>Tuple containing the downloaded video data as byte array and the original filename</returns>
-        private async Task<(byte[] videoData, string fileName)> WaitForDownloadAndGetVideoData(string downloadDirectory)
+        private async Task<(byte[] videoData, string fileName)> WaitForDownloadAndGetVideoData(IPage page, string downloadDirectory, Trigger trigger, long timestamp)
         {
             _logger.LogLine("Waiting for video download to complete...");
 
+            // Take a screenshot right before polling starts to capture the current UI state
+            try
+            {
+                var preWaitScreenshotPath = Path.Combine(downloadDirectory, "prewait-screenshot.png");
+                await page.ScreenshotAsync(preWaitScreenshotPath);
+                await UploadScreenshotToS3(preWaitScreenshotPath, "prewait-screenshot.png", trigger, timestamp);
+                if (File.Exists(preWaitScreenshotPath)) File.Delete(preWaitScreenshotPath);
+                _logger.LogLine("Pre-wait screenshot captured and uploaded to S3");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogLine($"Could not capture pre-wait screenshot: {ex.Message}");
+            }
+
             var initialFileCount = Directory.GetFiles(downloadDirectory, "*.mp4").Length;
-            var maxWaitTime = TimeSpan.FromSeconds(MaxVideoDownloadWaitTimeSeconds);
-            var checkInterval = TimeSpan.FromSeconds(1);
-            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            var checkInterval = TimeSpan.FromSeconds(2);
 
             _logger.LogLine($"Initial file count: {initialFileCount}");
 
-            while (stopwatch.Elapsed < maxWaitTime)
+            // Phase 1: Wait for the download to START (any file activity: .crdownload, .tmp, or .mp4)
+            // UniFi Protect prepares/encodes the clip on the server before sending — this can take several minutes.
+            _logger.LogLine($"Phase 1: Waiting up to {MaxWaitForDownloadStartSeconds}s for download to start...");
+            var phase1Stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            bool downloadStartedPhase1 = false;
+
+            while (phase1Stopwatch.Elapsed.TotalSeconds < MaxWaitForDownloadStartSeconds)
+            {
+                var mp4Files = Directory.GetFiles(downloadDirectory, "*.mp4").Length;
+                var crdownloadFiles = Directory.GetFiles(downloadDirectory, "*.crdownload").Length;
+                var tmpFiles = Directory.GetFiles(downloadDirectory, "*.tmp").Length;
+
+                if (mp4Files > initialFileCount)
+                {
+                    _logger.LogLine($"Phase 1: .mp4 file appeared after {phase1Stopwatch.Elapsed.TotalSeconds:F1}s - download complete already");
+                    downloadStartedPhase1 = true;
+                    await Task.Delay(2000);
+                    break;
+                }
+
+                if (crdownloadFiles > 0 || tmpFiles > 0)
+                {
+                    _logger.LogLine($"Phase 1: Download started after {phase1Stopwatch.Elapsed.TotalSeconds:F1}s (.crdownload={crdownloadFiles}, .tmp={tmpFiles})");
+                    downloadStartedPhase1 = true;
+                    break;
+                }
+
+                if ((int)phase1Stopwatch.Elapsed.TotalSeconds % 30 == 0 && phase1Stopwatch.Elapsed.TotalSeconds >= 30)
+                {
+                    _logger.LogLine($"Phase 1: Still waiting for download to start ({phase1Stopwatch.Elapsed.TotalSeconds:F0}s elapsed)...");
+                }
+
+                await Task.Delay(checkInterval);
+            }
+
+            if (!downloadStartedPhase1)
+            {
+                _logger.LogLine($"Phase 1: No download activity detected after {MaxWaitForDownloadStartSeconds}s");
+            }
+
+            // Phase 2: Wait for the download to COMPLETE (partial file becomes .mp4)
+            _logger.LogLine($"Phase 2: Waiting up to {MaxWaitForDownloadCompleteSeconds}s for download to complete...");
+            var phase2Stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+            while (phase2Stopwatch.Elapsed.TotalSeconds < MaxWaitForDownloadCompleteSeconds)
             {
                 var currentFileCount = Directory.GetFiles(downloadDirectory, "*.mp4").Length;
                 if (currentFileCount > initialFileCount)
                 {
-                    _logger.LogLine($"New video file detected after {stopwatch.Elapsed.TotalSeconds:F1} seconds");
+                    _logger.LogLine($"Phase 2: .mp4 file ready after {phase2Stopwatch.Elapsed.TotalSeconds:F1}s");
                     await Task.Delay(2000);
                     break;
                 }
 
                 var partialFiles = Directory.GetFiles(downloadDirectory, "*.crdownload").Length;
-                var tempFiles = Directory.GetFiles(downloadDirectory, "*.tmp").Length;
-
-                if (partialFiles > 0 || tempFiles > 0)
+                var tmpFiles2 = Directory.GetFiles(downloadDirectory, "*.tmp").Length;
+                if (partialFiles > 0 || tmpFiles2 > 0)
                 {
-                    _logger.LogLine($"Partial download files detected: .crdownload={partialFiles}, .tmp={tempFiles}");
+                    _logger.LogLine($"Phase 2: Download in progress (.crdownload={partialFiles}, .tmp={tmpFiles2}), {phase2Stopwatch.Elapsed.TotalSeconds:F1}s elapsed");
                 }
 
                 await Task.Delay(checkInterval);
@@ -899,6 +960,13 @@ namespace UnifiWebhookEventReceiver.Services.Implementations
 
             if (string.IsNullOrEmpty(latestVideoFile))
             {
+                // Log ALL files in the directory to diagnose what actually happened
+                var allFiles = Directory.GetFiles(downloadDirectory);
+                _logger.LogLine($"All files in download directory ({allFiles.Length} total): {string.Join(", ", allFiles.Select(Path.GetFileName))}");
+                var subDirs = Directory.GetDirectories(downloadDirectory);
+                if (subDirs.Length > 0)
+                    _logger.LogLine($"Subdirectories in download directory: {string.Join(", ", subDirs.Select(Path.GetFileName))}");
+
                 _logger.LogLine("No video files found in download directory");
                 throw new FileNotFoundException("No video files were downloaded");
             }
